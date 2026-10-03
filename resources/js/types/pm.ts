@@ -1,0 +1,132 @@
+export type Severity = 'danger' | 'warning' | 'neutral';
+
+export interface PmFlag {
+  card_id: number;
+  title: string;
+  assignee: string | null;
+  type: 'overdue' | 'stuck' | 'blocked' | 'unassigned' | 'unverified';
+  severity: Severity;
+  detail: string;
+  url: string | null;
+}
+
+export interface PmMetrics {
+  overdue: number;
+  stuck: number;
+  blocked: number;
+  unverified: number;
+}
+
+export interface DraftTicket {
+  title: string;
+  description: string;
+  level: 'senior dev' | 'intern' | string;
+  estimate_hours: number;
+}
+
+export interface Employee {
+  employeeId: string;
+  name: string;
+  designation: string | null;
+}
+
+export interface ScopeItem {
+  request: string;
+  verdict: 'in_scope' | 'out_of_scope' | 'unclear';
+  reason: string;
+  estimate_hours: number | null;
+}
+
+export interface GitFile {
+  status: string;
+  file: string;
+}
+
+export interface GitStatus {
+  branch: string;
+  has_upstream: boolean;
+  ahead: number;
+  behind: number;
+  dirty: GitFile[];
+  last_commit: { hash: string | null; author: string | null; when: string | null; subject: string | null };
+  branches: string[];
+}
+
+export type ProjectStatus = 'Planning' | 'Active' | 'Blocked' | 'On Hold' | 'Completed';
+export type TaskStatus = 'Assigned' | 'Pending' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
+export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Critical';
+
+export const PROJECT_STATUSES: ProjectStatus[] = ['Planning', 'Active', 'Blocked', 'On Hold', 'Completed'];
+export const TASK_STATUSES: TaskStatus[] = ['Assigned', 'Pending', 'In Progress', 'Blocked', 'Completed', 'Cancelled'];
+export const TASK_PRIORITIES: TaskPriority[] = ['Low', 'Medium', 'High', 'Critical'];
+
+export interface ProjectComment {
+  _id: string;
+  text: string;
+  authorId?: string;
+  createdAt: string;
+}
+
+export interface ProjectTask {
+  _id: string;
+  title: string;
+  description: string;
+  assignedToId: string[];
+  assignedByName: string;
+  priority: TaskPriority;
+  dueDate: string;
+  estimatedHours: number;
+  status: TaskStatus;
+  tags: string[];
+  comments: ProjectComment[];
+  subTasks: unknown[];
+  createdAt: string;
+}
+
+export interface ProjectMember {
+  userId: string;
+  role: 'owner' | 'admin' | 'member' | 'viewer';
+  name?: string;
+  email?: string;
+  joinedAt: string;
+}
+
+export interface Project {
+  _id: string;
+  name: string;
+  description: string;
+  status: ProjectStatus;
+  manager: string;
+  startDate: string | null;
+  endDate: string | null;
+  color: string;
+  createdBy: string;
+  tasks: ProjectTask[];
+  members: ProjectMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NewTaskInput {
+  title: string;
+  description?: string;
+  assignedToId?: string[];
+  priority?: TaskPriority;
+  dueDate: string;
+  estimatedHours?: number;
+  status?: TaskStatus;
+}
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  author: string | null;
+  branch: string;
+  base: string;
+  draft: boolean;
+  mergeable_state: string | null;
+  checks_state: 'success' | 'failure' | 'pending' | 'unknown';
+  review_comments: number;
+  updated_at: string;
+  url: string;
+}
