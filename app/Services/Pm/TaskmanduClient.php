@@ -73,7 +73,9 @@ class TaskmanduClient
         }
 
         $attempt = function () use ($method, $path, $options) {
-            return $this->client()->{$method}($path, $options['json'] ?? $options['query'] ?? []);
+            // POST is never auto-retried: if the first attempt reached Taskmandu but the
+            // response was lost, a retry would create the task twice.
+            return $this->client(retry: $method !== 'post')->{$method}($path, $options['json'] ?? $options['query'] ?? []);
         };
 
         $res = $attempt();
@@ -91,13 +93,14 @@ class TaskmanduClient
         return $res->json();
     }
 
-    private function client(): PendingRequest
+    private function client(bool $retry = true): PendingRequest
     {
-        return Http::baseUrl(rtrim(config('services.taskmandu.base_url'), '/'))
+        $http = Http::baseUrl(rtrim(config('services.taskmandu.base_url'), '/'))
             ->withToken($this->token())
             ->acceptJson()
-            ->timeout(20)
-            ->retry(2, 400, throw: false);
+            ->timeout(20);
+
+        return $retry ? $http->retry(2, 400, throw: false) : $http;
     }
 
     private function token(): string

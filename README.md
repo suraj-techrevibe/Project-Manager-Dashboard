@@ -68,11 +68,42 @@ comments — slightly less accurate than the standalone-task case.
 
 ## Pushing drafted tickets back to Taskmandu
 
-The "Brief to tickets" tab's push button calls `POST /tasks` on Taskmandu directly (via
-`TaskmanduSync::createTask`), which **requires an assignee** (Taskmandu's own validation:
-`assignedToId` needs at least one entry). The tab fetches the employee list (`/pm/employees`) and
-makes you pick one before the push button works — the whole drafted batch goes to that one
-assignee; draft again separately if a brief needs to split across people.
+The "Brief to tickets" tab drafts tickets (Claude, or a no-AI line splitter), lets you edit them, and
+pushes them via `POST /pm/brief/push`. Each ticket carries its own assignee (required by Taskmandu) and
+due date, and the response reports every ticket's own result, so a failure on ticket 4 never hides
+tickets 1-3 and only failed tickets are retried. Tickets can go standalone (`POST /tasks`) or onto a
+project board (`POST /projects/{id}/tasks`).
+
+Level, estimate and priority are sent as real fields (`tags`, `estimatedHours`, `priority`). If Taskmandu
+rejects them on the standalone create call (400/422) the push is retried once without them and a
+`Level | Est | Priority` line is added to the description instead; the UI says when that happened.
+
+## Daily and weekly reports
+
+The **Reports** tab lists saved reports as collapsible cards, newest first. Pick **Daily** or **Weekly**, a date,
+optionally type what you did in your own words, and press **Generate report**. One report per kind per
+date (a weekly report is dated by its Monday); generating again replaces it. "Copy as text" copies a plain-text version.
+
+**Daily = what changed that day**, so multi-day tasks don't repeat: Today at a glance (counts + a one-line board
+summary with change since the previous daily report), Completed today, New tasks, Progress today (status changes
+and new comments), New blockers, Unblocked, Newly overdue, Needs attention (blocked/overdue 3+ days, one line each),
+Team today (only people with activity), What I did for the team, Tomorrow, Notes. Empty optional sections are hidden.
+
+**Weekly = the standing picture** (Mon-Sun of the chosen week): Completed by project, Still in progress (days since
+it last moved to In Progress), Blocked and Overdue with durations, Team workload table, comparison with last week,
+What I did for the team, Next week (tasks due), Notes.
+
+- Everything except the custom-text split comes from the database, not AI. "What I did for the team" is filled
+  automatically from actions taken here (tasks pushed, follow-up nudges, verify, snooze) plus your custom text.
+- Custom text is split into What I did / Blockers / Plan / Notes by Claude; without an API key (or if the call
+  fails) simple line rules are used and the report says so.
+- Changes and new comments are detected at each sync (`pm:sync`), so they are as precise as your sync interval.
+  Run `php artisan pm:sync` hourly for best results. The first sync after install only records a baseline.
+  Quiet work on a task with no status change and no comment leaves no trace unless you mention it in the custom text.
+- Automatic: `pm:report` (weekdays 18:00) and `pm:report --weekly` (Fridays 18:30) are scheduled in
+  `routes/console.php`; they need the scheduler (`php artisan schedule:work` locally, a `schedule:run` cron in
+  production). Manual: `php artisan pm:report --date=2026-10-03 --force`, add `--weekly` for the week.
+  Day boundaries use `APP_TIMEZONE` in `.env`.
 
 ## Flags
 
@@ -95,10 +126,9 @@ resources/js/
   types/pm.ts              # shared TS types
   lib/pmApi.ts              # axios calls to /pm/* routes
   Components/Pm/
-    FlagsPanel.tsx          # Today tab: metrics + flag list, nudge/snooze/verify
-    ChatPanel.tsx           # Ask tab
+    FlagsPanel.tsx          # Today tab: question buttons, workload, filters, flag list, nudge/snooze/verify
     BriefDrafter.tsx        # Brief to tickets tab
-    ClientUpdate.tsx        # Client update tab
+    ReportsPanel.tsx        # Reports tab: generate + list daily reports
     ScopeCheck.tsx          # Scope check tab
     GitPanel.tsx            # Git tab
     ProjectsPanel.tsx       # Projects tab

@@ -2,27 +2,33 @@ import { Head } from '@inertiajs/react';
 import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import FlagsPanel from '@/Components/Pm/FlagsPanel';
-import ChatPanel from '@/Components/Pm/ChatPanel';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
-import ClientUpdate from '@/Components/Pm/ClientUpdate';
+import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import GitPanel from '@/Components/Pm/GitPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
-import type { PmFlag, PmMetrics, TaskFocus } from '@/types/pm';
+import type { PmFlag, PmMetrics, TaskFocus, WorkloadRow } from '@/types/pm';
 
-type Tab = 'today' | 'ask' | 'brief' | 'client' | 'scope' | 'git' | 'projects';
+type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects';
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'projects', label: 'Projects' },
-  { key: 'ask', label: 'Ask' },
   { key: 'brief', label: 'Brief to tickets' },
-  { key: 'client', label: 'Client update' },
+  { key: 'reports', label: 'Reports' },
   { key: 'scope', label: 'Scope check' },
   { key: 'git', label: 'Git' },
 ];
 
-export default function PmIndex({ flags, metrics }: { flags: PmFlag[]; metrics: PmMetrics }) {
+export default function PmIndex({
+  flags,
+  metrics,
+  workload,
+}: {
+  flags: PmFlag[];
+  metrics: PmMetrics;
+  workload: WorkloadRow[];
+}) {
   const [tab, setTab] = useState<Tab>('today');
   const [focus, setFocus] = useState<TaskFocus | null>(null);
 
@@ -53,11 +59,10 @@ export default function PmIndex({ flags, metrics }: { flags: PmFlag[]; metrics: 
           ))}
         </div>
 
-        {tab === 'today' && <FlagsPanel flags={flags} metrics={metrics} onOpenTask={openTask} />}
+        {tab === 'today' && <FlagsPanel flags={flags} metrics={metrics} workload={workload} onOpenTask={openTask} />}
         {tab === 'projects' && <ProjectsPanel focus={focus} onFocusHandled={() => setFocus(null)} />}
-        {tab === 'ask' && <ChatPanel />}
         {tab === 'brief' && <BriefDrafter />}
-        {tab === 'client' && <ClientUpdate />}
+        {tab === 'reports' && <ReportsPanel />}
         {tab === 'scope' && <ScopeCheck />}
         {tab === 'git' && <GitPanel />}
       </div>

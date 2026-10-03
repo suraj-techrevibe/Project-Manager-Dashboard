@@ -1,6 +1,10 @@
 import axios from 'axios';
 import type {
   DraftTicket,
+  BriefContext,
+  PushTicket,
+  PushResult,
+  Report,
   ScopeItem,
   GitStatus,
   PullRequest,
@@ -43,19 +47,26 @@ export const pmApi = {
   verify: (cardId: number) => api.post(`/cards/${cardId}/verify`),
 
   draftBrief: (brief: string) =>
-    api.post<{ tickets: DraftTicket[]; questions: string[] }>('/brief', { brief }),
+    api.post<{ tickets: DraftTicket[]; questions: string[]; truncated?: number }>('/brief', { brief }),
 
   employees: () => api.get<{ employees: Employee[] }>('/employees'),
 
-  pushTickets: (tickets: DraftTicket[], assigneeEmployeeId: string, dueDate?: string) =>
-    api.post<{ created: number }>('/brief/push', {
+  briefContext: () => api.get<BriefContext>('/brief/context'),
+
+  /** Per-ticket assignee/due date; pass projectId to push onto that project's board. */
+  pushTickets: (tickets: PushTicket[], projectId?: string) =>
+    api.post<{ results: PushResult[]; created: number; failed: number }>('/brief/push', {
       tickets,
-      assignee_employee_id: assigneeEmployeeId,
-      due_date: dueDate,
+      project_id: projectId || null,
     }),
 
-  clientUpdate: (tone: 'formal' | 'casual', clientName?: string) =>
-    api.post<{ email: string }>('/client-update', { tone, client_name: clientName }),
+  reports: () => api.get<{ reports: Report[] }>('/reports'),
+
+  /** date = YYYY-MM-DD (defaults to today server-side); notes = custom text to split into the template. */
+  generateReport: (date: string, notes: string, sync: boolean, kind: 'daily' | 'weekly' = 'daily') =>
+    api.post<{ report: Report; warning: string | null }>('/reports', { date, notes: notes || null, sync, kind }),
+
+  deleteReport: (id: number) => api.delete(`/reports/${id}`),
 
   scopeCheck: (brief: string, message: string) =>
     api.post<{ items: ScopeItem[] }>('/scope', { brief, message }),

@@ -2,8 +2,10 @@
 
 namespace App\Services\Pm;
 
+use App\Models\PmActivity;
 use App\Models\PmCard;
 use Illuminate\Support\Carbon;
+use RuntimeException;
 
 /**
  * Pulls real data from Taskmandu (standalone /tasks, plus each project's
@@ -26,6 +28,13 @@ use Illuminate\Support\Carbon;
  */
 class TaskmanduSync
 {
+    /**
+     * False on the very first sync (empty table): everything would look "new
+     * today" and flood the daily report, so nothing is logged until there is a
+     * baseline to compare against.
+     */
+    private bool $baseline = false;
+
     public function __construct(private TaskmanduClient $client) {}
 
     public function configured(): bool
@@ -37,6 +46,7 @@ class TaskmanduSync
     {
         $employees = $this->employeeMap();
         $count = 0;
+        $this->baseline = PmCard::query()->exists();
 
         $count += $this->syncStandaloneTasks($employees);
         $count += $this->syncProjectBoards($employees);
@@ -44,14 +54,27 @@ class TaskmanduSync
         return $count;
     }
 
-    /** employeeId => "First Last" */
-    private function employeeMap(): array
+    /**
+     * id => "First Last". Keyed by every id an employee can be referred to by
+     * (employeeId, Mongo _id, userId) because tasks created elsewhere in
+     * Taskmandu store assignees under different keys — keying only by
+     * employeeId is what left raw ids like "6a8aa033…" showing as names.
+     */
+    public function employeeMap(): array
     {
-        $employees = $this->client->paginate('/employees');
+        $map = [];
 
-        return collect($employees)->mapWithKeys(fn ($e) => [
-            $e['employeeId'] => trim($e['firstName'].' '.$e['lastName']),
-        ])->all();
+        foreach ($this->client->paginate('/employees') as $e) {
+            $name = trim(($e['firstName'] ?? '').' '.($e['lastName'] ?? ''));
+
+            foreach (['employeeId', '_id', 'userId'] as $key) {
+                if (! empty($e[$key]) && is_string($e[$key])) {
+                    $map[$e[$key]] = $name;
+                }
+            }
+        }
+
+        return $map;
     }
 
     private function names(array $employees, array $ids): ?string
@@ -68,6 +91,7 @@ class TaskmanduSync
 
         foreach ($tasks as $t) {
             $card = PmCard::firstOrNew(['external_id' => 'task:'.$t['_id']]);
+            [$existed, $oldStatus, $oldComments] = [$card->exists, $card->status, (int) $card->comments_count];
             $card->fill([
                 'title' => $t['title'],
                 'description' => $t['description'] ?? null,
@@ -87,6 +111,7 @@ class TaskmanduSync
                 'url' => $frontend ? "{$frontend}/tasks/{$t['_id']}" : null,
             ]);
             $card->save();
+            $this->track($card, $existed, $oldStatus, $oldComments);
         }
 
         return count($tasks);
@@ -104,6 +129,7 @@ class TaskmanduSync
                 $lastActivity = $lastComment['createdAt'] ?? $t['createdAt'] ?? null;
 
                 $card = PmCard::firstOrNew(['external_id' => "project:{$p['_id']}:task:{$t['_id']}"]);
+                [$existed, $oldStatus, $oldComments] = [$card->exists, $card->status, (int) $card->comments_count];
                 $card->fill([
                     'title' => $t['title'],
                     'description' => $t['description'] ?? null,
@@ -123,6 +149,7 @@ class TaskmanduSync
                     'url' => $frontend ? "{$frontend}/projects/{$p['_id']}" : null,
                 ]);
                 $card->save();
+                $this->track($card, $existed, $oldStatus, $oldComments);
                 $count++;
             }
         }
@@ -130,27 +157,119 @@ class TaskmanduSync
         return $count;
     }
 
+    /** Logs new tasks and status changes seen by this sync, for the daily report. */
+    private function track(PmCard $card, bool $existed, ?string $oldStatus, int $oldComments = 0): void
+    {
+        if (! $this->baseline) {
+            return;
+        }
+
+        if (! $existed) {
+            PmActivity::record('created', $card);
+        } else {
+            if ($oldStatus !== $card->status) {
+                PmActivity::record('status_change', $card, ['from' => $oldStatus, 'to' => $card->status]);
+            }
+            // New comments are the best signal of quiet progress on a task whose status didn't change.
+            if ((int) $card->comments_count > $oldComments) {
+                PmActivity::record('comment', $card, ['count' => (int) $card->comments_count - $oldComments]);
+            }
+        }
+    }
+
     /**
      * Creates a standalone Task in Taskmandu from a drafted ticket.
      * assignedToId is required by Taskmandu (min 1) — pass an Employee.employeeId.
+     *
+     * $extra may carry priority / estimatedHours / tags. Taskmandu's create
+     * endpoint is not confirmed to accept them, so they are tried first as real
+     * fields; if Taskmandu rejects the request with a 400/422 it is retried
+     * once without them and $fallbackLine is appended to the description.
+     *
+     * @return array{data: array, fallback: bool}
      */
-    public function createTask(string $title, string $description, string $assigneeEmployeeId, string $dueDate): array
-    {
-        return $this->client->post('/tasks', [
+    public function createTask(
+        string $title,
+        string $description,
+        string $assigneeEmployeeId,
+        string $dueDate,
+        array $extra = [],
+        string $fallbackLine = '',
+    ): array {
+        [$res, $fallback] = $this->postWithFallback('/tasks', [
             'title' => $title,
             'description' => $description,
             'assignedToId' => [$assigneeEmployeeId],
             'dueDate' => $dueDate, // YYYY-MM-DD
             'status' => 'Assigned',
-        ]);
+        ], $extra, $fallbackLine);
+
+        return ['data' => $res['data'] ?? [], 'fallback' => $fallback];
     }
 
-    /** For the assignee picker on the "brief to tickets" tab. */
+    /**
+     * Adds a task to a project's board (POST /projects/{id}/tasks).
+     *
+     * @return array{project: array, task: array, fallback: bool}
+     */
+    public function createProjectTask(
+        string $projectId,
+        string $title,
+        string $description,
+        string $assigneeEmployeeId,
+        string $assignedByName,
+        string $dueDate,
+        array $extra = [],
+        string $fallbackLine = '',
+    ): array {
+        [$res, $fallback] = $this->postWithFallback("/projects/{$projectId}/tasks", [
+            'title' => $title,
+            'description' => $description,
+            'assignedToId' => [$assigneeEmployeeId],
+            'assignedByName' => $assignedByName,
+            'dueDate' => $dueDate,
+            'status' => 'Assigned',
+        ], $extra, $fallbackLine);
+
+        $project = $res['data'] ?? [];
+        $tasks = collect($project['tasks'] ?? []);
+        // Taskmandu returns the whole project; the new task is the last one pushed.
+        $task = $tasks->last(fn ($t) => ($t['title'] ?? null) === $title) ?? $tasks->last() ?? [];
+
+        return ['project' => $project, 'task' => $task, 'fallback' => $fallback];
+    }
+
+    /** @return array{0: array, 1: bool} [response, usedFallback] */
+    private function postWithFallback(string $path, array $base, array $extra, string $fallbackLine): array
+    {
+        $extra = array_filter($extra, fn ($v) => $v !== null && $v !== [] && $v !== '');
+
+        if (! $extra) {
+            return [$this->client->post($path, $base), false];
+        }
+
+        try {
+            return [$this->client->post($path, $base + $extra), false];
+        } catch (RuntimeException $e) {
+            // Only a validation rejection means "these fields aren't accepted".
+            // Anything else (auth, network, 5xx) is rethrown untouched.
+            if (! preg_match('/\((400|422)\)/', $e->getMessage())) {
+                throw $e;
+            }
+
+            $base['description'] = trim(($base['description'] ?? '')."\n\n".$fallbackLine);
+
+            return [$this->client->post($path, $base), true];
+        }
+    }
+
+    /** For the assignee pickers. `id` is the Mongo _id, `employeeId` is what Taskmandu assigns by. */
     public function listEmployees(): array
     {
         return collect($this->client->paginate('/employees'))
             ->map(fn ($e) => [
                 'employeeId' => $e['employeeId'],
+                'id' => $e['_id'] ?? null,
                 'name' => trim($e['firstName'].' '.$e['lastName']),
                 'designation' => $e['designation'] ?? null,
             ])

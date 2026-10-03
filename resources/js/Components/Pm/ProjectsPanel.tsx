@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import type { Project, ProjectStatus, TaskFocus } from '../../types/pm';
+import type { Project, ProjectStatus } from '../../types/pm';
+import { setUrlParams, useUrlParam } from '../../lib/urlState';
 import { PROJECT_STATUSES } from '../../types/pm';
 import ProjectWorkspace, { ColorPicker } from './Projects/ProjectWorkspace';
 import {
@@ -25,21 +26,18 @@ import {
  * sub-tasks and comments) / Documents / Secrets / Members views.
  * Everything is fetched from and written to Taskmandu via /pm/projects/*.
  */
-export default function ProjectsPanel({
-  focus,
-  onFocusHandled,
-}: {
-  focus?: TaskFocus | null;
-  onFocusHandled?: () => void;
-}) {
+export default function ProjectsPanel() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
-  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  // Which project is open lives in the URL (?project=<id>), not in React state.
+  const openId = useUrlParam('project');
+  const openProject = (id: string) => setUrlParams({ project: id, ptab: null, task: null, sub: null });
+  const closeProject = () => setUrlParams({ project: null, ptab: null, task: null, sub: null });
 
   async function load() {
     setLoading(true);
@@ -58,38 +56,29 @@ export default function ProjectsPanel({
     load();
   }, []);
 
-  // Deep link from the Today tab: once projects have loaded, open that project
-  // on its Tasks tab and highlight the task.
+  // A URL pointing at a project that no longer exists (renamed/deleted).
   useEffect(() => {
-    if (!focus || loading) return;
-    if (!error) {
-      if (projects.some((p) => p._id === focus.projectId)) {
-        setOpenId(focus.projectId);
-        setHighlightId(focus.taskId);
-      } else {
-        setError("That project wasn't found in Taskmandu — it may have been renamed or deleted.");
-      }
+    if (!openId || loading || error) return;
+    if (!projects.some((p) => p._id === openId)) {
+      setError("That project wasn't found in Taskmandu — it may have been renamed or deleted.");
+      setUrlParams({ project: null, ptab: null, task: null, sub: null }, { replace: true });
     }
-    onFocusHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus, loading, projects]);
+  }, [openId, loading, error, projects]);
 
   const open = projects.find((p) => p._id === openId) ?? null;
+
+  if (openId && loading) return <p className="text-sm text-slate-500">Loading project…</p>;
 
   if (open) {
     return (
       <ProjectWorkspace
+        key={open._id}
         project={open}
-        highlightTaskId={highlightId}
-        onHighlightDone={() => setHighlightId(null)}
-        onBack={() => {
-          setOpenId(null);
-          setHighlightId(null);
-        }}
+        onBack={closeProject}
         onChanged={(updated) => setProjects((ps) => ps.map((p) => (p._id === updated._id ? updated : p)))}
         onDeleted={() => {
           setProjects((ps) => ps.filter((p) => p._id !== open._id));
-          setOpenId(null);
+          closeProject();
         }}
       />
     );
@@ -140,7 +129,7 @@ export default function ProjectsPanel({
         {filtered.map((p) => {
           const progress = projectProgress(p);
           return (
-            <button key={p._id} onClick={() => setOpenId(p._id)} className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-slate-300">
+            <button key={p._id} onClick={() => openProject(p._id)} className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-slate-300">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${p.color || 'bg-slate-300'}`} />
@@ -165,7 +154,7 @@ export default function ProjectsPanel({
           onCreated={(p) => {
             setProjects((ps) => [p, ...ps]);
             setShowNew(false);
-            setOpenId(p._id);
+            openProject(p._id);
           }}
         />
       )}

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
 import type { Employee, Project, ProjectStatus } from '../../../types/pm';
 import { PROJECT_STATUSES } from '../../../types/pm';
@@ -31,21 +32,19 @@ type Tab = 'details' | 'tasks' | 'documents' | 'secrets' | 'members';
 
 export default function ProjectWorkspace({
   project,
-  highlightTaskId,
-  onHighlightDone,
   onBack,
   onChanged,
   onDeleted,
 }: {
   project: Project;
-  highlightTaskId?: string | null;
-  onHighlightDone?: () => void;
   onBack: () => void;
   onChanged: (p: Project) => void;
   onDeleted: () => void;
 }) {
   const { employees, nameFor } = useEmployees();
-  const [tab, setTab] = useState<Tab>(highlightTaskId ? 'tasks' : 'details');
+  const tabParam = useUrlParam('ptab');
+  const tab: Tab = (['details', 'tasks', 'documents', 'secrets', 'members'] as Tab[]).includes(tabParam as Tab) ? (tabParam as Tab) : 'details';
+  const setTab = (t: Tab) => setUrlParams({ ptab: t === 'details' ? null : t, task: null, sub: null });
   const [showEdit, setShowEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -64,6 +63,13 @@ export default function ProjectWorkspace({
       setRefreshing(false);
     }
   }
+
+  // The list payload can be stale (or come from a shared link), so pull this
+  // project fresh from Taskmandu every time it is opened.
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project._id]);
 
   async function removeProject() {
     setDeleting(true);
@@ -125,8 +131,6 @@ export default function ProjectWorkspace({
           employees={employees}
           nameFor={nameFor}
           onChanged={onChanged}
-          highlightTaskId={highlightTaskId}
-          onHighlightDone={onHighlightDone}
         />}
       {tab === 'documents' && <DocumentsTab project={project} onChanged={onChanged} />}
       {tab === 'secrets' && <SecretsTab project={project} onChanged={onChanged} />}

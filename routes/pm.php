@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(function () {
@@ -11,9 +12,12 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::post('cards/{card}/snooze', [PmController::class, 'snooze'])->name('snooze');
     Route::post('cards/{card}/verify', [PmController::class, 'verify'])->name('verify');
     Route::post('brief', [PmController::class, 'brief'])->name('brief');
+    Route::get('brief/context', [PmController::class, 'briefContext'])->name('brief.context');
     Route::post('brief/push', [PmController::class, 'push'])->name('brief.push');
     Route::get('employees', [PmController::class, 'employees'])->name('employees');
-    Route::post('client-update', [PmController::class, 'clientUpdate'])->name('client-update');
+    Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::post('reports', [ReportController::class, 'store'])->name('reports.store');
+    Route::delete('reports/{report}', [ReportController::class, 'destroy'])->name('reports.destroy');
     Route::post('scope', [PmController::class, 'scope'])->name('scope');
     Route::post('scope/email', [PmController::class, 'scopeEmail'])->name('scope.email');
 

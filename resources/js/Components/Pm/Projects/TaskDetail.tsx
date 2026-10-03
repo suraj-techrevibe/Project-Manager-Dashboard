@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
 import type { Employee, Project, ProjectComment, ProjectTask, SubTask, TaskPriority, TaskStatus } from '../../../types/pm';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../../../types/pm';
@@ -258,7 +259,8 @@ function SubTasks({
   const [title, setTitle] = useState('');
   const [assignees, setAssignees] = useState<string[]>([]);
   const [showAssignees, setShowAssignees] = useState(false);
-  const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+  // The expanded sub-task is in the URL (?sub=<id>).
+  const openSub = useUrlParam('sub');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [deleting, setDeleting] = useState<SubTask | null>(null);
 
@@ -301,7 +303,7 @@ function SubTasks({
 
       {task.subTasks.map((s) => {
         const done = s.status === 'Completed';
-        const open = !!openComments[s._id];
+        const open = openSub === s._id;
         return (
           <div key={s._id} className="rounded-lg border border-slate-100 p-2">
             <div className="flex items-start gap-2">
@@ -320,7 +322,7 @@ function SubTasks({
                   <option key={st} value={st}>{st}</option>
                 ))}
               </select>
-              <button onClick={() => setOpenComments((o) => ({ ...o, [s._id]: !o[s._id] }))} className="shrink-0 text-xs text-slate-400 hover:text-slate-700" title="Comments">
+              <button onClick={() => setUrlParams({ sub: open ? null : s._id })} className="shrink-0 text-xs text-slate-400 hover:text-slate-700" title="Comments">
                 💬 {s.comments.length}
               </button>
               <button onClick={() => setDeleting(s)} disabled={busy === s._id} className="shrink-0 text-xs text-slate-300 hover:text-red-600 disabled:opacity-50" title="Delete sub-task">✕</button>

@@ -97,7 +97,8 @@ export function useEmployees() {
     pmApi.employees().then(({ data }) => setEmployees(data.employees)).catch(() => {});
   }, []);
 
-  const nameFor = (employeeId: string) => employees.find((e) => e.employeeId === employeeId)?.name ?? employeeId;
+  // Tasks can reference an employee by employeeId or by Mongo _id — match both.
+  const nameFor = (id: string) => employees.find((e) => e.employeeId === id || e.id === id)?.name ?? id;
 
   return { employees, nameFor };
 }

@@ -34,6 +34,15 @@ export interface PmMetrics {
   stuck: number;
   blocked: number;
   unverified: number;
+  unassigned: number;
+}
+
+/** Open tasks per person, computed server-side from the synced cards. */
+export interface WorkloadRow {
+  name: string;
+  open: number;
+  overdue: number;
+  blocked: number;
 }
 
 export interface DraftTicket {
@@ -43,10 +52,47 @@ export interface DraftTicket {
   estimate_hours: number;
 }
 
+/** One ticket as sent to /pm/brief/push — each carries its own assignee and due date. */
+export interface PushTicket {
+  title: string;
+  description: string;
+  level: string;
+  estimate_hours: number | null;
+  priority: TaskPriority;
+  assignee_employee_id: string;
+  due_date: string | null;
+}
+
+export interface PushResult {
+  index: number;
+  ok: boolean;
+  error?: string;
+  task_id?: string | null;
+  card_id?: number;
+  /** true when Taskmandu rejected priority/hours/tags on create and they went into the description instead */
+  fields_fallback?: boolean;
+}
+
+export interface ExistingTitle {
+  title: string;
+  project_name: string | null;
+  status: string;
+}
+
+export interface BriefContext {
+  employees: Employee[];
+  titles: ExistingTitle[];
+}
+
 export interface Employee {
+  /** What Taskmandu assigns tasks by. */
   employeeId: string;
+  /** Mongo _id — some tasks store assignees under this instead of employeeId. */
+  id?: string | null;
   name: string;
   designation: string | null;
+  /** Open (not done) tasks, from the synced board. */
+  open?: number;
 }
 
 export interface ScopeItem {
@@ -219,4 +265,81 @@ export interface PullRequest {
   review_comments: number;
   updated_at: string;
   url: string;
+}
+
+export interface ReportItem {
+  title: string;
+  project: string | null;
+  assignee: string | null;
+  from?: string | null;
+  to?: string | null;
+  due?: string | null;
+  days?: number | null;
+  comments?: number;
+  kind?: 'blocked' | 'overdue';
+}
+
+export interface ReportPill {
+  text: string;
+  tone: 'green' | 'red' | 'amber' | 'slate';
+}
+
+interface ReportCommon {
+  date: string;
+  label: string;
+  prepared_by: string;
+  summary_text: string;
+  pills?: ReportPill[];
+  blocker_notes: string[];
+  my_actions: string[];
+  plan: string[];
+  notes: string[];
+  /** true = split by AI, false = split by simple rules, null = no custom text */
+  notes_ai: boolean | null;
+  notes_warning: string | null;
+}
+
+export interface DailyContent extends ReportCommon {
+  kind: 'daily';
+  board_text: string;
+  completed: ReportItem[];
+  new_tasks: ReportItem[];
+  moved: ReportItem[];
+  comments: ReportItem[];
+  newly_blocked: ReportItem[];
+  unblocked: ReportItem[];
+  newly_overdue: ReportItem[];
+  attention: ReportItem[];
+  team: { name: string; done: string[]; moved: string[]; blocked: string[]; discussed: string[] }[];
+}
+
+export interface WeeklyContent extends ReportCommon {
+  kind: 'weekly';
+  completed_by_project: { project: string; items: ReportItem[] }[];
+  in_progress: ReportItem[];
+  blocked: ReportItem[];
+  overdue: ReportItem[];
+  team: { name: string; completed: number; open: number; in_progress: number; blocked: number; overdue: number }[];
+}
+
+/** Reports saved before daily/weekly existed: only the plain-text body is usable. */
+export interface LegacyContent {
+  kind?: undefined;
+  label: string;
+  summary_text: string;
+  pills?: ReportPill[];
+}
+
+export type ReportContent = DailyContent | WeeklyContent | LegacyContent;
+
+export interface Report {
+  id: number;
+  kind: 'daily' | 'weekly';
+  report_date: string;
+  auto: boolean;
+  generated_by: string | null;
+  generated_at: string | null;
+  notes: string | null;
+  body: string;
+  content: ReportContent;
 }

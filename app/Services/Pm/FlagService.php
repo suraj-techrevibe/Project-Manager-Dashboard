@@ -66,7 +66,40 @@ class FlagService
             'stuck' => $n['stuck'] ?? 0,
             'blocked' => $n['blocked'] ?? 0,
             'unverified' => $n['unverified'] ?? 0,
+            'unassigned' => $n['unassigned'] ?? 0,
         ];
+    }
+
+    /**
+     * Open (not done / cancelled) cards per person — snoozed cards still count,
+     * snoozing only hides a flag, it doesn't lighten anyone's load.
+     *
+     * @return array<int, array{name: string, open: int, overdue: int, blocked: int}>
+     */
+    public function workload(): array
+    {
+        $today = now()->startOfDay();
+        $rows = [];
+
+        PmCard::query()
+            ->whereNotIn('status', ['Completed', 'Cancelled'])
+            ->whereNotNull('assignee')
+            ->get()
+            ->each(function ($c) use (&$rows, $today) {
+                foreach (array_filter(array_map('trim', explode(',', $c->assignee))) as $name) {
+                    $rows[$name] ??= ['name' => $name, 'open' => 0, 'overdue' => 0, 'blocked' => 0];
+                    $rows[$name]['open']++;
+
+                    if ($c->due_at && $c->due_at->lt($today)) {
+                        $rows[$name]['overdue']++;
+                    }
+                    if ($c->status === 'Blocked') {
+                        $rows[$name]['blocked']++;
+                    }
+                }
+            });
+
+        return collect($rows)->sortByDesc('open')->values()->all();
     }
 
     public function snapshot(): string

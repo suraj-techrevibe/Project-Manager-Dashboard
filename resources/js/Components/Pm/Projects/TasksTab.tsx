@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
 import type { Employee, NewTaskInput, Project, ProjectTask, TaskPriority, TaskStatus } from '../../../types/pm';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../../../types/pm';
@@ -35,43 +36,22 @@ export default function TasksTab({
   employees,
   nameFor,
   onChanged,
-  highlightTaskId,
-  onHighlightDone,
 }: {
   project: Project;
   employees: Employee[];
   nameFor: (employeeId: string) => string;
   onChanged: (p: Project) => void;
-  highlightTaskId?: string | null;
-  onHighlightDone?: () => void;
 }) {
   const [view, setView] = useState<'board' | 'list'>('board');
-  // Arriving from the Today tab opens that task's detail view straight away.
-  const [openTaskId, setOpenTaskId] = useState<string | null>(
-    highlightTaskId && project.tasks.some((t) => t._id === highlightTaskId) ? highlightTaskId : null
-  );
+  // The open task is in the URL (?task=<id>) so it survives reload / Back.
+  const openTaskId = useUrlParam('task');
+  const setOpenTaskId = (id: string | null) => setUrlParams({ task: id, sub: null });
   const [createStatus, setCreateStatus] = useState<TaskStatus | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const openTask = project.tasks.find((t) => t._id === openTaskId) ?? null;
-
-  // Deep link from the Today tab. If the task detail is already open there is
-  // nothing to highlight, so just clear the flag.
-  useEffect(() => {
-    if (!highlightTaskId) return;
-    if (openTask) {
-      onHighlightDone?.();
-      return;
-    }
-    document
-      .getElementById(`task-${highlightTaskId}`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-    const timer = setTimeout(() => onHighlightDone?.(), 4000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightTaskId]);
 
   if (openTask) {
     return (
@@ -161,7 +141,7 @@ export default function TasksTab({
                     task={t}
                     nameFor={nameFor}
                     dragging={dragId === t._id}
-                    highlighted={highlightTaskId === t._id}
+                    highlighted={false}
                     onDragStart={() => setDragId(t._id)}
                     onDragEnd={() => {
                       setDragId(null);
