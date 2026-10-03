@@ -8,6 +8,25 @@ export interface PmFlag {
   severity: Severity;
   detail: string;
   url: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  task_id: string | null;
+  status: string;
+  priority: string | null;
+  due_at: string | null;
+  estimated_hours: number | null;
+  tags: string[];
+  subtasks_count: number;
+  comments_count: number;
+  assigned_by: string | null;
+  last_activity_at: string | null;
+  description: string | null;
+}
+
+/** Deep link from the Today tab into a project's Tasks tab. */
+export interface TaskFocus {
+  projectId: string;
+  taskId: string;
 }
 
 export interface PmMetrics {

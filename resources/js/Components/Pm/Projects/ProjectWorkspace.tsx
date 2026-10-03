@@ -31,17 +31,21 @@ type Tab = 'details' | 'tasks' | 'documents' | 'secrets' | 'members';
 
 export default function ProjectWorkspace({
   project,
+  highlightTaskId,
+  onHighlightDone,
   onBack,
   onChanged,
   onDeleted,
 }: {
   project: Project;
+  highlightTaskId?: string | null;
+  onHighlightDone?: () => void;
   onBack: () => void;
   onChanged: (p: Project) => void;
   onDeleted: () => void;
 }) {
   const { employees, nameFor } = useEmployees();
-  const [tab, setTab] = useState<Tab>('details');
+  const [tab, setTab] = useState<Tab>(highlightTaskId ? 'tasks' : 'details');
   const [showEdit, setShowEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -116,7 +120,14 @@ export default function ProjectWorkspace({
       </div>
 
       {tab === 'details' && <DetailsTab project={project} />}
-      {tab === 'tasks' && <TasksTab project={project} employees={employees} nameFor={nameFor} onChanged={onChanged} />}
+      {tab === 'tasks' && <TasksTab
+          project={project}
+          employees={employees}
+          nameFor={nameFor}
+          onChanged={onChanged}
+          highlightTaskId={highlightTaskId}
+          onHighlightDone={onHighlightDone}
+        />}
       {tab === 'documents' && <DocumentsTab project={project} onChanged={onChanged} />}
       {tab === 'secrets' && <SecretsTab project={project} onChanged={onChanged} />}
       {tab === 'members' && <MembersTab project={project} onChanged={onChanged} />}

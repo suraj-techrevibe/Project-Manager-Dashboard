@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { pmApi } from '../../../lib/pmApi';
 import type { Employee, NewTaskInput, Project, ProjectTask, TaskPriority, TaskStatus } from '../../../types/pm';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../../../types/pm';
@@ -35,20 +35,43 @@ export default function TasksTab({
   employees,
   nameFor,
   onChanged,
+  highlightTaskId,
+  onHighlightDone,
 }: {
   project: Project;
   employees: Employee[];
   nameFor: (employeeId: string) => string;
   onChanged: (p: Project) => void;
+  highlightTaskId?: string | null;
+  onHighlightDone?: () => void;
 }) {
   const [view, setView] = useState<'board' | 'list'>('board');
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Arriving from the Today tab opens that task's detail view straight away.
+  const [openTaskId, setOpenTaskId] = useState<string | null>(
+    highlightTaskId && project.tasks.some((t) => t._id === highlightTaskId) ? highlightTaskId : null
+  );
   const [createStatus, setCreateStatus] = useState<TaskStatus | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const openTask = project.tasks.find((t) => t._id === openTaskId) ?? null;
+
+  // Deep link from the Today tab. If the task detail is already open there is
+  // nothing to highlight, so just clear the flag.
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    if (openTask) {
+      onHighlightDone?.();
+      return;
+    }
+    document
+      .getElementById(`task-${highlightTaskId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    const timer = setTimeout(() => onHighlightDone?.(), 4000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightTaskId]);
 
   if (openTask) {
     return (
@@ -138,6 +161,7 @@ export default function TasksTab({
                     task={t}
                     nameFor={nameFor}
                     dragging={dragId === t._id}
+                    highlighted={highlightTaskId === t._id}
                     onDragStart={() => setDragId(t._id)}
                     onDragEnd={() => {
                       setDragId(null);
@@ -175,6 +199,7 @@ function TaskCard({
   task,
   nameFor,
   dragging,
+  highlighted,
   onDragStart,
   onDragEnd,
   onOpen,
@@ -182,6 +207,7 @@ function TaskCard({
   task: ProjectTask;
   nameFor: (id: string) => string;
   dragging: boolean;
+  highlighted: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
   onOpen: () => void;
@@ -191,10 +217,13 @@ function TaskCard({
 
   return (
     <div
+      id={`task-${task._id}`}
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`cursor-grab rounded-lg border border-slate-200 bg-white p-3 active:cursor-grabbing ${dragging ? 'opacity-40' : ''}`}
+      className={`cursor-grab rounded-lg border bg-white p-3 transition active:cursor-grabbing ${dragging ? 'opacity-40' : ''} ${
+        highlighted ? 'border-slate-900 ring-2 ring-slate-900/30' : 'border-slate-200'
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <button onClick={onOpen} className="text-left text-sm text-slate-900 hover:underline">{task.title}</button>

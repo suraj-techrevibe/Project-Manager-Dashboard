@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import type { Project, ProjectStatus } from '../../types/pm';
+import type { Project, ProjectStatus, TaskFocus } from '../../types/pm';
 import { PROJECT_STATUSES } from '../../types/pm';
 import ProjectWorkspace, { ColorPicker } from './Projects/ProjectWorkspace';
 import {
@@ -25,7 +25,13 @@ import {
  * sub-tasks and comments) / Documents / Secrets / Members views.
  * Everything is fetched from and written to Taskmandu via /pm/projects/*.
  */
-export default function ProjectsPanel() {
+export default function ProjectsPanel({
+  focus,
+  onFocusHandled,
+}: {
+  focus?: TaskFocus | null;
+  onFocusHandled?: () => void;
+}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +39,7 @@ export default function ProjectsPanel() {
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
+  const [highlightId, setHighlightId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -51,13 +58,34 @@ export default function ProjectsPanel() {
     load();
   }, []);
 
+  // Deep link from the Today tab: once projects have loaded, open that project
+  // on its Tasks tab and highlight the task.
+  useEffect(() => {
+    if (!focus || loading) return;
+    if (!error) {
+      if (projects.some((p) => p._id === focus.projectId)) {
+        setOpenId(focus.projectId);
+        setHighlightId(focus.taskId);
+      } else {
+        setError("That project wasn't found in Taskmandu — it may have been renamed or deleted.");
+      }
+    }
+    onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, loading, projects]);
+
   const open = projects.find((p) => p._id === openId) ?? null;
 
   if (open) {
     return (
       <ProjectWorkspace
         project={open}
-        onBack={() => setOpenId(null)}
+        highlightTaskId={highlightId}
+        onHighlightDone={() => setHighlightId(null)}
+        onBack={() => {
+          setOpenId(null);
+          setHighlightId(null);
+        }}
         onChanged={(updated) => setProjects((ps) => ps.map((p) => (p._id === updated._id ? updated : p)))}
         onDeleted={() => {
           setProjects((ps) => ps.filter((p) => p._id !== open._id));
