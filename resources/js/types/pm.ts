@@ -55,15 +55,32 @@ export interface GitStatus {
 export type ProjectStatus = 'Planning' | 'Active' | 'Blocked' | 'On Hold' | 'Completed';
 export type TaskStatus = 'Assigned' | 'Pending' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
 export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Critical';
+export type VariableType = 'Environment' | 'Server Creds' | 'Database' | 'Other';
+export type MemberRole = 'owner' | 'admin' | 'member' | 'viewer';
 
 export const PROJECT_STATUSES: ProjectStatus[] = ['Planning', 'Active', 'Blocked', 'On Hold', 'Completed'];
 export const TASK_STATUSES: TaskStatus[] = ['Assigned', 'Pending', 'In Progress', 'Blocked', 'Completed', 'Cancelled'];
 export const TASK_PRIORITIES: TaskPriority[] = ['Low', 'Medium', 'High', 'Critical'];
+export const VARIABLE_TYPES: VariableType[] = ['Environment', 'Server Creds', 'Database', 'Other'];
+export const MEMBER_ROLES: MemberRole[] = ['owner', 'admin', 'member', 'viewer'];
 
 export interface ProjectComment {
   _id: string;
   text: string;
   authorId?: string;
+  authorName?: string;
+  authorRole?: string;
+  createdAt: string;
+}
+
+export interface SubTask {
+  _id: string;
+  title: string;
+  assignedToId: string[];
+  assignedByName: string;
+  status: TaskStatus;
+  completedAt: string | null;
+  comments: ProjectComment[];
   createdAt: string;
 }
 
@@ -79,13 +96,38 @@ export interface ProjectTask {
   status: TaskStatus;
   tags: string[];
   comments: ProjectComment[];
-  subTasks: unknown[];
+  subTasks: SubTask[];
   createdAt: string;
 }
 
+export interface ProjectDocument {
+  _id: string;
+  name: string;
+  size: string;
+  uploadedBy: string;
+  uploadedAt: string | null;
+  description?: string;
+  filePath?: string;
+  mimeType?: string;
+  /** Computed by the Laravel backend; null for legacy references with no uploaded file. */
+  url: string | null;
+}
+
+export interface SharedVariable {
+  _id: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+  type: VariableType;
+  description: string;
+  updatedBy: string;
+  updatedAt: string | null;
+}
+
 export interface ProjectMember {
+  _id: string;
   userId: string;
-  role: 'owner' | 'admin' | 'member' | 'viewer';
+  role: MemberRole;
   name?: string;
   email?: string;
   joinedAt: string;
@@ -101,20 +143,49 @@ export interface Project {
   endDate: string | null;
   color: string;
   createdBy: string;
+  documents: ProjectDocument[];
+  sharedVariables: SharedVariable[];
   tasks: ProjectTask[];
   members: ProjectMember[];
   createdAt: string;
   updatedAt: string;
 }
 
+export interface ProjectInput {
+  name: string;
+  description?: string;
+  status?: ProjectStatus;
+  manager?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  color?: string;
+}
+
 export interface NewTaskInput {
   title: string;
   description?: string;
   assignedToId?: string[];
+  assignedByName?: string;
   priority?: TaskPriority;
   dueDate: string;
   estimatedHours?: number;
   status?: TaskStatus;
+  tags?: string[];
+}
+
+export interface NewSubTaskInput {
+  title: string;
+  assignedToId?: string[];
+  assignedByName?: string;
+  status?: TaskStatus;
+}
+
+export interface VariableInput {
+  key: string;
+  value?: string;
+  isSecret?: boolean;
+  type?: VariableType;
+  description?: string;
 }
 
 export interface PullRequest {

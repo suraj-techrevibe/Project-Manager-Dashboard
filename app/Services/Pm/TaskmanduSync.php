@@ -76,6 +76,14 @@ class TaskmanduSync
                 'due_at' => $t['dueDate'] ?? null, // already YYYY-MM-DD
                 'last_activity_at' => Carbon::parse($t['updatedAt']),
                 'subtasks_count' => 0,
+                'project_id' => null,
+                'project_name' => null,
+                'task_id' => $t['_id'],
+                'priority' => $t['priority'] ?? null,
+                'estimated_hours' => $t['estimatedHours'] ?? null,
+                'tags' => $t['tags'] ?? [],
+                'comments_count' => count($t['comments'] ?? []),
+                'assigned_by' => $t['assignedByName'] ?? null,
                 'url' => $frontend ? "{$frontend}/tasks/{$t['_id']}" : null,
             ]);
             $card->save();
@@ -97,13 +105,21 @@ class TaskmanduSync
 
                 $card = PmCard::firstOrNew(['external_id' => "project:{$p['_id']}:task:{$t['_id']}"]);
                 $card->fill([
-                    'title' => "[{$p['name']}] {$t['title']}",
+                    'title' => $t['title'],
                     'description' => $t['description'] ?? null,
                     'assignee' => $this->names($employees, $t['assignedToId'] ?? []),
                     'status' => $t['status'],
                     'due_at' => $t['dueDate'] ?? null,
                     'last_activity_at' => $lastActivity ? Carbon::parse($lastActivity) : null,
                     'subtasks_count' => count($t['subTasks'] ?? []),
+                    'project_id' => $p['_id'],
+                    'project_name' => $p['name'],
+                    'task_id' => $t['_id'],
+                    'priority' => $t['priority'] ?? null,
+                    'estimated_hours' => $t['estimatedHours'] ?? null,
+                    'tags' => $t['tags'] ?? [],
+                    'comments_count' => count($t['comments'] ?? []),
+                    'assigned_by' => $t['assignedByName'] ?? null,
                     'url' => $frontend ? "{$frontend}/projects/{$p['_id']}" : null,
                 ]);
                 $card->save();

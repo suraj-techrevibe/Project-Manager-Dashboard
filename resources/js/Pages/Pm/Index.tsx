@@ -8,7 +8,7 @@ import ClientUpdate from '@/Components/Pm/ClientUpdate';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import GitPanel from '@/Components/Pm/GitPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
-import type { PmFlag, PmMetrics } from '@/types/pm';
+import type { PmFlag, PmMetrics, TaskFocus } from '@/types/pm';
 
 type Tab = 'today' | 'ask' | 'brief' | 'client' | 'scope' | 'git' | 'projects';
 
@@ -24,6 +24,13 @@ const tabs: { key: Tab; label: string }[] = [
 
 export default function PmIndex({ flags, metrics }: { flags: PmFlag[]; metrics: PmMetrics }) {
   const [tab, setTab] = useState<Tab>('today');
+  const [focus, setFocus] = useState<TaskFocus | null>(null);
+
+  // Clicking a task on the Today tab jumps to Projects and opens that task's board.
+  function openTask(f: TaskFocus) {
+    setFocus(f);
+    setTab('projects');
+  }
 
   return (
     <AuthenticatedLayout header={<h2 className="text-lg font-medium text-slate-800">PM agent</h2>}>
@@ -46,8 +53,8 @@ export default function PmIndex({ flags, metrics }: { flags: PmFlag[]; metrics: 
           ))}
         </div>
 
-        {tab === 'today' && <FlagsPanel flags={flags} metrics={metrics} />}
-        {tab === 'projects' && <ProjectsPanel />}
+        {tab === 'today' && <FlagsPanel flags={flags} metrics={metrics} onOpenTask={openTask} />}
+        {tab === 'projects' && <ProjectsPanel focus={focus} onFocusHandled={() => setFocus(null)} />}
         {tab === 'ask' && <ChatPanel />}
         {tab === 'brief' && <BriefDrafter />}
         {tab === 'client' && <ClientUpdate />}

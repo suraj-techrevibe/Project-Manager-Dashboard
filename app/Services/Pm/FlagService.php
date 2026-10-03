@@ -79,8 +79,10 @@ class FlagService
             ->map(fn ($c) => [
                 'id' => $c->id,
                 'title' => $c->title,
+                'project' => $c->project_name,
                 'assignee' => $c->assignee,
                 'status' => $c->status,
+                'priority' => $c->priority,
                 'due' => $c->due_at?->toDateString(),
                 'last_activity' => $c->last_activity_at?->toDateString(),
                 'subtasks' => $c->subtasks_count,
@@ -100,6 +102,19 @@ class FlagService
             'severity' => $severity,
             'detail' => $detail,
             'url' => $c->url,
+            'project_id' => $c->project_id,
+            'project_name' => $c->project_name,
+            'task_id' => $c->task_id,
+            'status' => $c->status,
+            'priority' => $c->priority,
+            'due_at' => $c->due_at?->toDateString(),
+            'estimated_hours' => $c->estimated_hours,
+            'tags' => $c->tags ?? [],
+            'subtasks_count' => $c->subtasks_count,
+            'comments_count' => $c->comments_count,
+            'assigned_by' => $c->assigned_by,
+            'last_activity_at' => $c->last_activity_at?->toIso8601String(),
+            'description' => $c->description ? Str::limit(trim(strip_tags($c->description)), 160) : null,
         ];
     }
 }

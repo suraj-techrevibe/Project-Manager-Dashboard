@@ -26,15 +26,50 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::post('git/push', [PmController::class, 'gitPush'])->name('git.push');
     Route::post('git/checkout', [PmController::class, 'gitCheckout'])->name('git.checkout');
 
-    // Live passthrough to Taskmandu's real Project/board API — see
-    // ProjectController. Project/task ids are Mongo ObjectIds (24-char hex
-    // strings), not local Eloquent models, so they're plain route params.
-    Route::get('projects', [ProjectController::class, 'index'])->name('projects.index');
-    Route::post('projects', [ProjectController::class, 'store'])->name('projects.store');
-    Route::get('projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
-    Route::patch('projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
-    Route::delete('projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
-    Route::post('projects/{project}/tasks', [ProjectController::class, 'addTask'])->name('projects.tasks.store');
-    Route::patch('projects/{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('projects.tasks.update');
-    Route::delete('projects/{project}/tasks/{task}', [ProjectController::class, 'deleteTask'])->name('projects.tasks.destroy');
+    // Live passthrough to Taskmandu's real Project API — see ProjectController.
+    // Project/task/etc. ids are Mongo ObjectIds (24-char hex), not local
+    // Eloquent models, so they're plain route params. The ->where() below
+    // enforces that shape so a crafted id can't be used to reach other
+    // Taskmandu endpoints through the service account.
+    Route::prefix('projects')->name('projects.')->where([
+        'project' => '[0-9a-fA-F]{24}',
+        'task' => '[0-9a-fA-F]{24}',
+        'subTask' => '[0-9a-fA-F]{24}',
+        'document' => '[0-9a-fA-F]{24}',
+        'variable' => '[0-9a-fA-F]{24}',
+        'member' => '[0-9a-fA-F]{24}',
+    ])->group(function () {
+        Route::get('/', [ProjectController::class, 'index'])->name('index');
+        Route::post('/', [ProjectController::class, 'store'])->name('store');
+        Route::get('{project}', [ProjectController::class, 'show'])->name('show');
+        Route::patch('{project}', [ProjectController::class, 'update'])->name('update');
+        Route::delete('{project}', [ProjectController::class, 'destroy'])->name('destroy');
+
+        // Documents (multipart upload)
+        Route::post('{project}/documents', [ProjectController::class, 'addDocument'])->name('documents.store');
+        Route::patch('{project}/documents/{document}', [ProjectController::class, 'updateDocument'])->name('documents.update');
+        Route::delete('{project}/documents/{document}', [ProjectController::class, 'deleteDocument'])->name('documents.destroy');
+
+        // Shared variables ("secrets")
+        Route::post('{project}/variables', [ProjectController::class, 'addVariable'])->name('variables.store');
+        Route::patch('{project}/variables/{variable}', [ProjectController::class, 'updateVariable'])->name('variables.update');
+        Route::delete('{project}/variables/{variable}', [ProjectController::class, 'deleteVariable'])->name('variables.destroy');
+
+        // Tasks + task comments
+        Route::post('{project}/tasks', [ProjectController::class, 'addTask'])->name('tasks.store');
+        Route::patch('{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('tasks.update');
+        Route::delete('{project}/tasks/{task}', [ProjectController::class, 'deleteTask'])->name('tasks.destroy');
+        Route::post('{project}/tasks/{task}/comments', [ProjectController::class, 'addTaskComment'])->name('tasks.comments.store');
+
+        // Sub-tasks + sub-task comments
+        Route::post('{project}/tasks/{task}/subtasks', [ProjectController::class, 'addSubTask'])->name('subtasks.store');
+        Route::patch('{project}/tasks/{task}/subtasks/{subTask}', [ProjectController::class, 'updateSubTask'])->name('subtasks.update');
+        Route::delete('{project}/tasks/{task}/subtasks/{subTask}', [ProjectController::class, 'deleteSubTask'])->name('subtasks.destroy');
+        Route::post('{project}/tasks/{task}/subtasks/{subTask}/comments', [ProjectController::class, 'addSubTaskComment'])->name('subtasks.comments.store');
+
+        // Members
+        Route::get('{project}/members', [ProjectController::class, 'members'])->name('members.index');
+        Route::post('{project}/members', [ProjectController::class, 'addMember'])->name('members.store');
+        Route::delete('{project}/members/{member}', [ProjectController::class, 'removeMember'])->name('members.destroy');
+    });
 });

@@ -52,7 +52,7 @@ endpoints may 403.
 Two kinds of cards get pulled in, both from real Taskmandu collections:
 - **Standalone tasks** (`GET /tasks`) — Taskmandu's individual assigned-task list, not tied to a project.
 - **Project board tasks** (`GET /projects` → each project's embedded `tasks[]`) — the kanban-style
-  boards. These get prefixed in the UI as `[Project name] Task title`.
+  boards. These carry `project_id`/`project_name`/`task_id`, so the Today tab can deep-link into the project board.
 
 Statuses map directly to Taskmandu's real enum: `Assigned`, `Pending`, `In Progress`, `Blocked`,
 `Completed`, `Cancelled` — `FlagService` was updated to match these exactly (see its top comment).

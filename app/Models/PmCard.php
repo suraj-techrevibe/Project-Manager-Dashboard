@@ -13,5 +13,7 @@ class PmCard extends Model
         'last_activity_at' => 'datetime',
         'snoozed_until' => 'date',
         'verified' => 'boolean',
+        'tags' => 'array',
+        'estimated_hours' => 'float',
     ];
 }
