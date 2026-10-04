@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import { reportText } from '../../lib/reportText';
+import { reportText } from '../../lib/Reporttext';
 import type { DailyContent, Report, ReportItem, ReportPill, WeeklyContent } from '../../types/pm';
 
 const inputCls = 'rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-slate-400 focus:outline-none';

@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(function () {
     Route::get('/', [PmController::class, 'index'])->name('index');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
+    Route::get('today', [PmController::class, 'today'])->name('today');
+    Route::post('sync', [PmController::class, 'sync'])->name('sync');
+    Route::post('cards/{card}/nudged', [PmController::class, 'nudged'])->name('nudged');
     Route::post('cards/{card}/nudge', [PmController::class, 'nudge'])->name('nudge');
     Route::post('cards/{card}/snooze', [PmController::class, 'snooze'])->name('snooze');
     Route::post('cards/{card}/verify', [PmController::class, 'verify'])->name('verify');

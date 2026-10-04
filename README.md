@@ -201,3 +201,15 @@ click). Options, roughly by how much you trust your setup:
 - `pull` and `checkout` already refuse to run while the working tree has uncommitted changes, so
   the main remaining risk is someone with app access pushing or switching branches on a server
   you didn't mean to expose this on — hence the two options above.
+
+## Today tab: freshness, stand-up, workload (v5)
+
+- **Last synced / Sync now** — `POST /pm/sync` pulls from Taskmandu on demand; `pm:sync` also runs hourly
+  from the scheduler (needs `php artisan schedule:work` locally or a `schedule:run` cron in production).
+- **Since yesterday** strip — built from `pm_activities` (on Mondays it compares against Friday).
+- **Due today / due in 3 days** flags alongside overdue.
+- **Team workload** — per person: hours due this week vs `PM_WEEKLY_CAPACITY_HOURS`, open/overdue/blocked,
+  and people with no tasks at all (from Taskmandu's employee list, cached 10 min).
+- **Nudge tracking** — "Copy nudge" (no AI) and "Draft with AI" both log a `nudge` activity; cards show
+  "Nudged 2d ago".
+- Shortcuts on Today: j/k move, o open, p pin (max 3, saved in the browser), n nudge, s snooze, v verify, / search.

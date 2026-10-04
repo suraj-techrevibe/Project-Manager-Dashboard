@@ -74,17 +74,37 @@ export default function BriefDrafter() {
 
   // Tickets this batch has already given each person, so the dropdown shows the real picture.
   const batchLoad = useMemo(() => {
-    const m: Record<string, number> = {};
+    const m: Record<string, { n: number; h: number }> = {};
     pending.forEach((t) => {
-      if (t.assigneeId) m[t.assigneeId] = (m[t.assigneeId] ?? 0) + 1;
+      if (!t.assigneeId) return;
+      const cur = m[t.assigneeId] ?? { n: 0, h: 0 };
+      m[t.assigneeId] = { n: cur.n + 1, h: cur.h + (Number(t.estimate_hours) || 0) };
     });
     return m;
   }, [pending]);
 
-  const employeeLabel = (e: (typeof employees)[number]) =>
-    `${e.name}${e.designation ? ` (${e.designation})` : ''} — ${e.open ?? 0} open${
-      batchLoad[e.employeeId] ? ` (+${batchLoad[e.employeeId]} here)` : ''
-    }`;
+  const employeeLabel = (e: (typeof employees)[number]) => {
+    const b = batchLoad[e.employeeId];
+    return `${e.name}${e.designation ? ` (${e.designation})` : ''} — ${e.open ?? 0} open${
+      e.week_hours ? ` · ${e.week_hours}h this week` : ''
+    }${b ? ` (+${b.n} here${b.h ? `, ${b.h}h` : ''})` : ''}`;
+  };
+
+  // Warn when this batch pushes someone past their weekly capacity.
+  const overCapacity = useMemo(() => {
+    const out: Record<string, string> = {};
+    pending.forEach((t) => {
+      const e = employees.find((x) => x.employeeId === t.assigneeId);
+      const b = e ? batchLoad[e.employeeId] : undefined;
+      if (!e || !b) return;
+      const cap = e.capacity ?? 40;
+      const total = Math.round(((e.week_hours ?? 0) + b.h) * 10) / 10;
+      if (total > cap) {
+        out[t.uid] = `${e.name} would be at ${total}h of ${cap}h this week with this batch — consider someone lighter.`;
+      }
+    });
+    return out;
+  }, [pending, employees, batchLoad]);
 
   // Duplicate warnings: against existing cards, and against other tickets in this batch.
   const duplicates = useMemo(() => {
@@ -327,7 +347,7 @@ export default function BriefDrafter() {
               onClick={runAutoAssign}
               disabled={!employees.length}
               className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              title="Senior-dev tickets go to senior designations, interns to junior ones — always the least busy person in that group."
+              title="Senior-dev tickets go to senior designations, interns to junior ones — always the person with the fewest hours due this week in that group."
             >
               Auto-assign to least busy
             </button>
@@ -427,6 +447,7 @@ export default function BriefDrafter() {
                   </div>
 
                   {duplicates[t.uid] && <div className="mt-1.5 text-xs text-amber-700">⚠ {duplicates[t.uid]}</div>}
+                  {overCapacity[t.uid] && <div className="mt-1.5 text-xs text-red-600">⚠ {overCapacity[t.uid]}</div>}
                   {t.state === 'failed' && (
                     <div className="mt-1.5 flex items-center gap-2 text-xs text-red-600">
                       <span className="min-w-0 flex-1">Not pushed: {t.error}</span>

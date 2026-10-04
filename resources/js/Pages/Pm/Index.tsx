@@ -1,5 +1,4 @@
 import { Head } from '@inertiajs/react';
-import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import FlagsPanel from '@/Components/Pm/FlagsPanel';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
@@ -7,7 +6,8 @@ import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import GitPanel from '@/Components/Pm/GitPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
-import type { PmFlag, PmMetrics, TaskFocus, WorkloadRow } from '@/types/pm';
+import { setUrlParams, useUrlParam } from '@/lib/urlState';
+import type { PmFlag, PmMetrics, SinceSummary, TaskFocus, WorkloadRow } from '@/types/pm';
 
 type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects';
 
@@ -24,18 +24,24 @@ export default function PmIndex({
   flags,
   metrics,
   workload,
+  since,
+  lastSyncedAt,
 }: {
   flags: PmFlag[];
   metrics: PmMetrics;
   workload: WorkloadRow[];
+  since: SinceSummary;
+  lastSyncedAt: string | null;
 }) {
-  const [tab, setTab] = useState<Tab>('today');
-  const [focus, setFocus] = useState<TaskFocus | null>(null);
+  // The tab lives in the URL (?tab=projects) like the rest of the /pm navigation,
+  // so Back/Forward and reload keep your place.
+  const tabParam = useUrlParam('tab');
+  const tab: Tab = tabs.some((t) => t.key === tabParam) ? (tabParam as Tab) : 'today';
+  const setTab = (t: Tab) => setUrlParams({ tab: t === 'today' ? null : t, project: null, ptab: null, task: null, sub: null });
 
-  // Clicking a task on the Today tab jumps to Projects and opens that task's board.
+  // Clicking a task on Today jumps to Projects -> that project -> Tasks -> the task itself.
   function openTask(f: TaskFocus) {
-    setFocus(f);
-    setTab('projects');
+    setUrlParams({ tab: 'projects', project: f.projectId, ptab: 'tasks', task: f.taskId, sub: null });
   }
 
   return (
@@ -59,8 +65,19 @@ export default function PmIndex({
           ))}
         </div>
 
-        {tab === 'today' && <FlagsPanel flags={flags} metrics={metrics} workload={workload} onOpenTask={openTask} />}
-        {tab === 'projects' && <ProjectsPanel focus={focus} onFocusHandled={() => setFocus(null)} />}
+        {/* Kept mounted (just hidden) so filters, pins and a fresh Sync survive a trip to another tab. */}
+        <div hidden={tab !== 'today'}>
+          <FlagsPanel
+            active={tab === 'today'}
+            flags={flags}
+            metrics={metrics}
+            workload={workload}
+            since={since}
+            lastSyncedAt={lastSyncedAt}
+            onOpenTask={openTask}
+          />
+        </div>
+        {tab === 'projects' && <ProjectsPanel />}
         {tab === 'brief' && <BriefDrafter />}
         {tab === 'reports' && <ReportsPanel />}
         {tab === 'scope' && <ScopeCheck />}

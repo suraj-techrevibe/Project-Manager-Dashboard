@@ -5,6 +5,7 @@ namespace App\Services\Pm;
 use App\Models\PmActivity;
 use App\Models\PmCard;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
@@ -50,6 +51,13 @@ class TaskmanduSync
 
         $count += $this->syncStandaloneTasks($employees);
         $count += $this->syncProjectBoards($employees);
+
+        // Powers the "Last synced" label on Today.
+        try {
+            Cache::forever('pm.last_synced_at', now()->toIso8601String());
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return $count;
     }

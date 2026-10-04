@@ -9,6 +9,7 @@ import type {
   GitStatus,
   PullRequest,
   Employee,
+  TodayData,
   Project,
   ProjectInput,
   ProjectStatus,
@@ -41,6 +42,15 @@ export const pmApi = {
   ask: (question: string) => api.post<{ answer: string }>('/ask', { question }),
 
   nudge: (cardId: number) => api.post<{ message: string }>(`/cards/${cardId}/nudge`),
+
+  /** Record that a (template) nudge was actually sent, so Today can show "nudged 2d ago". */
+  nudged: (cardId: number) => api.post<{ at: string }>(`/cards/${cardId}/nudged`),
+
+  /** Current Today data without a page reload. */
+  today: () => api.get<TodayData>('/today'),
+
+  /** Pull from Taskmandu now (can take a while), then return fresh Today data. */
+  sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 180_000 }),
 
   snooze: (cardId: number) => api.post(`/cards/${cardId}/snooze`),
 

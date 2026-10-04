@@ -12,6 +12,7 @@ use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -29,13 +30,82 @@ class PmController extends Controller
 
     public function index(): Response
     {
-        $flags = $this->flags->all();
+        return Inertia::render('Pm/Index', $this->todayPayload());
+    }
 
-        return Inertia::render('Pm/Index', [
-            'flags' => $flags,
+    /** Fresh Today data without a page reload (used after Sync now). */
+    public function today(): JsonResponse
+    {
+        return response()->json($this->todayPayload());
+    }
+
+    /** Pulls from Taskmandu right now, then returns the refreshed Today data. */
+    public function sync(): JsonResponse
+    {
+        if (! $this->taskmandu->configured()) {
+            return response()->json(['error' => 'Set TASKMANDU_BASE_URL, TASKMANDU_EMAIL and TASKMANDU_PASSWORD in .env'], 422);
+        }
+
+        @set_time_limit(180);
+
+        try {
+            $synced = $this->taskmandu->run();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['error' => "Couldn't sync from Taskmandu: ".$e->getMessage()], 422);
+        }
+
+        Cache::forget('pm.employees');
+
+        return response()->json($this->todayPayload() + ['synced' => $synced]);
+    }
+
+    /** Records that the PM actually sent a nudge (e.g. copied the template message). */
+    public function nudged(PmCard $card): JsonResponse
+    {
+        PmActivity::record('nudge', $card, ['template' => true]);
+
+        return response()->json(['at' => now()->toIso8601String()]);
+    }
+
+    private function todayPayload(): array
+    {
+        $flags = $this->flags->all();
+        $workload = $this->flags->workload($this->staff());
+
+        return [
+            'flags' => $flags->values(),
             'metrics' => $this->flags->metrics($flags),
-            'workload' => $this->flags->workload(),
-        ]);
+            'workload' => $workload,
+            'since' => $this->flags->sinceLastWorkday($workload),
+            'lastSyncedAt' => Cache::get('pm.last_synced_at'),
+        ];
+    }
+
+    /**
+     * Everyone in Taskmandu, so people with no open tasks show up in the workload.
+     * Cached (and failures cached briefly) so Today never waits on Taskmandu twice.
+     */
+    private function staff(): array
+    {
+        if (! $this->taskmandu->configured()) {
+            return [];
+        }
+
+        $staff = Cache::get('pm.employees');
+        if ($staff === null) {
+            try {
+                $staff = $this->taskmandu->listEmployees();
+                Cache::put('pm.employees', $staff, 600);
+            } catch (\Throwable $e) {
+                report($e);
+                $staff = [];
+                Cache::put('pm.employees', $staff, 60);
+            }
+        }
+
+        return $staff;
     }
 
     public function ask(Request $r): JsonResponse
@@ -287,7 +357,12 @@ class PmController extends Controller
         $load = collect($this->flags->workload())->keyBy('name');
 
         return array_map(
-            fn ($e) => $e + ['open' => $load->get($e['name'])['open'] ?? 0],
+            fn ($e) => $e + [
+                'open' => $load->get($e['name'])['open'] ?? 0,
+                'hours' => $load->get($e['name'])['hours'] ?? 0,
+                'week_hours' => $load->get($e['name'])['week_hours'] ?? 0,
+                'capacity' => (float) config('pm.weekly_capacity_hours', 40),
+            ],
             $this->taskmandu->listEmployees()
         );
     }

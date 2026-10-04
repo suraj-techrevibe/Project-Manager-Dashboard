@@ -241,19 +241,28 @@ export function autoAssign(tickets: EditableTicket[], employees: Employee[]): Re
   const out: Record<string, string> = {};
   if (!employees.length) return out;
 
-  const load = new Map(employees.map((e) => [e.employeeId, e.open ?? 0]));
+  // Balance by hours first (what's due this week, plus what this batch already gave them),
+  // then by open-task count. Without estimates every hour figure is 0, so it falls back to counts.
+  const hours = new Map(employees.map((e) => [e.employeeId, e.week_hours ?? 0]));
+  const count = new Map(employees.map((e) => [e.employeeId, e.open ?? 0]));
   const open = tickets
     .filter((t) => t.state !== 'pushed')
     .sort((a, b) => Number(b.level === 'senior dev') - Number(a.level === 'senior dev'));
+
+  const lighter = (a: Employee, b: Employee) => {
+    const dh = (hours.get(a.employeeId) ?? 0) - (hours.get(b.employeeId) ?? 0);
+    return dh !== 0 ? dh : (count.get(a.employeeId) ?? 0) - (count.get(b.employeeId) ?? 0);
+  };
 
   for (const t of open) {
     const want = t.level === 'senior dev' ? SENIOR_RE : JUNIOR_RE;
     let pool = employees.filter((e) => want.test(e.designation ?? ''));
     if (!pool.length) pool = employees;
 
-    const pick = pool.reduce((best, e) => ((load.get(e.employeeId) ?? 0) < (load.get(best.employeeId) ?? 0) ? e : best));
+    const pick = pool.reduce((best, e) => (lighter(e, best) < 0 ? e : best));
     out[t.uid] = pick.employeeId;
-    load.set(pick.employeeId, (load.get(pick.employeeId) ?? 0) + 1);
+    hours.set(pick.employeeId, (hours.get(pick.employeeId) ?? 0) + (Number(t.estimate_hours) || 0));
+    count.set(pick.employeeId, (count.get(pick.employeeId) ?? 0) + 1);
   }
 
   return out;

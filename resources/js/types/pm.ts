@@ -4,7 +4,7 @@ export interface PmFlag {
   card_id: number;
   title: string;
   assignee: string | null;
-  type: 'overdue' | 'stuck' | 'blocked' | 'unassigned' | 'unverified';
+  type: 'overdue' | 'stuck' | 'blocked' | 'unassigned' | 'unverified' | 'due_today' | 'due_soon';
   severity: Severity;
   detail: string;
   url: string | null;
@@ -20,6 +20,8 @@ export interface PmFlag {
   comments_count: number;
   assigned_by: string | null;
   last_activity_at: string | null;
+  /** When this task was last nudged (AI draft or template copy). */
+  last_nudged_at: string | null;
   description: string | null;
 }
 
@@ -35,14 +37,64 @@ export interface PmMetrics {
   blocked: number;
   unverified: number;
   unassigned: number;
+  due_today: number;
+  due_soon: number;
 }
 
-/** Open tasks per person, computed server-side from the synced cards. */
+/** Per person, computed server-side from the synced cards. Includes people with nothing open. */
 export interface WorkloadRow {
   name: string;
+  designation?: string | null;
   open: number;
   overdue: number;
   blocked: number;
+  due_today?: number;
+  /** All open estimated hours (a card's hours are split between its assignees). */
+  hours?: number;
+  /** Open hours due by the end of this week, overdue included. */
+  week_hours?: number;
+  /** Open tasks with no estimate — their hours are unknown, so load is understated. */
+  no_estimate?: number;
+  /** Weekly capacity in hours (PM_WEEKLY_CAPACITY_HOURS). */
+  capacity?: number;
+}
+
+export interface SinceItem {
+  card_id: number;
+  title: string;
+  assignee: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  task_id: string | null;
+  url: string | null;
+  at: string | null;
+}
+
+export interface SinceGroup {
+  count: number;
+  items: SinceItem[];
+}
+
+/** What changed since the last working day — the morning stand-up strip. */
+export interface SinceSummary {
+  since: string;
+  /** "yesterday", or a weekday name like "Friday" on a Monday. */
+  label: string;
+  /** False until pm_activities has anything in it (first sync only sets a baseline). */
+  tracked: boolean;
+  completed: SinceGroup;
+  blocked: SinceGroup;
+  created: SinceGroup;
+  overdue: SinceGroup;
+  idle: string[];
+}
+
+export interface TodayData {
+  flags: PmFlag[];
+  metrics: PmMetrics;
+  workload: WorkloadRow[];
+  since: SinceSummary;
+  lastSyncedAt: string | null;
 }
 
 export interface DraftTicket {
@@ -93,6 +145,10 @@ export interface Employee {
   designation: string | null;
   /** Open (not done) tasks, from the synced board. */
   open?: number;
+  /** Open estimated hours, and the part due by the end of this week. */
+  hours?: number;
+  week_hours?: number;
+  capacity?: number;
 }
 
 export interface ScopeItem {
