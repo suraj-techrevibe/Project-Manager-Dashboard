@@ -1,7 +1,6 @@
 import { Head } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import TodayDashboard from '@/Components/Pm/TodayDashboard';
-import PmCommandCenter from '@/Components/Pm/PmCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
@@ -54,7 +53,6 @@ export default function PmIndex({
       <Head title="PM agent" />
 
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <PmCommandCenter />
         <div className="mb-4 flex flex-wrap gap-1.5">
           {tabs.map((t) => (
             <button
