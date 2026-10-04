@@ -1181,7 +1181,7 @@ function TodayDecisionDashboard({
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHead title="Waiting for client" sub="Likely waiting/approval work surfaced from task data." />
           {waitingCards.length ? <div className="divide-y divide-slate-100">{waitingCards.slice(0,6).map((c) => (
-            <button key={c.card_id} onClick={() => onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50">
+            <button key={c.card_id} onClick={() => c.task.project_id && c.task.task_id && onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50">
               <span className="min-w-0"><span className="block truncate text-sm font-medium">{c.task.title}</span><span className="text-xs text-slate-400">{c.task.project_name ?? 'Standalone'}</span></span><span className="text-xs text-slate-500">Open →</span>
             </button>
           ))}</div> : <Empty text="Nothing currently looks like client-waiting work." />}
@@ -1209,7 +1209,7 @@ function TodayDecisionDashboard({
           const span = Math.max(86400000, end-start);
           const pct = (v:number) => Math.max(0,Math.min(100,((v-start)/span)*100));
           const done=p.tasks.filter(t=>t.status==='Completed').length;
-          return <button key={p._id} onClick={()=>onOpenTask({projectId:p._id,taskId:p.tasks[0]?._id})} className="block min-w-[720px] w-full text-left">
+          return <button key={p._id} onClick={()=>p.tasks[0] && onOpenTask({projectId:p._id,taskId:p.tasks[0]._id})} className="block min-w-[720px] w-full text-left">
             <div className="mb-1 flex justify-between text-xs"><span className="font-medium text-slate-800">{p.name}</span><span className="text-slate-400">{done}/{p.tasks.length} done</span></div>
             <div className="relative h-8 rounded-lg bg-slate-100"><div className="absolute top-1/2 h-3 -translate-y-1/2 rounded bg-slate-700" style={{left:'0%',width:Math.max(8,pct(end))+'%'}} /><div className="absolute inset-y-0 border-l border-dashed border-slate-400" style={{left:pct(Date.now())+'%'}} /></div>
             <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>{new Date(start).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span><span>{new Date(end).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></div>
@@ -1229,7 +1229,7 @@ function TodayDecisionDashboard({
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHead title="Task aging" sub="Work that has stopped moving and needs a decision." />
-          {agingCards.length ? <div className="divide-y divide-slate-100">{agingCards.slice(0,7).map(c=><button key={c.card_id} onClick={()=>onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50"><span className="min-w-0"><span className="block truncate text-sm font-medium">{c.task.title}</span><span className="text-xs text-slate-400">{c.task.project_name ?? 'Standalone'} · {daysAgo(c.task.last_activity_at) ?? '—'}d idle</span></span><span className="text-xs font-medium text-amber-700">Open →</span></button>)}</div> : <Empty text="No task has been idle for 3+ days." />}
+          {agingCards.length ? <div className="divide-y divide-slate-100">{agingCards.slice(0,7).map(c=><button key={c.card_id} onClick={()=>c.task.project_id && c.task.task_id && onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50"><span className="min-w-0"><span className="block truncate text-sm font-medium">{c.task.title}</span><span className="text-xs text-slate-400">{c.task.project_name ?? 'Standalone'} · {daysAgo(c.task.last_activity_at) ?? '—'}d idle</span></span><span className="text-xs font-medium text-amber-700">Open →</span></button>)}</div> : <Empty text="No task has been idle for 3+ days." />}
           {agingCards.length > 7 && <button onClick={onOpenAging} className="mt-3 text-xs font-medium text-slate-600 underline">View all aging work</button>}
         </section>
       </div>
