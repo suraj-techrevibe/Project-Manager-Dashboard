@@ -13,6 +13,9 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('today', [PmController::class, 'today'])->name('today');
     Route::get('command-center', [PmController::class, 'commandCenter'])->name('command-center');
+    Route::post('command-center/reassign', [PmController::class, 'commandCenterReassign'])->name('command-center.reassign');
+    Route::post('command-center/cards/{card}/resolve-blocker', [PmController::class, 'commandCenterResolveBlocker'])->name('command-center.resolve-blocker');
+    Route::post('command-center/waiting/{item}/follow-up', [PmController::class, 'commandCenterFollowUp'])->name('command-center.follow-up');
     Route::get('brief/pushes', [PmController::class, 'recentPushes'])->name('brief.pushes');
     Route::post('brief/pushes/{activity}/undo', [PmController::class, 'undoPush'])->name('brief.pushes.undo');
     Route::post('sync', [PmController::class, 'sync'])->name('sync');
