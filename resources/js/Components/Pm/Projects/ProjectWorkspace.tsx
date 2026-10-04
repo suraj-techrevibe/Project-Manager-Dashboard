@@ -195,6 +195,8 @@ function DetailsTab({ project }: { project: Project }) {
         <ProgressBar pct={progress.pct} />
       </div>
 
+      <ProjectTimeline project={project} />
+
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2">
         <Info label="Project manager" value={project.manager || 'Unassigned'} />
         <Info label="Status" value={project.status} />
@@ -214,6 +216,39 @@ function DetailsTab({ project }: { project: Project }) {
           {project.members.length > 6 && <span>+{project.members.length - 6} more</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+function ProjectTimeline({ project }: { project: Project }) {
+  const tasks = [...project.tasks].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const active = tasks.filter((t) => t.status !== 'Completed' && t.status !== 'Cancelled');
+  const completed = tasks.filter((t) => t.status === 'Completed').length;
+  const blocked = tasks.filter((t) => t.status === 'Blocked').length;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const overdue = active.filter((t) => new Date(t.dueDate).getTime() < today.getTime()).length;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <div><h4 className="text-sm font-medium text-slate-900">Project timeline</h4><p className="text-xs text-slate-500">Schedule, delivery and upcoming task milestones.</p></div>
+        <span className="text-xs text-slate-500">{completed}/{tasks.length} done</span>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="rounded-lg bg-slate-50 p-2"><div className="font-medium text-slate-900">{tasks.length}</div><div className="text-[11px] text-slate-500">Total tasks</div></div>
+        <div className="rounded-lg bg-slate-50 p-2"><div className="font-medium text-slate-900">{overdue}</div><div className="text-[11px] text-slate-500">Overdue</div></div>
+        <div className="rounded-lg bg-slate-50 p-2"><div className="font-medium text-slate-900">{blocked}</div><div className="text-[11px] text-slate-500">Blocked</div></div>
+      </div>
+      <div className="mt-4 flex items-center gap-3 text-xs text-slate-500">
+        <span>Start: {formatDate(project.startDate)}</span><span className="text-slate-300">→</span><span>End: {formatDate(project.endDate)}</span>
+      </div>
+      <div className="mt-4 border-t border-slate-100 pt-3">
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Upcoming milestones</div>
+        <div className="space-y-2">
+          {active.slice(0, 6).map((t) => <div key={t._id} className="flex items-center justify-between gap-3 text-sm"><span className="truncate text-slate-700">{t.title}</span><span className="shrink-0 text-xs text-slate-500">{formatDate(t.dueDate)}</span></div>)}
+          {!active.length && <div className="text-xs text-slate-400">No upcoming task milestones.</div>}
+        </div>
+      </div>
     </div>
   );
 }
