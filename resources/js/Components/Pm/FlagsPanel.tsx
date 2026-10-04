@@ -1118,6 +1118,136 @@ export default function FlagsPanel({
   );
 }
 
+
+type RiskProject = { id: string; name: string; score: number; overdue: number; blocked: number; stuck: number; flags: number };
+
+function TodayDecisionDashboard({
+  counts, riskProjects, waitingCards, agingCards, workload, since, timelineProjects, projectsLoading,
+  unassignedTasks, unassignedSubtasks, staff, onOpenTask, onAssignTask, onAssignSubtask, onFilter, onOpenAging, onOpenSince, onShowFree,
+}: {
+  counts: Record<FlagType, number>;
+  riskProjects: RiskProject[];
+  waitingCards: TaskCard[];
+  agingCards: TaskCard[];
+  workload: WorkloadRow[];
+  since?: SinceSummary;
+  timelineProjects: Project[];
+  projectsLoading: boolean;
+  unassignedTasks: TaskCard[];
+  unassignedSubtasks: SubtaskFlag[];
+  staff: Employee[];
+  onOpenTask: (f: TaskFocus) => void;
+  onAssignTask: (c: TaskCard, employeeId: string) => void;
+  onAssignSubtask: (id: number, employeeId: string) => void;
+  onFilter: (type: FlagType) => void;
+  onOpenAging: () => void;
+  onOpenSince: (it: SinceItem) => void;
+  onShowFree: () => void;
+}) {
+  const attention = counts.overdue + counts.due_today + counts.blocked + counts.stuck;
+  const overloaded = workload.filter((w) => levelOf(w, overloadThreshold(workload)) === 'over').length;
+  const free = workload.filter((w) => w.open === 0).length;
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div><h2 className="text-base font-semibold text-slate-900">Today at a glance</h2><p className="text-xs text-slate-500">The decisions that need attention first.</p></div>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${attention ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{attention ? attention + ' items need attention' : 'Board looks healthy'}</span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          {([
+            ['overdue','Overdue'], ['due_today','Due today'], ['blocked','Blocked'], ['stuck','Stuck 3+ days']
+          ] as [FlagType,string][]).map(([key,label]) => (
+            <button key={key} onClick={() => onFilter(key)} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left hover:bg-slate-100">
+              <div className="text-xs text-slate-500">{label}</div><div className={`mt-1 text-3xl font-semibold ${counts[key] ? 'text-slate-900' : 'text-slate-300'}`}>{counts[key]}</div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <SectionHead title="Project risk & health" sub="Projects with the strongest warning signals." />
+          {riskProjects.length ? <div className="space-y-3">{riskProjects.slice(0,6).map((p) => (
+            <div key={p.id} className="rounded-xl border border-slate-100 p-3">
+              <div className="flex justify-between"><span className="font-medium text-sm text-slate-900">{p.name}</span><span className={`text-xs font-semibold ${p.score < 60 ? 'text-red-600' : p.score < 80 ? 'text-amber-600' : 'text-emerald-600'}`}>{p.score}/100</span></div>
+              <div className="mt-2 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-slate-700" style={{width: p.score + '%'}} /></div>
+              <div className="mt-2 text-[11px] text-slate-500">{p.flags} flagged · {p.overdue} overdue · {p.blocked} blocked · {p.stuck} stuck</div>
+            </div>
+          ))}</div> : <Empty text="No project risk signals." />}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <SectionHead title="Waiting for client" sub="Likely waiting/approval work surfaced from task data." />
+          {waitingCards.length ? <div className="divide-y divide-slate-100">{waitingCards.slice(0,6).map((c) => (
+            <button key={c.card_id} onClick={() => onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50">
+              <span className="min-w-0"><span className="block truncate text-sm font-medium">{c.task.title}</span><span className="text-xs text-slate-400">{c.task.project_name ?? 'Standalone'}</span></span><span className="text-xs text-slate-500">Open →</span>
+            </button>
+          ))}</div> : <Empty text="Nothing currently looks like client-waiting work." />}
+        </section>
+      </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <SectionHead title="Capacity planner" sub="Who is overloaded, and who can take work?" />
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <MiniStat label="People" value={workload.length} /><MiniStat label="Overloaded" value={overloaded} /><MiniStat label="Free" value={free} /><MiniStat label="Unassigned" value={unassignedTasks.length + unassignedSubtasks.length} />
+        </div>
+        <TeamWorkload workload={workload} selected="" onSelect={() => {}} />
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <SectionHead title="What changed" sub="Recent movement since the last workday." />
+        {since ? <SinceStrip since={since} onOpenItem={onOpenSince} onShowFree={onShowFree} /> : <Empty text="No change data yet." />}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <SectionHead title="Project timeline & milestones" sub="A compact project-level timeline; detailed Gantt remains in each project." />
+        {projectsLoading ? <Empty text="Loading projects…" /> : timelineProjects.length ? <div className="space-y-3 overflow-x-auto">{timelineProjects.map((p) => {
+          const start = new Date(p.startDate ?? p.createdAt).getTime();
+          const end = new Date(p.endDate ?? p.tasks.map(t=>t.dueDate).filter(Boolean).sort().at(-1) ?? p.createdAt).getTime();
+          const span = Math.max(86400000, end-start);
+          const pct = (v:number) => Math.max(0,Math.min(100,((v-start)/span)*100));
+          const done=p.tasks.filter(t=>t.status==='Completed').length;
+          return <button key={p._id} onClick={()=>onOpenTask({projectId:p._id,taskId:p.tasks[0]?._id})} className="block min-w-[720px] w-full text-left">
+            <div className="mb-1 flex justify-between text-xs"><span className="font-medium text-slate-800">{p.name}</span><span className="text-slate-400">{done}/{p.tasks.length} done</span></div>
+            <div className="relative h-8 rounded-lg bg-slate-100"><div className="absolute top-1/2 h-3 -translate-y-1/2 rounded bg-slate-700" style={{left:'0%',width:Math.max(8,pct(end))+'%'}} /><div className="absolute inset-y-0 border-l border-dashed border-slate-400" style={{left:pct(Date.now())+'%'}} /></div>
+            <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>{new Date(start).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span><span>{new Date(end).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></div>
+          </button>;
+        })}</div> : <Empty text="No project dates or tasks available." />}
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/30 p-5 shadow-sm">
+          <SectionHead title="No owner" sub="Assign these directly instead of hunting through the task list." />
+          <div className="space-y-2">
+            {unassignedTasks.slice(0,5).map(c=><OwnerRow key={c.card_id} title={c.task.title} meta={c.task.project_name ?? 'Standalone'} staff={staff} onOpen={()=>onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} onAssign={(id)=>onAssignTask(c,id)} />)}
+            {unassignedSubtasks.slice(0,5).map(s=><OwnerRow key={'s'+s.id} title={s.title} meta={(s.project_name ?? '')+' · '+s.parent_title} staff={staff} onOpen={()=>onOpenTask({projectId:s.project_id,taskId:s.task_id,subId:s.subtask_id})} onAssign={(id)=>onAssignSubtask(s.id,id)} />)}
+            {!unassignedTasks.length&&!unassignedSubtasks.length&&<Empty text="Everything has an owner." />}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <SectionHead title="Task aging" sub="Work that has stopped moving and needs a decision." />
+          {agingCards.length ? <div className="divide-y divide-slate-100">{agingCards.slice(0,7).map(c=><button key={c.card_id} onClick={()=>onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50"><span className="min-w-0"><span className="block truncate text-sm font-medium">{c.task.title}</span><span className="text-xs text-slate-400">{c.task.project_name ?? 'Standalone'} · {daysAgo(c.task.last_activity_at) ?? '—'}d idle</span></span><span className="text-xs font-medium text-amber-700">Open →</span></button>)}</div> : <Empty text="No task has been idle for 3+ days." />}
+          {agingCards.length > 7 && <button onClick={onOpenAging} className="mt-3 text-xs font-medium text-slate-600 underline">View all aging work</button>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function SectionHead({title,sub}:{title:string;sub:string}) {
+  return <div className="mb-4"><h3 className="text-sm font-semibold text-slate-900">{title}</h3><p className="mt-0.5 text-xs text-slate-500">{sub}</p></div>;
+}
+function MiniStat({label,value}:{label:string;value:number}) {
+  return <div className="rounded-xl border border-slate-100 bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold text-slate-900">{value}</div></div>;
+}
+function Empty({text}:{text:string}) { return <div className="rounded-xl bg-slate-50 px-4 py-5 text-sm text-slate-500">{text}</div>; }
+function OwnerRow({title,meta,staff,onOpen,onAssign}:{title:string;meta:string;staff:Employee[];onOpen:()=>void;onAssign:(id:string)=>void}) {
+  return <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3"><button onClick={onOpen} className="min-w-0 flex-1 text-left"><div className="truncate text-sm font-medium text-slate-900">{title}</div><div className="truncate text-xs text-slate-400">{meta}</div></button><select defaultValue="" onChange={e=>e.target.value&&onAssign(e.target.value)} className="max-w-40 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"><option value="">Assign…</option>{staff.map(s=><option key={s.employeeId} value={s.employeeId}>{s.name}</option>)}</select></div>;
+}
+
 function Detail({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div className="min-w-0">
