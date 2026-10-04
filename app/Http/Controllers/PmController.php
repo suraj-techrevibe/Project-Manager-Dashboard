@@ -12,6 +12,7 @@ use App\Services\Pm\GitHubService;
 use App\Services\Pm\GitService;
 use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -229,9 +230,13 @@ class PmController extends Controller
             $completed = $rows->where('status', 'Completed')->count();
 
             $overdue = $active->filter(fn ($c) => $c->due_at && $c->due_at->lt($today))->count();
-            $dueSoon = $active->filter(fn ($c) => {
+            $dueSoon = $active->filter(function ($c) use ($today) {
                 if (! $c->due_at) return false;
-                $d = Carbon::parse($c->due_at)->startOfDay()->diffInDays($today, false);
+
+                $d = Carbon::parse($c->due_at)
+                    ->startOfDay()
+                    ->diffInDays($today, false);
+
                 return $d >= 0 && $d <= 5;
             })->count();
             $blocked = $active->where('status', 'Blocked')->count();
