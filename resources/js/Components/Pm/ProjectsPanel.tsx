@@ -33,6 +33,7 @@ export default function ProjectsPanel() {
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
+  const [health, setHealth] = useState<Record<string, any>>({});
 
   // Which project is open lives in the URL (?project=<id>), not in React state.
   const openId = useUrlParam('project');
@@ -45,6 +46,8 @@ export default function ProjectsPanel() {
     try {
       const { data } = await pmApi.projects();
       setProjects(data.projects);
+      const h = await pmApi.projectHealth();
+      setHealth(Object.fromEntries(h.data.health.map((x: any) => [x.project_id, x])));
     } catch (e) {
       setError(err(e, "Couldn't load projects from Taskmandu."));
     } finally {
@@ -135,7 +138,10 @@ export default function ProjectsPanel() {
                   <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${p.color || 'bg-slate-300'}`} />
                   <div className="truncate font-medium text-slate-900">{p.name}</div>
                 </div>
-                <Badge className={projectStatusColors[p.status]}>{p.status}</Badge>
+                <div className="flex items-center gap-1.5">
+                  {health[p._id] && <span className={"rounded-full px-2 py-0.5 text-[10px] font-medium " + (health[p._id].health === 'red' ? 'bg-red-100 text-red-700' : health[p._id].health === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700')}>Health {health[p._id].score}</span>}
+                  <Badge className={projectStatusColors[p.status]}>{p.status}</Badge>
+                </div>
               </div>
               {p.description && <div className="mt-1 line-clamp-2 text-xs text-slate-500">{p.description}</div>}
               {progress.total > 0 && <ProgressBar pct={progress.pct} className="mt-3" />}
