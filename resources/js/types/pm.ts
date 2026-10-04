@@ -174,14 +174,14 @@ export interface BriefDraftSummary {
 
 export interface BriefDraft extends BriefDraftSummary {
   brief: string | null;
-  tickets: import('./../lib/briefHeuristics').EditableTicket[];
+  tickets: Array<{ uid: string; title: string; description: string; level: string; estimate_hours: number | ''; priority: TaskPriority; assigneeId: string; dueDate: string; state: 'draft' | 'pushed' | 'failed'; error?: string }>;
 }
 
 export interface BriefDraftInput {
   title: string;
   brief: string;
   project_id: string | null;
-  tickets: import('./../lib/briefHeuristics').EditableTicket[];
+  tickets: Array<{ uid: string; title: string; description: string; level: string; estimate_hours: number | ''; priority: TaskPriority; assigneeId: string; dueDate: string; state: 'draft' | 'pushed' | 'failed'; error?: string }>;
 }
 
 export interface BriefContext {
