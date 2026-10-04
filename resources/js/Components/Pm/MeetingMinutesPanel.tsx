@@ -314,7 +314,7 @@ function MinutesDetail({
       </div>
 
       {sentNote && <p className="text-xs text-green-700">{sentNote}</p>}
-      {showPush && <PushActionItemsModal items={minute.action_items} onClose={() => setShowPush(false)} />}
+      {showPush && <PushActionItemsModal items={minute.action_items} minuteId={minute.id} onClose={() => setShowPush(false)} />}
       {showEmail && (
         <EmailModal
           title="Email minutes"
@@ -333,7 +333,7 @@ function MinutesDetail({
 }
 
 /** Creates one Taskmandu task per action item, on a chosen project's board. */
-function PushActionItemsModal({ items, onClose }: { items: ActionItem[]; onClose: () => void }) {
+function PushActionItemsModal({ items, onClose, minuteId }: { items: ActionItem[]; onClose: () => void; minuteId?: number }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [projectId, setProjectId] = useState('');
@@ -360,7 +360,7 @@ function PushActionItemsModal({ items, onClose }: { items: ActionItem[]; onClose
           assignedByName: item.owner || undefined,
           dueDate: item.due_date || quickDates()[3].value,
         });
-        out.push({ task: item.task, ok: true });
+        out.push({ task: item.task, ok: true });\n        if (minuteId) {\n          const next = items.map((a, j) => j === i ? { ...a, pushed_to_board: true, pushed_project_id: projectId } : a);\n          await pmApi.minutesUpdate(minuteId, { action_items: next });\n        }
       } catch (e) {
         out.push({ task: item.task, ok: false, error: err(e, 'Failed') });
       }
