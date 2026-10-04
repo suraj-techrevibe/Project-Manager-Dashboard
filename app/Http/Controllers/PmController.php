@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
+use App\Models\PmProjectHealth;
+use App\Models\PmWaitingClient;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\DigestService;
 use App\Services\Pm\FlagService;
@@ -91,6 +93,172 @@ class PmController extends Controller
     }
 
     /** Records that the PM actually sent a nudge (e.g. copied the template message). */
+    /** Compact PM command-center data: actions, project risk, waiting items and recent changes. */
+    public function commandCenter(): JsonResponse
+    {
+        $flags = $this->flags->all();
+        $workload = $this->flags->workload($this->staff());
+
+        $rank = ['danger' => 0, 'warning' => 1, 'neutral' => 2];
+        $seen = [];
+        $actions = [];
+        foreach ($flags as $flag) {
+            if (isset($seen[$flag['card_id']])) continue;
+            $seen[$flag['card_id']] = true;
+            $action = match ($flag['type']) {
+                'overdue' => 'Follow up / unblock',
+                'blocked' => 'Resolve blocker',
+                'unassigned' => 'Assign an owner',
+                'stuck' => 'Ask for an update',
+                'unverified' => 'Verify completion',
+                'due_today' => 'Check delivery',
+                default => 'Confirm plan',
+            };
+            $actions[] = [
+                'kind' => 'task',
+                'priority' => $rank[$flag['severity']] ?? 2,
+                'card_id' => $flag['card_id'],
+                'title' => $flag['title'],
+                'project_id' => $flag['project_id'],
+                'project_name' => $flag['project_name'],
+                'assignee' => $flag['assignee'],
+                'reason' => $flag['detail'],
+                'action' => $action,
+                'task_id' => $flag['task_id'],
+            ];
+            if (count($actions) >= 8) break;
+        }
+
+        $overloaded = collect($workload)
+            ->filter(fn ($w) => ($w['week_hours'] ?? 0) > ($w['capacity'] ?? 40))
+            ->sortByDesc(fn ($w) => ($w['week_hours'] ?? 0) - ($w['capacity'] ?? 40))
+            ->take(5)
+            ->values()
+            ->map(fn ($w) => [
+                'name' => $w['name'],
+                'week_hours' => (float) ($w['week_hours'] ?? 0),
+                'capacity' => (float) ($w['capacity'] ?? 40),
+                'excess' => round(max(0, ($w['week_hours'] ?? 0) - ($w['capacity'] ?? 40)), 1),
+            ])->all();
+
+        $free = collect($workload)
+            ->filter(fn ($w) => ($w['open'] ?? 0) === 0 || (($w['capacity'] ?? 40) - ($w['week_hours'] ?? 0)) >= 8)
+            ->sortByDesc(fn ($w) => ($w['capacity'] ?? 40) - ($w['week_hours'] ?? 0))
+            ->take(5)
+            ->values()
+            ->map(fn ($w) => [
+                'name' => $w['name'],
+                'week_hours' => (float) ($w['week_hours'] ?? 0),
+                'capacity' => (float) ($w['capacity'] ?? 40),
+                'room' => round(max(0, ($w['capacity'] ?? 40) - ($w['week_hours'] ?? 0)), 1),
+            ])->all();
+
+        $projects = $this->projectRisk();
+        $waiting = PmWaitingClient::query()->where('status', 'waiting')->orderBy('waiting_since')->limit(8)->get()->map(fn ($w) => [
+            'id' => $w->id,
+            'title' => $w->title,
+            'project_id' => $w->project_id,
+            'waiting_since' => $w->waiting_since?->toDateString(),
+            'days' => $w->waiting_since ? (int) $w->waiting_since->diffInDays(now()) : 0,
+        ])->all();
+
+        $recent = PmActivity::query()
+            ->where('occurred_at', '>=', now()->subDay())
+            ->latest('occurred_at')
+            ->limit(10)
+            ->get()
+            ->map(fn ($a) => [
+                'type' => $a->type,
+                'title' => $a->title,
+                'occurred_at' => $a->occurred_at?->toIso8601String(),
+                'project' => $a->meta['project'] ?? null,
+            ])->all();
+
+        return response()->json([
+            'actions' => $actions,
+            'overloaded' => $overloaded,
+            'free' => $free,
+            'projects' => $projects,
+            'waiting' => $waiting,
+            'recent' => $recent,
+        ]);
+    }
+
+    private function projectRisk(): array
+    {
+        $today = now()->startOfDay();
+        $cards = PmCard::query()->whereNotNull('project_id')->whereNotIn('status', ['Completed', 'Cancelled'])->get();
+
+        return $cards->groupBy('project_id')->map(function ($rows, $projectId) use ($today) {
+            $overdue = $rows->filter(fn ($c) => $c->due_at && $c->due_at->lt($today))->count();
+            $blocked = $rows->where('status', 'Blocked')->count();
+            $unassigned = $rows->filter(fn ($c) => blank($c->assignee))->count();
+            $last = $rows->max('last_activity_at');
+            $idle = $last ? (int) \Illuminate\Support\Carbon::parse($last)->diffInDays(now()) : 999;
+            $score = max(0, 100 - ($overdue * 12) - ($blocked * 10) - ($unassigned * 6) - min(35, $idle * 5));
+            $health = $score < 45 ? 'red' : ($score < 70 ? 'amber' : 'green');
+            return [
+                'project_id' => $projectId,
+                'project_name' => $rows->first()->project_name ?: 'Unnamed project',
+                'score' => $score,
+                'health' => $health,
+                'overdue' => $overdue,
+                'blocked' => $blocked,
+                'unassigned' => $unassigned,
+                'idle_days' => $idle,
+            ];
+        })->sortBy('score')->take(8)->values()->all();
+    }
+
+    /** List only the pushes made by Brief to tickets and not already undone. */
+    public function recentPushes(): JsonResponse
+    {
+        $items = PmActivity::query()->where('type', 'pushed')->latest('occurred_at')->limit(30)->get()
+            ->filter(fn ($a) => empty($a->meta['undone_at']) && !empty($a->meta['task_id']))
+            ->map(fn ($a) => [
+                'id' => $a->id,
+                'title' => $a->title,
+                'task_id' => $a->meta['task_id'],
+                'project_id' => $a->meta['project_id'] ?? null,
+                'project_name' => $a->meta['project'] ?? null,
+                'occurred_at' => $a->occurred_at?->toIso8601String(),
+            ])->values()->all();
+
+        return response()->json(['pushes' => $items]);
+    }
+
+    /** Undo one PM-created ticket by deleting exactly the Taskmandu id recorded at push time. */
+    public function undoPush(PmActivity $activity): JsonResponse
+    {
+        if ($activity->type !== 'pushed' || empty($activity->meta['task_id'])) {
+            return response()->json(['error' => 'That activity is not an undoable PM ticket push.'], 422);
+        }
+        if (!empty($activity->meta['undone_at'])) {
+            return response()->json(['error' => 'This ticket has already been undone.'], 422);
+        }
+
+        try {
+            $this->taskmandu->deletePushedTask((string) $activity->meta['task_id'], $activity->meta['project_id'] ?? null);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        if ($cardId = $activity->card_id) {
+            PmCard::query()->whereKey($cardId)->delete();
+        }
+        $activity->update(['meta' => array_merge($activity->meta ?? [], [
+            'undone_at' => now()->toIso8601String(),
+            'undone_by' => request()->user()?->name,
+        ])]);
+        PmActivity::record('push_undone', null, [
+            'original_push_id' => $activity->id,
+            'task_id' => $activity->meta['task_id'],
+            'project_id' => $activity->meta['project_id'] ?? null,
+        ], $activity->title);
+
+        return response()->json(['ok' => true]);
+    }
+
     public function nudged(PmCard $card): JsonResponse
     {
         PmActivity::record('nudge', $card, ['template' => true]);
@@ -381,7 +549,13 @@ class PmController extends Controller
             ? PmCard::updateOrCreate(['external_id' => $externalId], $attrs)
             : PmCard::create($attrs);
 
-        PmActivity::record('pushed', $card);
+        PmActivity::record('pushed', $card, [
+            'task_id' => $taskId,
+            'project_id' => $project['id'],
+            'external_id' => $externalId,
+            'source' => 'brief',
+            'actor' => $assignedBy ?: null,
+        ]);
 
         return [
             'ok' => true,
