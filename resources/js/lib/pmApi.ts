@@ -56,6 +56,8 @@ export const pmApi = {
   /** Current Today data without a page reload. */
   today: () => api.get<TodayData>('/today'),
 
+  commandCenter: () => api.get('/command-center'),
+
   /** Pull from Taskmandu now (can take a while), then return fresh Today data. */
   sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 180_000 }),
 
@@ -82,6 +84,9 @@ export const pmApi = {
       tickets,
       project_id: projectId || null,
     }),
+
+  recentPushes: () => api.get<{ pushes: Array<{ id: number; title: string; task_id: string; project_id: string | null; project_name: string | null; occurred_at: string }> }>('/brief/pushes'),
+  undoPush: (activityId: number) => api.post(`/brief/pushes/${activityId}/undo`),
 
   reports: () => api.get<{ reports: Report[] }>('/reports'),
 
