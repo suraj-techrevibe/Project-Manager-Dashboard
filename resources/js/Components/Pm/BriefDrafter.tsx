@@ -50,6 +50,8 @@ export default function BriefDrafter() {
   const [pushError, setPushError] = useState<string | null>(null);
   const [pushSummary, setPushSummary] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  const [recentPushes, setRecentPushes] = useState<Array<{ id: number; title: string; project_name: string | null; occurred_at: string }>>([]);
+  const [undoing, setUndoing] = useState<number | null>(null);
 
   function loadContext() {
     pmApi
@@ -63,6 +65,7 @@ export default function BriefDrafter() {
 
   useEffect(() => {
     loadContext();
+    pmApi.recentPushes().then(({ data }) => setRecentPushes(data.pushes)).catch(() => {});
     pmApi
       .projects()
       .then(({ data }) => setProjects(data.projects))
@@ -295,6 +298,43 @@ export default function BriefDrafter() {
       setPushing(false);
     }
   }
+
+  async function undoPush(id: number) {
+    if (!window.confirm('Undo this PM-created ticket in Taskmandu? This will delete it from Taskmandu.')) return;
+    setUndoing(id);
+    try {
+      await pmApi.undoPush(id);
+      setRecentPushes((prev) => prev.filter((p) => p.id !== id));
+      setNotice('Ticket removed from Taskmandu and the PM card was rolled back.');
+      loadContext();
+    } catch (e) {
+      setPushError(errorText(e, "Couldn't undo the ticket."));
+    } finally {
+      setUndoing(null);
+    }
+  }
+
+      {recentPushes.length > 0 && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2.5">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-slate-700">Recently pushed by PM</div>
+              <div className="text-[11px] text-slate-400">Undo is available for these PM-created tickets.</div>
+            </div>
+          </div>
+          <div className="space-y-1">
+            {recentPushes.slice(0, 8).map((p) => (
+              <div key={p.id} className="flex items-center gap-2 rounded bg-white px-2 py-1.5 text-xs">
+                <span className="min-w-0 flex-1 truncate">{p.title}{p.project_name ? ` · ${p.project_name}` : ''}</span>
+                <span className="shrink-0 text-slate-400">{new Date(p.occurred_at).toLocaleString()}</span>
+                <button onClick={() => undoPush(p.id)} disabled={undoing === p.id} className="shrink-0 rounded border border-red-200 px-2 py-0.5 font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
+                  {undoing === p.id ? 'Undoing…' : 'Undo'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
   async function copyQuestions() {
     const text = questionsEmail(askClient);
