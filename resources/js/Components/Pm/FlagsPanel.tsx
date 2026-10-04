@@ -373,6 +373,8 @@ export default function FlagsPanel({
   const [workload, setWorkload] = useState(initialWorkload);
   const [subtasks, setSubtasks] = useState(initialSubtasks);
   const [staff, setStaff] = useState(initialStaff);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [since, setSince] = useState<SinceSummary | undefined>(initialSince);
   const [lastSynced, setLastSynced] = useState<string | null>(initialSynced);
   const [syncing, setSyncing] = useState(false);
@@ -401,6 +403,20 @@ export default function FlagsPanel({
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!tabActive) return;
+    let cancelled = false;
+    setProjectsLoading(true);
+    pmApi.projects().then(({ data }) => {
+      if (!cancelled) setProjects(data.projects ?? []);
+    }).catch(() => {
+      if (!cancelled) setProjects([]);
+    }).finally(() => {
+      if (!cancelled) setProjectsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [tabActive]);
 
   function flashMsg(msg: string) {
     setFlash(msg);
@@ -479,6 +495,46 @@ export default function FlagsPanel({
       ),
     }));
   }, [flags]);
+
+  const riskProjects = useMemo(() => {
+    const byProject = new Map<string, TaskCard[]>();
+    allCards.forEach((c) => {
+      if (!c.task.project_id || !c.task.project_name) return;
+      byProject.set(c.task.project_id, [...(byProject.get(c.task.project_id) ?? []), c]);
+    });
+    return Array.from(byProject.entries()).map(([id, cards]) => {
+      const overdue = cards.filter((c) => hasFlag(c, 'overdue')).length;
+      const blocked = cards.filter((c) => hasFlag(c, 'blocked')).length;
+      const stuck = cards.filter((c) => hasFlag(c, 'stuck')).length;
+      const score = Math.max(0, 100 - overdue * 18 - blocked * 15 - stuck * 8);
+      return { id, name: cards[0].task.project_name!, score, overdue, blocked, stuck, flags: cards.length };
+    }).sort((a, b) => a.score - b.score);
+  }, [allCards]);
+
+  const agingCards = useMemo(
+    () => allCards
+      .filter((c) => hasFlag(c, 'stuck'))
+      .sort((a, b) => (daysAgo(b.task.last_activity_at) ?? 0) - (daysAgo(a.task.last_activity_at) ?? 0)),
+    [allCards]
+  );
+
+  const waitingCards = useMemo(() => allCards.filter((c) => {
+    const t = c.task;
+    const text = [t.title, t.description, ...(t.tags ?? [])].join(' ').toLowerCase();
+    return /waiting|client|approval|feedback|content needed|awaiting/.test(text);
+  }), [allCards]);
+
+  const timelineProjects = useMemo(
+    () => projects
+      .filter((p) => p.startDate || p.endDate || p.tasks.length)
+      .sort((a, b) => (a.startDate ?? a.createdAt).localeCompare(b.startDate ?? b.createdAt))
+      .slice(0, 8),
+    [projects]
+  );
+
+  const unassignedTasks = useMemo(() => allCards.filter((c) => !c.task.assignee), [allCards]);
+  const unassignedSubtasks = useMemo(() => subtasks.filter((s) => s.issues.includes('unassigned')), [subtasks]);
+  const unassignedTotal = unassignedTasks.length + unassignedSubtasks.length;
 
   // The clicked question's one-line answer + which cards it keeps.
   const active = useMemo(() => {
@@ -705,6 +761,23 @@ export default function FlagsPanel({
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  async function assignParentTask(card: TaskCard, employeeId: string) {
+    if (!card.task.project_id || !card.task.task_id) return;
+    try {
+      await pmApi.updateProjectTask(card.task.project_id, card.task.task_id, {
+        assignedToId: [employeeId],
+        assignedByName: 'PM',
+        title: card.task.title,
+        dueDate: card.task.due_at ?? new Date().toISOString().slice(0, 10),
+      });
+      const employee = staff.find((e) => e.employeeId === employeeId);
+      flashMsg("Assigned to " + (employee?.name ?? "owner"));
+      await syncNow();
+    } catch (e) {
+      flashMsg(errMsg(e, "Couldn't assign the task."));
+    }
+  }
+
   return (
     <div>
       {emailFor && (
@@ -781,190 +854,42 @@ export default function FlagsPanel({
 
       {showDigest && <DigestPanel onClose={() => setShowDigest(false)} />}
 
-      {/* ===== Critical numbers — big, right at the top ===== */}
-      <div id="critical-metrics" className="mb-4 scroll-mt-4">
-        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Needs your attention</div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
-          {CRITICAL_METRICS.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => {
-                setQuestion(null);
-                setFilter((cur) => (cur === m.key ? null : (m.key as FlagType)));
-                jumpTo('task-list');
-              }}
-              className={`rounded-xl p-4 text-left transition ${
-                filter === m.key ? 'bg-slate-900 ring-2 ring-slate-900' : 'border border-red-200 bg-red-50 hover:bg-red-100'
-              }`}
-            >
-              <div className={`mb-1 text-xs font-medium ${filter === m.key ? 'text-slate-300' : 'text-red-700'}`}>{m.label}</div>
-              <div className={`text-4xl font-semibold ${filter === m.key ? 'text-white' : 'text-red-700'}`}>{counts[m.key as FlagType]}</div>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {SECONDARY_METRICS.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => {
-                setQuestion(null);
-                setFilter((cur) => (cur === m.key ? null : (m.key as FlagType)));
-                jumpTo('task-list');
-              }}
-              className={`rounded-lg p-3 text-left transition ${
-                filter === m.key ? 'bg-slate-900 ring-2 ring-slate-900' : 'bg-slate-50 hover:bg-slate-100'
-              }`}
-            >
-              <div className={`mb-1 text-xs ${filter === m.key ? 'text-slate-300' : 'text-slate-500'}`}>{m.label}</div>
-              <div className={`text-2xl font-medium ${filter === m.key ? 'text-white' : m.color}`}>{counts[m.key as FlagType]}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ===== Unassigned work ===== */}
-      <div id="unassigned-work" className="mb-4 scroll-mt-4">
-        <div className="mb-2 flex items-end justify-between gap-3">
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-amber-700">Unassigned work</div>
-            <div className="text-sm text-slate-500">
-              Work with no owner yet. Click any item to open the exact task or sub-task.
-            </div>
-          </div>
-          <div className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-            {unassignedTotal} total
-          </div>
-        </div>
-
-        {unassignedTotal === 0 ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Everything currently has an owner.
-          </div>
-        ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {unassignedTasks.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-white">
-                <div className="border-b border-slate-100 px-4 py-3">
-                  <div className="text-sm font-semibold text-slate-900">
-                    Tasks <span className="ml-1 text-amber-700">{unassignedTasks.length}</span>
-                  </div>
-                  <div className="text-xs text-slate-400">Parent tasks with no assignee</div>
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {unassignedTasks.map((c) => {
-                    const t = c.task;
-                    const canOpen = Boolean((t.project_id && t.task_id) || t.url);
-                    return (
-                      <button
-                        key={c.card_id}
-                        type="button"
-                        disabled={!canOpen}
-                        onClick={() => canOpen && onOpenTask({ projectId: t.project_id!, taskId: t.task_id! })}
-                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-amber-50 disabled:cursor-default disabled:opacity-60"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium text-slate-900">{t.title}</span>
-                          <span className="mt-0.5 block truncate text-xs text-slate-400">
-                            {t.project_name ?? 'Standalone task'} · {t.status}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-xs font-medium text-amber-700">
-                          {canOpen ? 'Open →' : 'No link'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {unassignedSubtasks.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-white">
-                <div className="border-b border-slate-100 px-4 py-3">
-                  <div className="text-sm font-semibold text-slate-900">
-                    Sub-tasks <span className="ml-1 text-amber-700">{unassignedSubtasks.length}</span>
-                  </div>
-                  <div className="text-xs text-slate-400">Sub-tasks with no assignee</div>
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {unassignedSubtasks.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => onOpenTask({ projectId: s.project_id, taskId: s.task_id, subId: s.subtask_id })}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-amber-50"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-slate-900">{s.title}</span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-400">
-                          {s.project_name} · {s.parent_title}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-xs font-medium text-amber-700">Open →</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ===== Since yesterday ===== */}
-      <div id="since-strip" className="scroll-mt-4">
-        {since && <SinceStrip since={since} onOpenItem={openSinceItem} onShowFree={showFree} />}
-      </div>
-
-      {/* Question buttons: click one to filter the list and see the answer */}
-      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Ask a question</div>
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {QUESTIONS.map((q) => (
-          <button
-            key={q.key}
-            onClick={() => {
-              if (question === q.key) return setQuestion(null);
-              clearFilters(); // a question replaces other filters, so the answer matches the list
-              setQuestion(q.key);
-              jumpTo('task-list');
-            }}
-            className={`rounded-md border px-2.5 py-1 text-xs transition ${
-              question === q.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {q.label}
-          </button>
-        ))}
-      </div>
-
-      {active && (
-        <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
-          <div>
-            <div className="mb-0.5 text-xs text-slate-400">{active.label}</div>
-            {active.text}
-          </div>
-          <button onClick={() => setQuestion(null)} className="text-xs text-slate-400 hover:text-slate-700" aria-label="Clear question">
-            ✕
-          </button>
-        </div>
-           )}
-
-      {/* Sub-tasks nobody owns (or that are blocked) — buried inside tasks, so surfaced here */}
-      <SubtaskInbox
-        subtasks={subtasks}
-        staff={staff}
+      <TodayDecisionDashboard
+        counts={counts}
+        riskProjects={riskProjects}
+        waitingCards={waitingCards}
+        agingCards={agingCards}
         workload={workload}
-        onOpen={onOpenTask}
-        onResolved={(id, assignee) => {
-          setSubtasks((list) => list.filter((s) => s.id !== id));
-          if (assignee) flashMsg(`Assigned to ${assignee}`);
+        since={since}
+        timelineProjects={timelineProjects}
+        projectsLoading={projectsLoading}
+        unassignedTasks={unassignedTasks}
+        unassignedSubtasks={unassignedSubtasks}
+        staff={staff}
+        onOpenTask={onOpenTask}
+        onAssignTask={assignParentTask}
+        onAssignSubtask={async (id, employeeId) => {
+          try {
+            const { data } = await pmApi.assignSubtask(id, employeeId);
+            setSubtasks((list) => list.filter((s) => s.id !== id));
+            flashMsg("Assigned to " + data.assignee);
+            await syncNow();
+          } catch (e) {
+            flashMsg(errMsg(e, "Couldn't assign the sub-task."));
+          }
         }}
+        onFilter={(type) => {
+          setQuestion(null);
+          setFilter((cur) => cur === type ? null : type);
+          jumpTo('task-list');
+        }}
+        onOpenAging={() => {
+          setQuestion('stuck');
+          jumpTo('task-list');
+        }}
+        onOpenSince={openSinceItem}
+        onShowFree={showFree}
       />
-
-      {/* ===== Team workload: who has too much, who has nothing ===== */}
-      <div id="team-workload" className="scroll-mt-4">
-        <TeamWorkload workload={workload} selected={assignee} onSelect={setAssignee} forceOpen={workloadKey} />
-      </div>
 
       {/* ===== Task list ===== */}
       <div id="task-list" className="scroll-mt-4">
