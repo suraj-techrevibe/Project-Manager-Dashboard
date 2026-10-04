@@ -162,6 +162,28 @@ export interface ExistingTitle {
   status: string;
 }
 
+export interface BriefDraftSummary {
+  id: number;
+  title: string;
+  project_id: string | null;
+  status: 'draft' | 'partial' | 'pushed';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BriefDraft extends BriefDraftSummary {
+  brief: string | null;
+  tickets: import('./../lib/briefHeuristics').EditableTicket[];
+}
+
+export interface BriefDraftInput {
+  title: string;
+  brief: string;
+  project_id: string | null;
+  tickets: import('./../lib/briefHeuristics').EditableTicket[];
+}
+
 export interface BriefContext {
   employees: Employee[];
   titles: ExistingTitle[];
