@@ -22,9 +22,6 @@ function ago(iso: string | null): string {
 export default function PmCommandCenter() {
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [employees, setEmployees] = useState<Array<{ employeeId: string; name: string; week_hours?: number; capacity?: number }>>([]);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [followUp, setFollowUp] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -38,7 +35,7 @@ export default function PmCommandCenter() {
     }
   };
 
-  useEffect(() => { load(); pmApi.employees().then((r) => setEmployees(r.data.employees)).catch(() => setEmployees([])); }, []);
+  useEffect(() => { load(); }, []);
 
   if (loading) return <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading command center…</div>;
   if (!data) return null;
@@ -55,23 +52,6 @@ export default function PmCommandCenter() {
   const openTask = (projectId: string | null, taskId: string | null) => {
     if (projectId && taskId) setUrlParams({ tab: 'projects', project: projectId, ptab: 'tasks', task: taskId, sub: null });
   };
-  const reassign = async (cardId: number) => {
-    const card = data?.actions.find((a) => a.card_id === cardId);
-    const choices = employees.filter((e) => (e.capacity ?? 40) - (e.week_hours ?? 0) > 0);
-    if (!choices.length) return;
-    const pick = choices[0];
-    setBusy(`reassign-${cardId}`);
-    try { await pmApi.commandCenterReassign(cardId, pick.employeeId); await load(); } finally { setBusy(null); }
-  };
-  const resolveBlocker = async (cardId: number) => {
-    setBusy(`blocker-${cardId}`);
-    try { await pmApi.commandCenterResolveBlocker(cardId); await load(); } finally { setBusy(null); }
-  };
-  const followWaiting = async (id: number) => {
-    setBusy(`waiting-${id}`);
-    try { const r = await pmApi.commandCenterFollowUp(id); setFollowUp(r.data.message); } finally { setBusy(null); }
-  };
-
   const openToday = (filter?: string) => {
     setUrlParams({ tab: 'today', project: null, ptab: null, task: null, sub: null, filter: filter || null });
   };
@@ -115,11 +95,7 @@ export default function PmCommandCenter() {
                   <div className="truncate text-sm font-medium text-slate-900">{a.title}</div>
                   <div className="truncate text-xs text-slate-500">{a.reason}</div>
                 </div>
-                {a.kind === 'task' && a.card_id && a.action === 'Assign owner' ? (
-                  <button disabled={busy === `reassign-${a.card_id}`} onClick={() => reassign(a.card_id!)} className="shrink-0 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white">{busy === `reassign-${a.card_id}` ? 'Assigning…' : 'Assign owner'}</button>
-                ) : a.kind === 'task' && a.card_id && a.action === 'Resolve blocker' ? (
-                  <button disabled={busy === `blocker-${a.card_id}`} onClick={() => resolveBlocker(a.card_id!)} className="shrink-0 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white">{busy === `blocker-${a.card_id}` ? 'Updating…' : 'Resolve blocker'}</button>
-                ) : a.kind === 'task' && a.project_id && a.task_id ? (
+                {a.kind === 'task' && a.project_id && a.task_id ? (
                   <button onClick={() => openTask(a.project_id, a.task_id)} className="shrink-0 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white">Review task</button>
                 ) : a.kind === 'capacity' ? (
                   <button onClick={() => openToday()} className="shrink-0 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700">Rebalance</button>
@@ -169,20 +145,12 @@ export default function PmCommandCenter() {
           <div className="mt-3 space-y-2">
             {data.waiting.map((w) => <div key={w.id} className="rounded-lg border border-slate-100 p-3">
               <div className="flex items-center gap-2"><span className={`rounded px-1.5 py-0.5 text-[10px] ${tone[w.severity]}`}>{w.days}d</span><span className="truncate text-sm font-medium">{w.title}</span></div>
-              <div className="mt-2 flex gap-2"><button disabled={busy === `waiting-${w.id}`} onClick={() => followWaiting(w.id)} className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white">{busy === `waiting-${w.id}` ? 'Drafting…' : 'Draft follow-up'}</button>{w.project_id && <button onClick={() => openProject(w.project_id)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs">Project</button>}</div>
+              <div className="mt-2 flex gap-2"><button onClick={() => setUrlParams({ tab: 'automation' })} className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white">Follow up</button>{w.project_id && <button onClick={() => openProject(w.project_id)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs">Project</button>}</div>
             </div>)}
             {!data.waiting.length && <div className="text-sm text-slate-500">Nothing waiting on a client.</div>}
           </div>
         </section>
       </div>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Stale work</h2><p className="text-xs text-slate-500">Open tasks with no movement for 3+ days.</p></div><button onClick={() => openToday()} className="text-xs underline">Open Today →</button></div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {data.aging.map((a) => <div key={a.card_id} className="rounded-lg border border-slate-100 p-3"><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{a.title}</span><span className="shrink-0 text-xs text-amber-700">{a.days}d idle</span></div><div className="mt-1 text-xs text-slate-500">{a.project_name || 'Standalone'} · {a.assignee || 'Unassigned'} · {a.status}</div><button onClick={() => openTask(a.project_id, a.task_id)} className="mt-2 text-xs font-medium underline">Review task →</button></div>)}
-          {!data.aging.length && <div className="text-sm text-slate-500">No stale open work.</div>}
-        </div>
-      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">What changed</h2><p className="text-xs text-slate-500">Last 24 hours from PM sync activity.</p></div><button onClick={() => setUrlParams({ tab: 'reports' })} className="text-xs underline">Open reports →</button></div>
@@ -194,7 +162,6 @@ export default function PmCommandCenter() {
           {!data.recent.length && <div className="text-sm text-slate-500">No changes recorded yet.</div>}
         </div>
       </section>
-      {followUp && <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-xl rounded-xl border border-slate-200 bg-white p-4 shadow-xl"><div className="text-sm font-semibold">Follow-up draft</div><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{followUp}</p><button onClick={() => setFollowUp(null)} className="mt-3 rounded-md bg-slate-900 px-3 py-1.5 text-xs text-white">Close</button></div>}
     </section>
   );
 }
