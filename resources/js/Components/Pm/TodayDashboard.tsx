@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
+import { setUrlParams } from '../../lib/urlState';
 import type { PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
 import DigestPanel from './DigestPanel';
 import EmailModal from './EmailModal';
@@ -358,7 +359,7 @@ export default function TodayDashboard({
   const [nudgedAt, setNudgedAt] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
   const [emailFor, setEmailFor] = useState<TaskCard | null>(null);
-  const [filter, setFilter] = useState<FlagType | null>(null);
+  const [filter, setFilter] = useState<FlagType | 'critical' | null>(null);
   const [search, setSearch] = useState('');
   const [assignee, setAssignee] = useState('');
   const [project, setProject] = useState('');
@@ -466,7 +467,7 @@ export default function TodayDashboard({
     const dueTs = (c: TaskCard) => (c.task.due_at ? new Date(`${c.task.due_at}T00:00:00`).getTime() : Infinity);
 
     return allCards
-      .filter((c) => !filter || c.flags.some((f) => f.type === filter))
+      .filter((c) => !filter || (filter === 'critical' ? c.flags.some((f) => f.severity === 'danger') : c.flags.some((f) => f.type === filter)))
       .filter((c) => !active || active.match(c))
       .filter((c) => !pinnedOnly || pins.includes(c.card_id))
       .filter((c) => {
@@ -668,7 +669,7 @@ export default function TodayDashboard({
   });
 
   return (
-    <div>
+    <div className="space-y-6">
       {emailFor && (
         <EmailModal
           title="Email nudge"
@@ -684,338 +685,443 @@ export default function TodayDashboard({
           }}
         />
       )}
-      {/* Freshness + quick actions */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button
-          onClick={syncNow}
-          disabled={syncing}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
-        >
-          {syncing ? 'Syncing…' : 'Sync now'}
-        </button>
-        <span className={`text-xs ${stale ? 'font-medium text-amber-600' : 'text-slate-500'}`}>
-          {lastSynced ? `Last synced ${ago(lastSynced)}` : 'Not synced from this app yet'}
-          {stale && ' — data may be out of date'}
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          {pins.length > 0 && (
+
+      {/* 1. Today header */}
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500">
+              {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">{todayGreeting}</h1>
+            <p className="mt-1 text-sm text-slate-500">Here is what needs your attention today.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`text-xs ${stale ? 'font-medium text-amber-600' : 'text-slate-400'}`}>
+              {lastSynced ? `Last synced ${ago(lastSynced)}` : 'Not synced yet'}
+              {stale && ' · may be out of date'}
+            </span>
             <button
-              onClick={() => setPinnedOnly((p) => !p)}
-              className={`rounded-md border px-2.5 py-1 text-xs ${
-                pinnedOnly ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
+              type="button"
+              onClick={syncNow}
+              disabled={syncing}
+              className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              ★ Focus ({pins.length}/{MAX_PINS})
+              {syncing ? 'Syncing…' : 'Sync now'}
             </button>
-          )}
-          <button onClick={copyStandup} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50">
-            Copy stand-up
-          </button>
-          <button
-            onClick={() => setShowDigest((v) => !v)}
-            className={`rounded-md border px-2.5 py-1 text-xs ${
-              showDigest ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            Morning digest
-          </button>
+          </div>
         </div>
-      </div>
-      {syncError && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{syncError}</div>}
-      {flash && <div className="mb-3 rounded-md bg-slate-900 px-3 py-2 text-xs text-white">{flash}</div>}
+        {syncError && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{syncError}</div>}
+        {flash && <div className="mt-3 rounded-lg bg-slate-900 px-3 py-2 text-xs text-white">{flash}</div>}
+      </section>
 
-      {showDigest && <DigestPanel onClose={() => setShowDigest(false)} />}
-
-      {since && <SinceStrip since={since} onOpenItem={openSinceItem} onShowFree={showFree} />}
-
-      {/* Question buttons: click one to filter the list and see the answer */}
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {QUESTIONS.map((q) => (
+      {/* 2. Four decision cards — all clickable */}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { key: 'critical' as const, label: 'Critical', value: new Set(flags.filter((f) => f.severity === 'danger').map((f) => f.card_id)).size, note: 'needs action', tone: 'border-red-200 bg-red-50 text-red-700' },
+          { key: 'overdue' as const, label: 'Overdue', value: counts.overdue, note: 'past due', tone: 'border-red-200 bg-white text-red-700' },
+          { key: 'due_today' as const, label: 'Due today', value: counts.due_today, note: 'today', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+          { key: 'blocked' as const, label: 'Blocked', value: counts.blocked, note: 'waiting to move', tone: 'border-amber-200 bg-white text-amber-700' },
+        ].map((item) => (
           <button
-            key={q.key}
+            key={item.label}
+            type="button"
             onClick={() => {
-              if (question === q.key) return setQuestion(null);
-              clearFilters(); // a question replaces other filters, so the answer matches the list
-              setQuestion(q.key);
+              setQuestion(null);
+              setFilter((cur) => (cur === item.key ? null : item.key));
+              document.getElementById('today-task-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
-            className={`rounded-md border px-2.5 py-1 text-xs transition ${
-              question === q.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
+            className={`rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+              filter === item.key ? 'ring-2 ring-slate-900 ring-offset-1' : ''
+            } ${item.tone}`}
           >
-            {q.label}
+            <p className="text-xs font-semibold uppercase tracking-wide opacity-75">{item.label}</p>
+            <div className="mt-1 flex items-end gap-2">
+              <span className="text-3xl font-bold">{item.value}</span>
+              <span className="pb-1 text-xs opacity-70">{item.note}</span>
+            </div>
           </button>
         ))}
-      </div>
+      </section>
 
-      {active && (
-        <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
+      {/* 3. Needs your attention */}
+      <section>
+        <div className="mb-3 flex items-end justify-between">
           <div>
-            <div className="mb-0.5 text-xs text-slate-400">{active.label}</div>
-            {active.text}
+            <h2 className="text-base font-bold text-slate-900">Needs your attention</h2>
+            <p className="text-xs text-slate-500">Critical work first — not the entire task list.</p>
           </div>
-          <button onClick={() => setQuestion(null)} className="text-xs text-slate-400 hover:text-slate-700" aria-label="Clear question">
-            ✕
+          <button
+            type="button"
+            onClick={() => {
+              setQuestion(null);
+              setFilter('critical');
+              document.getElementById('today-task-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
+            View all
           </button>
         </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {allCards.filter((c) => c.severity === 'danger').slice(0, 6).map((c) => (
+            <button
+              key={c.card_id}
+              type="button"
+              onClick={() => open(c)}
+              className={`rounded-xl border p-4 text-left shadow-sm transition hover:shadow ${severityClasses[c.severity]}`}
+            >
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate font-semibold text-slate-900">{c.task.title}</h3>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${priorityClasses[c.task.priority ?? 'Medium'] ?? priorityClasses.Medium}`}>
+                      {c.task.priority ?? 'Medium'}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-slate-500">
+                    {c.task.project_name || 'Standalone'} · {c.task.assignee || 'Unassigned'} · {dueLabel(c.task.due_at).text}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {c.flags.slice(0, 3).map((f) => (
+                      <span key={f.type} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badgeClasses[f.severity]}`}>
+                        {f.type.replace('_', ' ')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </button>
+          ))}
+          {!allCards.some((c) => c.severity === 'danger') && (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 lg:col-span-2">
+              Nothing critical right now.
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 4. At risk + Team load */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-slate-900">At risk</h2>
+              <p className="text-xs text-slate-500">Warning-level tasks that deserve monitoring.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setQuestion(null);
+                setFilter(null);
+                setQuestion('duesoon');
+                document.getElementById('today-task-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >
+              View tasks
+            </button>
+          </div>
+          <div className="space-y-2">
+            {allCards.filter((c) => c.severity === 'warning').slice(0, 6).map((c) => (
+              <button
+                key={c.card_id}
+                type="button"
+                onClick={() => open(c)}
+                className="flex w-full items-center gap-3 rounded-lg border border-slate-100 p-3 text-left hover:bg-slate-50"
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{c.task.title}</span>
+                <span className="shrink-0 text-xs text-slate-500">{c.task.project_name || 'Standalone'}</span>
+              </button>
+            ))}
+            {!allCards.some((c) => c.severity === 'warning') && <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No at-risk tasks detected.</p>}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-slate-900">Team load</h2>
+              <p className="text-xs text-slate-500">Capacity signals for this week.</p>
+            </div>
+            <button
+              type="button"
+              onClick={showFree}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >
+              View workload
+            </button>
+          </div>
+          <div className="space-y-3">
+            {workload.slice().sort((a, b) => (b.week_hours ?? b.hours ?? 0) - (a.week_hours ?? a.hours ?? 0)).slice(0, 5).map((row) => {
+              const capacity = row.capacity || 40;
+              const hours = row.week_hours ?? row.hours ?? 0;
+              const pct = Math.min(100, Math.round((hours / capacity) * 100));
+              const level = levelOf(row, overloadAt);
+              return (
+                <div key={row.name}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-slate-800">{row.name}</span>
+                    <span className={level === 'over' || level === 'heavy' ? 'font-semibold text-red-600' : level === 'medium' ? 'font-semibold text-amber-600' : 'text-slate-500'}>
+                      {hours.toFixed(1)}h / {capacity}h
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className={`h-full rounded-full ${level === 'over' || level === 'heavy' ? 'bg-red-500' : level === 'medium' ? 'bg-amber-400' : 'bg-slate-400'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {!workload.length && <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No workload data yet. Sync first.</p>}
+          </div>
+        </section>
+      </div>
+
+      {/* 5. Since last workday */}
+      {since && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-slate-900">Since last workday</h2>
+              <p className="text-xs text-slate-500">{since.tracked ? `Changes since ${since.label}.` : 'Activity tracking starts after the first sync.'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={copyStandup}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Copy stand-up
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {[
+              { label: 'Completed', value: since.completed.count, tone: 'text-emerald-700 bg-emerald-50' },
+              { label: 'Created', value: since.created.count, tone: 'text-blue-700 bg-blue-50' },
+              { label: 'Blocked', value: since.blocked.count, tone: 'text-red-700 bg-red-50' },
+              { label: 'Became overdue', value: since.overdue.count, tone: 'text-amber-700 bg-amber-50' },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => item.label === 'Blocked' ? setFilter('blocked') : undefined}
+                className={`rounded-lg px-3 py-3 text-left ${item.tone}`}
+              >
+                <div className="text-2xl font-bold">{item.value}</div>
+                <div className="mt-0.5 text-xs font-medium">{item.label}</div>
+              </button>
+            ))}
+          </div>
+          {since.idle.length > 0 && (
+            <p className="mt-3 text-xs text-slate-500">{since.idle.length} task{since.idle.length === 1 ? '' : 's'} reported as idle since the last workday.</p>
+          )}
+        </section>
       )}
 
-      <section className="mb-5">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{todayGreeting}</p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950">Today</h1>
-            <p className="mt-1 text-sm text-slate-500">What needs your attention today.</p>
-          </div>
-          <div className="text-right text-xs text-slate-400">
-            <div>{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
-          </div>
+      {/* 6. Quick actions */}
+      <section>
+        <div className="mb-3">
+          <h2 className="text-base font-bold text-slate-900">Quick actions</h2>
+          <p className="text-xs text-slate-500">Jump straight to the work you normally do.</p>
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { key: 'critical', label: 'Critical', value: new Set(flags.filter((f) => f.severity === 'danger').map((f) => f.card_id)).size, note: 'needs action', filter: null, tone: 'border-red-200 bg-red-50 text-red-700' },
-            { key: 'overdue', label: 'Overdue', value: counts.overdue, note: 'past due', filter: 'overdue' as FlagType, tone: 'border-red-200 bg-white text-red-700' },
-            { key: 'due_today', label: 'Due today', value: counts.due_today, note: 'today', filter: 'due_today' as FlagType, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
-            { key: 'blocked', label: 'Blocked', value: counts.blocked, note: 'waiting to move', filter: 'blocked' as FlagType, tone: 'border-amber-200 bg-white text-amber-700' },
+            { label: 'Projects', hint: 'Health & tasks', action: () => setUrlParams({ tab: 'projects', project: null, ptab: null, task: null, sub: null }) },
+            { label: 'Meeting minutes', hint: 'Actions & follow-ups', action: () => setUrlParams({ tab: 'minutes', project: null, ptab: null, task: null, sub: null, minute: null }) },
+            { label: 'Automation', hint: 'Nudges & rules', action: () => setUrlParams({ tab: 'automation', project: null, ptab: null, task: null, sub: null }) },
+            { label: 'Brief to tickets', hint: 'Create new work', action: () => setUrlParams({ tab: 'brief', project: null, ptab: null, task: null, sub: null }) },
           ].map((item) => (
-            <button key={item.key} type="button" onClick={() => { setQuestion(null); if (item.filter) setFilter((cur) => cur === item.filter ? null : item.filter); else { setFilter(null); setQuestion(null); setSearch(''); setAssignee(''); setProject(''); setPinnedOnly(false); } }} className={`rounded-xl border p-4 text-left transition hover:shadow-sm ${(item.filter && filter === item.filter) || (item.key === 'critical' && !filter && question === null && false) ? 'ring-2 ring-slate-900' : ''} ${item.tone}`}>
-              <p className="text-xs font-semibold uppercase tracking-wide opacity-75">{item.label}</p>
-              <div className="mt-1 flex items-end gap-2">
-                <span className="text-3xl font-bold">{item.value}</span>
-                <span className="pb-1 text-xs opacity-70">{item.note}</span>
-              </div>
-              <span className="mt-2 block text-[11px] font-medium opacity-60">Click to filter</span>
+            <button key={item.label} type="button" onClick={item.action} className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-slate-300 hover:bg-slate-50">
+              <div className="text-sm font-semibold text-slate-900">{item.label}</div>
+              <div className="mt-1 text-xs text-slate-500">{item.hint}</div>
             </button>
           ))}
         </div>
       </section>
 
-      {/* Team workload: who has too much, who has nothing */}
-      <div id="team-workload">
-        <TeamWorkload workload={workload} selected={assignee} onSelect={setAssignee} forceOpen={workloadKey} />
-      </div>
-
-      {/* Filters */}
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <input
-          id="flag-search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search title, project, person, tag…  ( / )"
-          className={`${selectCls} min-w-[12rem] flex-1`}
-        />
-        <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectCls}>
-          <option value="">Everyone</option>
-          <option value={UNASSIGNED}>Unassigned</option>
-          {people.map((n) => {
-            const w = workload.find((x) => x.name === n);
-            return (
-              <option key={n} value={n}>
-                {n}
-                {w ? ` — ${w.open} open${w.week_hours ? `, ${w.week_hours}h this week` : ''}` : ''}
-              </option>
-            );
-          })}
-        </select>
-        <select value={project} onChange={(e) => setProject(e.target.value)} className={selectCls}>
-          <option value="">All projects</option>
-          <option value={STANDALONE}>Standalone tasks</option>
-          {projectNames.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </div>
-      <p className="mb-3 text-[11px] text-slate-400">
-        Keys: <b>j</b>/<b>k</b> move · <b>o</b> open · <b>p</b> pin · <b>n</b> copy nudge · <b>s</b> snooze · <b>v</b> verify · <b>/</b> search
-      </p>
-
-      {filtersActive && (
-        <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-          Showing {cards.length} of {totalTasks} flagged task{totalTasks === 1 ? '' : 's'}
-          {filter && <> · “{filter.replace('_', ' ')}”</>}
-          {active && <> · {active.label}</>}
-          {pinnedOnly && <> · focus list</>}
-          <button onClick={clearFilters} className="text-slate-700 underline">
-            Clear filters
-          </button>
-        </div>
-      )}
-
-      {cards.length === 0 ? (
-        <p className="text-sm text-slate-500">{filtersActive ? 'Nothing matches those filters.' : 'No flags. Board looks healthy.'}</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {cards.map((c, idx) => {
-            const t = c.task;
-            const due = dueLabel(t.due_at);
-            const canOpen = Boolean((t.project_id && t.task_id) || t.url);
-            const needsVerify = c.flags.some((f) => f.type === 'unverified');
-            const pinned = isPinned(c.card_id);
-            const nudged = nudgedLabel(lastNudge(c));
-
-            return (
-              <Fragment key={c.card_id}>
-                {idx === 0 && pinnedVisible > 0 && (
-                  <div className="-mb-1 text-xs font-medium text-slate-500">★ Must unblock today ({pinnedVisible}/{MAX_PINS})</div>
-                )}
-                {idx === pinnedVisible && pinnedVisible > 0 && (
-                  <div className="-mb-1 mt-1 text-xs font-medium text-slate-500">Everything else</div>
-                )}
-
-                <div
-                  id={`flag-${c.card_id}`}
-                  role={canOpen ? 'button' : undefined}
-                  tabIndex={canOpen ? 0 : undefined}
+      {/* 7. Deterministic questions + detailed filters */}
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <details>
+          <summary className="cursor-pointer list-none px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-slate-900">Ask / filter tasks</h2>
+                <p className="text-xs text-slate-500">Predefined questions and exact filters — no AI involved.</p>
+              </div>
+              <span className="text-xs text-slate-400">Expand</span>
+            </div>
+          </summary>
+          <div className="border-t border-slate-100 px-5 py-4">
+            <div className="flex flex-wrap gap-1.5">
+              {QUESTIONS.map((q) => (
+                <button
+                  key={q.key}
+                  type="button"
                   onClick={() => {
-                    setSel(c.card_id);
-                    open(c);
+                    if (question === q.key) return setQuestion(null);
+                    clearFilters();
+                    setQuestion(q.key);
+                    setTimeout(() => document.getElementById('today-task-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
                   }}
-                  onKeyDown={(e) => e.key === 'Enter' && open(c)}
-                  className={`rounded-lg border p-3 ${severityClasses[c.severity]} ${
-                    canOpen ? 'cursor-pointer transition hover:shadow-sm' : ''
-                  } ${sel === c.card_id ? 'ring-2 ring-slate-900/40' : ''}`}
+                  className={`rounded-md border px-2.5 py-1.5 text-xs transition ${
+                    question === q.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
                 >
-                  {/* Row 1: project, title, priority, status */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="mb-0.5 text-xs text-slate-500">
-                        {t.project_name ? (
-                          <span className="font-medium text-slate-600">{t.project_name}</span>
-                        ) : (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">Standalone task</span>
-                        )}
-                      </div>
-                      <div className="text-sm font-medium text-slate-900">{t.title}</div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => togglePin(c.card_id)}
-                        title={pinned ? 'Remove from today’s focus' : 'Add to today’s focus (max 3)'}
-                        className={`text-base leading-none ${pinned ? 'text-amber-500' : 'text-slate-300 hover:text-slate-500'}`}
-                        aria-label={pinned ? 'Unpin' : 'Pin'}
-                      >
-                        {pinned ? '★' : '☆'}
-                      </button>
-                      {t.priority && (
-                        <span className={`rounded px-1.5 py-0.5 text-xs ${priorityClasses[t.priority] ?? priorityClasses.Low}`}>
-                          {t.priority}
-                        </span>
-                      )}
-                      <span className={`rounded px-1.5 py-0.5 text-xs ${statusClasses[t.status] ?? statusClasses.Pending}`}>
-                        {t.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Row 2: why it's flagged */}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {c.flags.map((f) => (
-                      <span key={f.type} className={`rounded px-1.5 py-0.5 text-xs font-medium ${badgeClasses[f.severity]}`}>
-                        {f.detail}
-                      </span>
-                    ))}
-                    {nudged && (
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-xs ${nudged.recent ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}
-                        title={nudged.recent ? 'You nudged recently — give them time before pinging again' : 'Last time you nudged this task'}
-                      >
-                        {nudged.text}
-                      </span>
-                    )}
-                  </div>
-
-                  {t.description && <p className="mt-2 line-clamp-2 text-xs text-slate-600">{t.description}</p>}
-
-                  {/* Row 3: details */}
-                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
-                    <Detail label="Assignee" value={t.assignee ?? 'Unassigned'} warn={!t.assignee} />
-                    <Detail label="Due" value={due.text} warn={due.overdue} />
-                    <Detail label="Estimate" value={t.estimated_hours ? `${t.estimated_hours}h` : '—'} />
-                    <Detail label="Assigned by" value={t.assigned_by ?? '—'} />
-                  </dl>
-
-                  {/* Row 4: counts, tags, activity */}
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                    <span>{t.subtasks_count} subtask{t.subtasks_count === 1 ? '' : 's'}</span>
-                    <span>{t.comments_count} comment{t.comments_count === 1 ? '' : 's'}</span>
-                    <span>{activityLabel(t.last_activity_at)}</span>
-                    {t.tags.map((tag) => (
-                      <span key={tag} className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Footer: actions */}
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <span className="text-xs text-slate-400">
-                      {t.project_id && t.task_id ? 'Open in Projects →' : t.url ? 'Open in Taskmandu ↗' : ''}
-                    </span>
-                    <div className="flex flex-wrap justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      {needsVerify ? (
-                        <button
-                          onClick={() => verify(c.card_id)}
-                          className="rounded-md bg-white px-2 py-1 text-xs font-medium shadow-sm hover:bg-slate-50"
-                        >
-                          Mark verified
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => copyNudge(c)}
-                            className="rounded-md bg-white px-2 py-1 text-xs font-medium shadow-sm hover:bg-slate-50"
-                            title="Copies a ready-made check-in message and logs that you nudged"
-                          >
-                            Copy nudge
-                          </button>
-                          <button
-                            onClick={() => (namesOf(c).length ? setEmailFor(c) : flashMsg('Nobody is assigned yet — assign an owner first'))}
-                            className="rounded-md bg-white px-2 py-1 text-xs font-medium shadow-sm hover:bg-slate-50"
-                            title="Review the check-in and email it to the assignee"
-                          >
-                            Email nudge
-                          </button>
-                          <button
-                            onClick={() => nudge(c.card_id)}
-                            disabled={busy === c.card_id}
-                            className="rounded-md bg-white px-2 py-1 text-xs text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            {busy === c.card_id ? 'Drafting…' : 'Draft with AI'}
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => snooze(c.card_id)}
-                        className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-white/60"
-                      >
-                        Snooze 3d
-                      </button>
-                    </div>
-                  </div>
-
-                  {nudges[c.card_id] && (
-                    <div
-                      className="mt-2 flex items-start justify-between gap-2 rounded-md bg-white p-2 text-xs text-slate-700"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span>{nudges[c.card_id]}</span>
-                      <button
-                        onClick={async () => flashMsg((await copyText(nudges[c.card_id])) ? 'Copied' : "Couldn't copy")}
-                        className="shrink-0 text-slate-400 hover:text-slate-700"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  )}
+                  {q.label}
+                </button>
+              ))}
+            </div>
+            {active && (
+              <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <div>
+                  <div className="mb-0.5 text-xs text-slate-400">{active.label}</div>
+                  {active.text}
                 </div>
-              </Fragment>
-            );
-          })}
+                <button type="button" onClick={() => setQuestion(null)} className="text-xs text-slate-400 hover:text-slate-700">Clear</button>
+              </div>
+            )}
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <input
+                id="flag-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search title, project, person, tag…"
+                className={`${selectCls} w-full`}
+              />
+              <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectCls}>
+                <option value="">Everyone</option>
+                <option value={UNASSIGNED}>Unassigned</option>
+                {people.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <select value={project} onChange={(e) => setProject(e.target.value)} className={selectCls}>
+                <option value="">All projects</option>
+                <option value={STANDALONE}>Standalone tasks</option>
+                {projectNames.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <button
+                type="button"
+                onClick={() => setPinnedOnly((v) => !v)}
+                className={`rounded-md border px-2.5 py-1 ${pinnedOnly ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 hover:bg-slate-50'}`}
+              >
+                ★ Focus {pins.length ? `(${pins.length}/${MAX_PINS})` : ''}
+              </button>
+              {filtersActive && (
+                <>
+                  <span>Showing {cards.length} of {totalTasks} flagged tasks</span>
+                  <button type="button" onClick={clearFilters} className="font-medium text-slate-700 underline">Clear filters</button>
+                </>
+              )}
+            </div>
+          </div>
+        </details>
+      </section>
+
+      {/* 8. Full task queue keeps the old actions, but is separated from the Today summary. */}
+      <section id="today-task-queue" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-bold text-slate-900">Task queue</h2>
+            <p className="text-xs text-slate-500">
+              {filtersActive ? `Showing ${cards.length} of ${totalTasks} flagged tasks.` : `${totalTasks} flagged tasks need review.`}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {pins.length > 0 && (
+              <button type="button" onClick={() => setPinnedOnly((v) => !v)} className={`rounded-md border px-2.5 py-1.5 text-xs ${pinnedOnly ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                ★ Focus ({pins.length}/{MAX_PINS})
+              </button>
+            )}
+            <button type="button" onClick={() => setShowDigest((v) => !v)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+              Morning digest
+            </button>
+          </div>
         </div>
-      )}
+
+        {showDigest && <div className="border-b border-slate-100 px-5 py-4"><DigestPanel onClose={() => setShowDigest(false)} /></div>}
+
+        {cards.length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-500">{filtersActive ? 'Nothing matches those filters.' : 'No flags. Board looks healthy.'}</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {cards.map((c, idx) => {
+              const t = c.task;
+              const due = dueLabel(t.due_at);
+              const canOpen = Boolean((t.project_id && t.task_id) || t.url);
+              const needsVerify = c.flags.some((f) => f.type === 'unverified');
+              const pinned = isPinned(c.card_id);
+              const nudged = nudgedLabel(lastNudge(c));
+              return (
+                <div
+                  key={c.card_id}
+                  id={`flag-${c.card_id}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSel(c.card_id)}
+                  className={`px-5 py-4 transition hover:bg-slate-50 ${sel === c.card_id ? 'bg-slate-50 ring-1 ring-inset ring-slate-300' : ''}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${c.severity === 'danger' ? 'bg-red-500' : c.severity === 'warning' ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); if (canOpen) open(c); }} className="text-left font-semibold text-slate-900 hover:underline">{t.title}</button>
+                        {t.priority && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${priorityClasses[t.priority] ?? priorityClasses.Medium}`}>{t.priority}</span>}
+                        {t.status && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusClasses[t.status] ?? statusClasses.Pending}`}>{t.status}</span>}
+                        {pinned && <span className="text-[10px] font-semibold text-slate-500">★ pinned</span>}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{t.project_name || 'Standalone task'} · {t.assignee || 'Unassigned'} · {due.text} · {activityLabel(t.last_activity_at)}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {c.flags.map((f) => <span key={f.type} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badgeClasses[f.severity]}`}>{f.type.replace('_', ' ')}</span>)}
+                        {nudged && <span className={`rounded-full px-2 py-0.5 text-[10px] ${nudged.recent ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>{nudged.text}</span>}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button type="button" disabled={!canOpen} onClick={() => open(c)} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-40">Open</button>
+                        <button type="button" onClick={() => togglePin(c.card_id)} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-white">{pinned ? 'Unpin' : 'Pin'}</button>
+                        <button type="button" onClick={() => copyNudge(c)} disabled={!t.assignee} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-white disabled:opacity-40">Copy nudge</button>
+                        <button type="button" onClick={() => setEmailFor(c)} disabled={!t.assignee} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-white disabled:opacity-40">Email</button>
+                        {needsVerify && <button type="button" onClick={() => verify(c.card_id)} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">Verify</button>}
+                        <button type="button" onClick={() => snooze(c.card_id)} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-white">Snooze 3d</button>
+                      </div>
+                      {nudges[c.card_id] && (
+                        <div className="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-700" onClick={(e) => e.stopPropagation()}>
+                          {nudges[c.card_id]}
+                        </div>
+                      )}
+                    </div>
+                    <span className="hidden text-[11px] text-slate-400 sm:block">{idx + 1}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Existing rich workload/detail view is still available, but no longer dominates Today. */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <details>
+          <summary className="cursor-pointer list-none px-5 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-slate-900">Detailed workload</h2>
+                <p className="text-xs text-slate-500">Open the full team workload breakdown when you need it.</p>
+              </div>
+              <span className="text-xs text-slate-400">Expand</span>
+            </div>
+          </summary>
+          <div id="team-workload" className="border-t border-slate-100 px-5 py-4">
+            <TeamWorkload workload={workload} selected={assignee} onSelect={setAssignee} forceOpen={workloadKey} />
+          </div>
+        </details>
+      </div>
+
+      {/* Keep the original Since strip available for individual change navigation. */}
+      {since && <SinceStrip since={since} onOpenItem={openSinceItem} onShowFree={showFree} />}
     </div>
   );
+
 }
 
 function Detail({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
