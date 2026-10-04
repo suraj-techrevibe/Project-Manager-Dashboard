@@ -57,6 +57,7 @@ const SECONDARY_METRICS = metricLabels.filter((m) => !CRITICAL_KEYS.includes(m.k
 const JUMP_TARGETS: { id: string; label: string }[] = [
   { id: 'critical-metrics', label: 'Critical' },
   { id: 'since-strip', label: 'Since yesterday' },
+  { id: 'unassigned-work', label: 'Unassigned' },
   { id: 'team-workload', label: 'Team workload' },
   { id: 'task-list', label: 'Task list' },
 ];
@@ -485,6 +486,18 @@ export default function FlagsPanel({
     return q ? { label: q.label, ...q.run({ all: allCards, workload, overloadAt }) } : null;
   }, [question, allCards, workload, overloadAt]);
 
+  const unassignedTasks = useMemo(
+    () => allCards.filter((c) => !c.task.assignee),
+    [allCards]
+  );
+
+  const unassignedSubtasks = useMemo(
+    () => subtasks.filter((s) => s.issues.includes('unassigned')),
+    [subtasks]
+  );
+
+  const unassignedTotal = unassignedTasks.length + unassignedSubtasks.length;
+
   const isPinned = (id: number) => pins.includes(id);
 
   const cards: TaskCard[] = useMemo(() => {
@@ -808,6 +821,94 @@ export default function FlagsPanel({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* ===== Unassigned work ===== */}
+      <div id="unassigned-work" className="mb-4 scroll-mt-4">
+        <div className="mb-2 flex items-end justify-between gap-3">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-amber-700">Unassigned work</div>
+            <div className="text-sm text-slate-500">
+              Work with no owner yet. Click any item to open the exact task or sub-task.
+            </div>
+          </div>
+          <div className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+            {unassignedTotal} total
+          </div>
+        </div>
+
+        {unassignedTotal === 0 ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Everything currently has an owner.
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {unassignedTasks.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-white">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <div className="text-sm font-semibold text-slate-900">
+                    Tasks <span className="ml-1 text-amber-700">{unassignedTasks.length}</span>
+                  </div>
+                  <div className="text-xs text-slate-400">Parent tasks with no assignee</div>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {unassignedTasks.map((c) => {
+                    const t = c.task;
+                    const canOpen = Boolean((t.project_id && t.task_id) || t.url);
+                    return (
+                      <button
+                        key={c.card_id}
+                        type="button"
+                        disabled={!canOpen}
+                        onClick={() => canOpen && onOpenTask({ projectId: t.project_id!, taskId: t.task_id! })}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-amber-50 disabled:cursor-default disabled:opacity-60"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-slate-900">{t.title}</span>
+                          <span className="mt-0.5 block truncate text-xs text-slate-400">
+                            {t.project_name ?? 'Standalone task'} · {t.status}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-amber-700">
+                          {canOpen ? 'Open →' : 'No link'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {unassignedSubtasks.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-white">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <div className="text-sm font-semibold text-slate-900">
+                    Sub-tasks <span className="ml-1 text-amber-700">{unassignedSubtasks.length}</span>
+                  </div>
+                  <div className="text-xs text-slate-400">Sub-tasks with no assignee</div>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {unassignedSubtasks.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => onOpenTask({ projectId: s.project_id, taskId: s.task_id, subId: s.subtask_id })}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-amber-50"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-slate-900">{s.title}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-400">
+                          {s.project_name} · {s.parent_title}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs font-medium text-amber-700">Open →</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ===== Since yesterday ===== */}
