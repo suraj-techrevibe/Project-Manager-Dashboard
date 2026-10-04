@@ -1,6 +1,6 @@
 import { Head } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import FlagsPanel from '@/Components/Pm/FlagsPanel';
+import TodayDashboard from '@/Components/Pm/TodayDashboard';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
@@ -71,10 +71,8 @@ export default function PmIndex({
 
         {/* Kept mounted (just hidden) so filters, pins and a fresh Sync survive a trip to another tab. */}
         <div hidden={tab !== 'today'}>
-          <FlagsPanel
-            active={tab === 'today'}
+          <TodayDashboard
             flags={flags}
-            metrics={metrics}
             workload={workload}
             since={since}
             lastSyncedAt={lastSyncedAt}
