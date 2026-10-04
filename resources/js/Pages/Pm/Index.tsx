@@ -7,15 +7,17 @@ import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import GitPanel from '@/Components/Pm/GitPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import MeetingMinutesPanel from '@/Components/Pm/MeetingMinutesPanel';
+import AutomationPanel from '@/Components/Pm/AutomationPanel';
 import { setUrlParams, useUrlParam } from '@/lib/urlState';
 import type { PmFlag, PmMetrics, SinceSummary, TaskFocus, WorkloadRow } from '@/types/pm';
 
-type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects' | 'minutes';
+type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects' | 'minutes' | 'automation';
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'projects', label: 'Projects' },
   { key: 'minutes', label: 'Meeting minutes' },
+  { key: 'automation', label: 'Automation' },
   { key: 'brief', label: 'Brief to tickets' },
   { key: 'reports', label: 'Reports' },
   { key: 'scope', label: 'Scope check' },
@@ -81,6 +83,7 @@ export default function PmIndex({
         </div>
         {tab === 'projects' && <ProjectsPanel />}
         {tab === 'minutes' && <MeetingMinutesPanel />}
+        {tab === 'automation' && <AutomationPanel />}
         {tab === 'brief' && <BriefDrafter />}
         {tab === 'reports' && <ReportsPanel />}
         {tab === 'scope' && <ScopeCheck />}
