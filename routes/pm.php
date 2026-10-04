@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\EmailController;
 use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\ProjectController;
@@ -38,6 +39,11 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::get('minutes/{minute}', [MeetingMinutesController::class, 'show'])->name('minutes.show');
     Route::patch('minutes/{minute}', [MeetingMinutesController::class, 'update'])->name('minutes.update');
     Route::delete('minutes/{minute}', [MeetingMinutesController::class, 'destroy'])->name('minutes.destroy');
+
+    // Plain email (Brevo SMTP) for nudges and meeting minutes, plus the name -> email list.
+    Route::get('contacts', [EmailController::class, 'contacts'])->name('contacts.index');
+    Route::put('contacts', [EmailController::class, 'saveContacts'])->name('contacts.save');
+    Route::post('email', [EmailController::class, 'send'])->name('email.send');
 
     // Git status is safe to expose to any authed user; the mutating actions
     // (fetch/pull/push/checkout) run real git commands against the server's

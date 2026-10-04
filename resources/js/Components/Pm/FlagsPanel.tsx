@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import type { PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
 import DigestPanel from './DigestPanel';
+import EmailModal from './EmailModal';
 import SinceStrip from './SinceStrip';
 import TeamWorkload, { levelOf, overloadThreshold } from './TeamWorkload';
 
@@ -356,6 +357,7 @@ export default function FlagsPanel({
   const [nudges, setNudges] = useState<Record<number, string>>({});
   const [nudgedAt, setNudgedAt] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
+  const [emailFor, setEmailFor] = useState<TaskCard | null>(null);
   const [filter, setFilter] = useState<FlagType | null>(null);
   const [search, setSearch] = useState('');
   const [assignee, setAssignee] = useState('');
@@ -665,6 +667,21 @@ export default function FlagsPanel({
 
   return (
     <div>
+      {emailFor && (
+        <EmailModal
+          title="Email nudge"
+          names={namesOf(emailFor)}
+          subject={`Quick check-in: ${emailFor.task.title}`}
+          body={templateNudge(emailFor)}
+          cardId={emailFor.card_id}
+          onClose={() => setEmailFor(null)}
+          onSent={(n) => {
+            setNudgedAt((m) => ({ ...m, [emailFor.card_id]: new Date().toISOString() }));
+            setEmailFor(null);
+            flashMsg(`Nudge emailed to ${n} ${n === 1 ? 'person' : 'people'}`);
+          }}
+        />
+      )}
       {/* Freshness + quick actions */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
@@ -937,6 +954,13 @@ export default function FlagsPanel({
                             title="Copies a ready-made check-in message and logs that you nudged"
                           >
                             Copy nudge
+                          </button>
+                          <button
+                            onClick={() => (namesOf(c).length ? setEmailFor(c) : flashMsg('Nobody is assigned yet — assign an owner first'))}
+                            className="rounded-md bg-white px-2 py-1 text-xs font-medium shadow-sm hover:bg-slate-50"
+                            title="Review the check-in and email it to the assignee"
+                          >
+                            Email nudge
                           </button>
                           <button
                             onClick={() => nudge(c.card_id)}

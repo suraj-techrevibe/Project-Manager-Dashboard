@@ -24,10 +24,11 @@ class MeetingMinutesController extends Controller
         $minutes = MeetingMinutes::query()
             ->orderByDesc('meeting_date')
             ->orderByDesc('id')
-            ->get(['id', 'title', 'meeting_date', 'attendees', 'action_items'])
+            ->get(['id', 'title', 'status', 'meeting_date', 'attendees', 'action_items'])
             ->map(fn (MeetingMinutes $m) => [
                 'id' => $m->id,
                 'title' => $m->title,
+                'status' => $m->status ?? 'final',
                 'meeting_date' => $m->meeting_date?->toDateString(),
                 'attendees' => $m->attendees ?? [],
                 'action_items' => $m->action_items ?? [],
@@ -114,6 +115,11 @@ class MeetingMinutesController extends Controller
     {
         return $r->validate([
             'title' => 'required|string|max:200',
+            'status' => 'nullable|in:draft,final',
+            'topics' => 'nullable|array|max:40',
+            'topics.*.title' => 'nullable|string|max:200',
+            'topics.*.notes' => 'nullable|string|max:4000',
+            'topics.*.decision' => 'nullable|string|max:300',
             'meeting_date' => 'required|date_format:Y-m-d',
             'attendees' => 'nullable|array',
             'attendees.*' => 'string|max:100',
@@ -135,8 +141,10 @@ class MeetingMinutesController extends Controller
         return [
             'id' => $m->id,
             'title' => $m->title,
+            'status' => $m->status ?? 'final',
             'meeting_date' => $m->meeting_date?->toDateString(),
             'attendees' => $m->attendees ?? [],
+            'topics' => $m->topics,
             'agenda_items' => $m->agenda_items ?? [],
             'discussion' => $m->discussion,
             'decisions' => $m->decisions ?? [],

@@ -20,5 +20,6 @@ Schedule::command('pm:report --weekly')->fridays()->at('18:30');
 // Only runs when a channel is configured (PM_DIGEST_SLACK_WEBHOOK / PM_DIGEST_EMAIL).
 Schedule::command('pm:digest')
     ->weekdays()
-    ->dailyAt(config('pm.digest.time', '09:00'))
+    ->dailyAt(config('pm.digest.time', '16:00'))
+    ->timezone('Australia/Sydney')   // use your team's timezone
     ->when(fn () => filled(config('pm.digest.slack_webhook')) || filled(config('pm.digest.email')));

@@ -9,6 +9,8 @@ import type {
   GitStatus,
   PullRequest,
   Employee,
+  Contact,
+  SendEmailInput,
   DigestPreview,
   TodayData,
   Project,
@@ -179,6 +181,13 @@ export const pmApi = {
 
   removeProjectMember: (projectId: string, memberId: string) =>
     api.delete<P>(`/projects/${projectId}/members/${memberId}`),
+
+  // ---- Email (Brevo SMTP) ----------------------------------------------
+  contacts: () => api.get<{ contacts: Contact[] }>('/contacts'),
+
+  saveContacts: (contacts: { name: string; email: string }[]) => api.put<{ saved: number }>('/contacts', { contacts }),
+
+  sendEmail: (data: SendEmailInput) => api.post<{ sent: number; at: string }>('/email', data),
 
   // ---- Meeting minutes (plain local CRUD, no Taskmandu) -----------------
 

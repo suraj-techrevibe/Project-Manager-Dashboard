@@ -15,6 +15,7 @@ class MeetingMinutes extends Model
         'attendees' => 'array',
         'agenda_items' => 'array',
         'decisions' => 'array',
+        'topics' => 'array',
         'action_items' => 'array',
     ];
 }

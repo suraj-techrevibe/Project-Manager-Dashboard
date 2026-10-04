@@ -16,4 +16,10 @@ return [
         // How many tasks to list per section before "...and N more".
         'max_items' => (int) env('PM_DIGEST_MAX_ITEMS', 5),
     ],
+
+    // Emails sent from the dashboard (nudges, meeting minutes). From address and SMTP come from MAIL_*.
+    'mail' => [
+        // Replies go here, so people answer the PM directly and not the Brevo sender address.
+        'reply_to' => env('PM_REPLY_TO'),
+    ],
 ];

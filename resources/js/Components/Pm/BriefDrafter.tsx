@@ -15,7 +15,7 @@ import {
 import { localISO, parseMeetingNotes } from '../../lib/meetingNotes';
 import { TASK_PRIORITIES } from '../../types/pm';
 import type { BriefContext, Project, PushTicket } from '../../types/pm';
-
+import MeetingPicker from './MeetingPicker';
 const inputCls = 'rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-slate-400 focus:outline-none';
 
 /** Pulls the most useful message out of a failed request. */
@@ -342,14 +342,18 @@ export default function BriefDrafter() {
         >
           Split without AI
         </button>
-        <button
-          onClick={fromMeetingNotes}
+
+                <MeetingPicker
+          employees={employees}
           disabled={loading}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          title='Picks out only the action items: lines with TODO / Action: / [ ] / @name, or under an "Action items:" heading. Fills in the assignee from @name and the due date from "by Friday", "12 Oct", "tomorrow"… No AI.'
-        >
-          From meeting notes
-        </button>
+          onError={setDraftError}
+          onLoad={(fresh, msg) => {
+            setDraftError(null);
+            setAiQuestions([]);
+            loadDrafts(fresh);
+            setNotice(msg);
+          }}
+        />
         <button
           onClick={draft}
           disabled={loading || over}

@@ -334,9 +334,18 @@ export interface ActionItem {
   due_date: string | null;
 }
 
+export type MinutesStatus = 'draft' | 'final';
+
+export interface MinutesTopic {
+  title: string;
+  notes: string;
+  decision: string;
+}
+
 export interface MeetingMinutesSummary {
   id: number;
   title: string;
+  status: MinutesStatus;
   meeting_date: string;
   attendees: string[];
   action_items: ActionItem[];
@@ -344,6 +353,8 @@ export interface MeetingMinutesSummary {
 
 export interface MeetingMinutesFull extends Omit<MeetingMinutesSummary, 'action_items'> {
   agenda_items: string[];
+  /** Structured topics the wizard writes; null on entries made before the wizard existed. */
+  topics: MinutesTopic[] | null;
   discussion: string | null;
   decisions: string[];
   action_items: ActionItem[];
@@ -364,6 +375,8 @@ export interface MinutesDraft {
 
 export interface MinutesInput {
   title: string;
+  status?: MinutesStatus;
+  topics?: MinutesTopic[];
   meeting_date: string;
   attendees?: string[];
   agenda_items?: string[];
@@ -448,4 +461,19 @@ export interface Report {
   notes: string | null;
   body: string;
   content: ReportContent;
+}
+
+export interface Contact {
+  name: string;
+  designation?: string | null;
+  /** '' until you type one. */
+  email: string;
+}
+
+export interface SendEmailInput {
+  to: string[];
+  subject: string;
+  body: string;
+  /** When set, the send is also logged as a nudge on that task. */
+  card_id?: number;
 }
