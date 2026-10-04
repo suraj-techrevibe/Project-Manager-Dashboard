@@ -360,7 +360,16 @@ function PushActionItemsModal({ items, onClose, minuteId }: { items: ActionItem[
           assignedByName: item.owner || undefined,
           dueDate: item.due_date || quickDates()[3].value,
         });
-        out.push({ task: item.task, ok: true });\n        if (minuteId) {\n          const next = items.map((a, j) => j === i ? { ...a, pushed_to_board: true, pushed_project_id: projectId } : a);\n          await pmApi.minutesUpdate(minuteId, { action_items: next });\n        }
+        out.push({ task: item.task, ok: true });
+if (minuteId) {
+  const next = items.map((a, j) =>
+    j === i
+      ? { ...a, pushed_to_board: true, pushed_project_id: projectId }
+      : a
+  );
+
+  await pmApi.minutesUpdate(minuteId, { action_items: next });
+}
       } catch (e) {
         out.push({ task: item.task, ok: false, error: err(e, 'Failed') });
       }
