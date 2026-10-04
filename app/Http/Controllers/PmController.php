@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
-use App\Models\PmProjectHealth;
 use App\Models\PmWaitingClient;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\DigestService;
