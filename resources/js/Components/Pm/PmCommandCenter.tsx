@@ -177,6 +177,14 @@ export default function PmCommandCenter() {
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Stale work</h2><p className="text-xs text-slate-500">Open tasks with no movement for 3+ days.</p></div><button onClick={() => openToday()} className="text-xs underline">Open Today →</button></div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {data.aging.map((a) => <div key={a.card_id} className="rounded-lg border border-slate-100 p-3"><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{a.title}</span><span className="shrink-0 text-xs text-amber-700">{a.days}d idle</span></div><div className="mt-1 text-xs text-slate-500">{a.project_name || 'Standalone'} · {a.assignee || 'Unassigned'} · {a.status}</div><button onClick={() => openTask(a.project_id, a.task_id)} className="mt-2 text-xs font-medium underline">Review task →</button></div>)}
+          {!data.aging.length && <div className="text-sm text-slate-500">No stale open work.</div>}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">What changed</h2><p className="text-xs text-slate-500">Last 24 hours from PM sync activity.</p></div><button onClick={() => setUrlParams({ tab: 'reports' })} className="text-xs underline">Open reports →</button></div>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           {data.recent.map((r, i) => <div key={`${r.type}-${i}`} className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
@@ -186,6 +194,7 @@ export default function PmCommandCenter() {
           {!data.recent.length && <div className="text-sm text-slate-500">No changes recorded yet.</div>}
         </div>
       </section>
+      {followUp && <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-xl rounded-xl border border-slate-200 bg-white p-4 shadow-xl"><div className="text-sm font-semibold">Follow-up draft</div><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{followUp}</p><button onClick={() => setFollowUp(null)} className="mt-3 rounded-md bg-slate-900 px-3 py-1.5 text-xs text-white">Close</button></div>}
     </section>
   );
 }
