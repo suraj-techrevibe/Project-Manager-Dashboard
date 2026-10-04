@@ -2,6 +2,7 @@
 
 namespace App\Services\Pm;
 
+use App\Models\PmActivity;
 use App\Models\PmCard;
 use App\Models\PmMeetingTemplate;
 use App\Models\PmNudgeBatch;
