@@ -222,37 +222,93 @@ function DetailsTab({ project }: { project: Project }) {
 
 function ProjectTimeline({ project }: { project: Project }) {
   const tasks = [...project.tasks].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  const active = tasks.filter((t) => t.status !== 'Completed' && t.status !== 'Cancelled');
-  const completed = tasks.filter((t) => t.status === 'Completed').length;
-  const blocked = tasks.filter((t) => t.status === 'Blocked').length;
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const overdue = active.filter((t) => new Date(t.dueDate).getTime() < today.getTime()).length;
+  const parseDate = (value: string | null | undefined) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const projectStart = parseDate(project.startDate) ?? today;
+  const taskDates = tasks.map((t) => parseDate(t.dueDate)).filter(Boolean) as Date[];
+  const projectEnd = parseDate(project.endDate) ?? taskDates.reduce((max, d) => d > max ? d : max, projectStart);
+  const startMs = projectStart.getTime();
+  const endMs = Math.max(projectEnd.getTime(), startMs + 86400000);
+  const span = endMs - startMs;
+  const days = Math.max(7, Math.ceil(span / 86400000));
+  const chartWidth = Math.max(760, days * 42);
+  const pct = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - startMs) / span) * 100));
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const marks = Array.from({ length: Math.ceil(days / 7) + 1 }, (_, i) => {
+    const d = new Date(startMs + Math.min(days, i * 7) * 86400000);
+    return { d, p: pct(d) };
+  });
+  const todayP = pct(today);
+  const todayVisible = today.getTime() >= startMs && today.getTime() <= endMs;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-center justify-between">
-        <div><h4 className="text-sm font-medium text-slate-900">Project timeline</h4><p className="text-xs text-slate-500">Schedule, delivery and upcoming task milestones.</p></div>
-        <span className="text-xs text-slate-500">{completed}/{tasks.length} done</span>
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <div className="rounded-lg bg-slate-50 p-2"><div className="font-medium text-slate-900">{tasks.length}</div><div className="text-[11px] text-slate-500">Total tasks</div></div>
-        <div className="rounded-lg bg-slate-50 p-2"><div className="font-medium text-slate-900">{overdue}</div><div className="text-[11px] text-slate-500">Overdue</div></div>
-        <div className="rounded-lg bg-slate-50 p-2"><div className="font-medium text-slate-900">{blocked}</div><div className="text-[11px] text-slate-500">Blocked</div></div>
-      </div>
-      <div className="mt-4 flex items-center gap-3 text-xs text-slate-500">
-        <span>Start: {formatDate(project.startDate)}</span><span className="text-slate-300">→</span><span>End: {formatDate(project.endDate)}</span>
-      </div>
-      <div className="mt-4 border-t border-slate-100 pt-3">
-        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Upcoming milestones</div>
-        <div className="space-y-2">
-          {active.slice(0, 6).map((t) => <div key={t._id} className="flex items-center justify-between gap-3 text-sm"><span className="truncate text-slate-700">{t.title}</span><span className="shrink-0 text-xs text-slate-500">{formatDate(t.dueDate)}</span></div>)}
-          {!active.length && <div className="text-xs text-slate-400">No upcoming task milestones.</div>}
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h4 className="text-sm font-medium text-slate-900">Project timeline</h4>
+          <p className="text-xs text-slate-500">Gantt view of project tasks.</p>
         </div>
+        <span className="text-xs text-slate-500">{tasks.length} tasks</span>
+      </div>
+      {tasks.length === 0 ? (
+        <div className="mt-4 rounded-lg bg-slate-50 p-4 text-xs text-slate-500">Add project tasks to see the Gantt timeline.</div>
+      ) : (
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          <div style={{ minWidth: 1040 }}>
+            <div className="grid border-b border-slate-200 bg-slate-50" style={{ gridTemplateColumns: '240px 1fr' }}>
+              <div className="border-r border-slate-200 px-3 py-2 text-xs font-medium text-slate-500">Task</div>
+              <div className="relative h-10" style={{ width: chartWidth }}>
+                {marks.map(({ d, p }) => <div key={d.toISOString()} className="absolute inset-y-0 border-l border-slate-200 px-2 py-2 text-[11px] text-slate-500" style={{ left: p + '%' }}>{fmt(d)}</div>)}
+              </div>
+            </div>
+            {tasks.map((task) => {
+              const due = parseDate(task.dueDate) ?? projectEnd;
+              const taskStart = parseDate(task.createdAt) ?? projectStart;
+              const left = pct(taskStart);
+              const width = Math.max(1.5, Math.min(100 - left, ((due.getTime() - taskStart.getTime()) / span) * 100));
+              const overdue = task.status !== 'Completed' && task.status !== 'Cancelled' && due < today;
+              const bar = task.status === 'Completed' ? 'bg-emerald-500' : task.status === 'Blocked' ? 'bg-rose-500' : overdue ? 'bg-amber-500' : 'bg-slate-700';
+              return (
+                <div key={task._id} className="grid min-h-12 border-b border-slate-100" style={{ gridTemplateColumns: '240px 1fr' }}>
+                  <div className="flex min-w-0 items-center border-r border-slate-100 px-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-medium text-slate-700" title={task.title}>{task.title}</div>
+                      <div className="text-[10px] text-slate-400">{task.status} · due {fmt(due)}</div>
+                    </div>
+                  </div>
+                  <div className="relative" style={{ width: chartWidth }}>
+                    {marks.map(({ d, p }) => <div key={d.toISOString()} className="absolute inset-y-0 border-l border-slate-100" style={{ left: p + '%' }} />)}
+                    {todayVisible && <div className="absolute inset-y-0 z-10 w-px bg-slate-400" style={{ left: todayP + '%' }} title="Today" />}
+                    <div className="absolute top-1/2 h-6 -translate-y-1/2 rounded" style={{ left: left + '%', width: width + '%', minWidth: 36 }}>
+                      <div className={'h-full w-full rounded ' + bar} title={task.title} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="grid bg-slate-50" style={{ gridTemplateColumns: '240px 1fr' }}>
+              <div className="border-r border-slate-200 px-3 py-2 text-[11px] text-slate-400">Project dates</div>
+              <div className="flex justify-between px-2 py-2 text-[10px] text-slate-400" style={{ width: chartWidth }}>
+                <span>Start {fmt(projectStart)}</span><span>End {fmt(projectEnd)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-slate-500">
+        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-slate-700" />Active</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-emerald-500" />Completed</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-rose-500" />Blocked</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-amber-500" />Overdue</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-slate-400" />Today</span>
       </div>
     </div>
   );
 }
-
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
