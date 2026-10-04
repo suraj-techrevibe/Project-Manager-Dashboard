@@ -132,6 +132,8 @@ class MeetingMinutesController extends Controller
             'action_items.*.task' => 'required_with:action_items|string|max:300',
             'action_items.*.owner' => 'nullable|string|max:100',
             'action_items.*.due_date' => 'nullable|date_format:Y-m-d',
+            'action_items.*.pushed_to_board' => 'nullable|boolean',
+            'action_items.*.pushed_project_id' => ['nullable','regex:/^[0-9a-fA-F]{24}$/'],
             'raw_notes' => 'nullable|string|max:8000',
         ]);
     }
