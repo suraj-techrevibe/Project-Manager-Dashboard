@@ -4,6 +4,7 @@ namespace App\Services\Pm;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
+use App\Models\PmSubtask;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -90,6 +91,62 @@ class FlagService
         ];
     }
 
+    /**
+     * Open sub-tasks that need a decision: nobody assigned, or blocked. Unassigned comes first —
+     * those are the ones that silently never get done. Snoozed ones are hidden for 3 days.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function subtasks(): array
+    {
+        $today = now()->startOfDay();
+
+        return PmSubtask::query()
+            ->whereNotIn('status', ['Completed', 'Cancelled'])
+            ->where(fn ($q) => $q->whereNull('snoozed_until')->orWhere('snoozed_until', '<', $today))
+            ->get()
+            ->map(function (PmSubtask $s) use ($today) {
+                $issues = [];
+                if (! $s->assignee) {
+                    $issues[] = 'unassigned';
+                }
+                if ($s->status === 'Blocked') {
+                    $issues[] = 'blocked';
+                }
+                if (! $issues) {
+                    return null;
+                }
+
+                return [
+                    'id' => $s->id,
+                    'issues' => $issues,
+                    'title' => $s->title,
+                    'status' => $s->status,
+                    'assignee' => $s->assignee,
+                    'assigned_by' => $s->assigned_by,
+                    'comments_count' => $s->comments_count,
+                    'project_id' => $s->project_id,
+                    'project_name' => $s->project_name,
+                    'task_id' => $s->task_id,
+                    'subtask_id' => $s->subtask_id,
+                    'parent_title' => $s->parent_title,
+                    'parent_assignee' => $s->parent_assignee,
+                    'parent_due_at' => $s->parent_due_at?->toDateString(),
+                    'parent_overdue' => (bool) ($s->parent_due_at && $s->parent_due_at->lt($today)),
+                    'age_days' => $s->remote_created_at ? (int) $s->remote_created_at->diffInDays(now(), true) : null,
+                ];
+            })
+            ->filter()
+            // Unassigned first, then the ones sitting under an overdue parent, then oldest.
+            ->sortBy(fn ($r) => [
+                in_array('unassigned', $r['issues'], true) ? 0 : 1,
+                $r['parent_overdue'] ? 0 : 1,
+                -($r['age_days'] ?? 0),
+            ])
+            ->values()
+            ->all();
+    }
+
     /** @return array<int, string> card_id => ISO timestamp of its latest nudge */
     private function lastNudges(): array
     {
@@ -138,6 +195,7 @@ class FlagService
             'hours' => 0.0,
             'week_hours' => 0.0,
             'no_estimate' => 0,
+            'subtasks' => 0,
             'capacity' => $capacity,
         ];
 
@@ -167,6 +225,21 @@ class FlagService
                         $rows[$name]['due_today']++;
                     }
                     if ($c->status === 'Blocked') {
+                        $rows[$name]['blocked']++;
+                    }
+                }
+            });
+
+        PmSubtask::query()
+            ->whereNotIn('status', ['Completed', 'Cancelled'])
+            ->whereNotNull('assignee')
+            ->get()
+            ->each(function ($s) use (&$rows, $blank) {
+                foreach (array_filter(array_map('trim', explode(',', $s->assignee))) as $name) {
+                    $rows[$name] ??= $blank($name);
+                    $rows[$name]['open']++;
+                    $rows[$name]['subtasks'] = ($rows[$name]['subtasks'] ?? 0) + 1;
+                    if ($s->status === 'Blocked') {
                         $rows[$name]['blocked']++;
                     }
                 }

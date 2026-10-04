@@ -29,6 +29,28 @@ export interface PmFlag {
 export interface TaskFocus {
   projectId: string;
   taskId: string;
+  /** Also expand/scroll to this sub-task inside the task. */
+  subId?: string;
+}
+
+/** A sub-task that needs a decision (nobody assigned, or blocked) — see SubtaskInbox. */
+export interface SubtaskFlag {
+  id: number;
+  issues: ('unassigned' | 'blocked')[];
+  title: string;
+  status: string;
+  assignee: string | null;
+  assigned_by: string | null;
+  comments_count: number;
+  project_id: string;
+  project_name: string;
+  task_id: string;
+  subtask_id: string;
+  parent_title: string;
+  parent_assignee: string | null;
+  parent_due_at: string | null;
+  parent_overdue: boolean;
+  age_days: number | null;
 }
 
 export interface PmMetrics {
@@ -53,6 +75,8 @@ export interface WorkloadRow {
   hours?: number;
   /** Open hours due by the end of this week, overdue included. */
   week_hours?: number;
+  /** Open sub-tasks assigned to them (counted in `open`, but with no hours). */
+  subtasks?: number;
   /** Open tasks with no estimate — their hours are unknown, so load is understated. */
   no_estimate?: number;
   /** Weekly capacity in hours (PM_WEEKLY_CAPACITY_HOURS). */
@@ -93,6 +117,8 @@ export interface TodayData {
   flags: PmFlag[];
   metrics: PmMetrics;
   workload: WorkloadRow[];
+  subtasks: SubtaskFlag[];
+  staff: Employee[];
   since: SinceSummary;
   lastSyncedAt: string | null;
 }
@@ -128,7 +154,6 @@ export interface PushResult {
   card_id?: number;
   /** true when Taskmandu rejected priority/hours/tags on create and they went into the description instead */
   fields_fallback?: boolean;
-  capacity_warning?: string | null;
 }
 
 export interface ExistingTitle {
@@ -477,59 +502,4 @@ export interface SendEmailInput {
   body: string;
   /** When set, the send is also logged as a nudge on that task. */
   card_id?: number;
-}
-
-export interface CommandCenterData {
-  actions: Array<{
-    kind: string;
-    priority: number;
-    card_id: number | null;
-    title: string;
-    project_id: string | null;
-    project_name: string | null;
-    assignee: string | null;
-    reason: string;
-    action: string;
-    task_id: string | null;
-  }>;
-  overloaded: Array<{ name: string; week_hours: number; capacity: number; excess: number; open: number; overdue: number }>;
-  free: Array<{ name: string; week_hours: number; capacity: number; room: number; open: number }>;
-  projects: Array<{
-    project_id: string;
-    project_name: string;
-    score: number;
-    health: 'red' | 'amber' | 'green';
-    delivery: number;
-    tasks: number;
-    schedule: number;
-    team: number;
-    client: number;
-    overdue: number;
-    blocked: number;
-    unassigned: number;
-    idle_days: number;
-    waiting_days: number;
-    waiting_count: number;
-    due_soon: number;
-    completed: number;
-    total: number;
-    next_due: string | null;
-    why: string[];
-  }>;
-  waiting: Array<{
-    id: number;
-    title: string;
-    project_id: string | null;
-    waiting_since: string | null;
-    days: number;
-    severity: 'red' | 'amber' | 'slate';
-  }>;
-  recent: Array<{
-    type: string;
-    title: string | null;
-    occurred_at: string | null;
-    project: string | null;
-    from: string | null;
-    to: string | null;
-  }>;
 }

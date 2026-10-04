@@ -4,6 +4,7 @@ namespace App\Services\Pm;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
+use App\Models\PmSubtask;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use RuntimeException;
@@ -130,6 +131,7 @@ class TaskmanduSync
         $projects = $this->client->paginate('/projects');
         $frontend = rtrim(config('services.taskmandu.frontend_url', ''), '/');
         $count = 0;
+        $seenSubs = [];
 
         foreach ($projects as $p) {
             foreach ($p['tasks'] ?? [] as $t) {
@@ -159,10 +161,63 @@ class TaskmanduSync
                 $card->save();
                 $this->track($card, $existed, $oldStatus, $oldComments);
                 $count++;
+
+                $this->syncSubTasks($p, $t, $card, $employees, $seenSubs);
             }
         }
 
+        // Sub-tasks deleted in Taskmandu (or whose project/task is gone) must not linger on Today.
+        PmSubtask::query()->whereNotIn('external_id', $seenSubs ?: [''])->delete();
+
         return $count;
+    }
+
+    /**
+     * Mirrors one task's sub-tasks into pm_subtasks. Sub-tasks have no due date or estimate of
+     * their own, so we keep the parent's due date for context.
+     *
+     * @param  array<string>  $seen  collects every external_id written, for pruning
+     */
+    private function syncSubTasks(array $project, array $task, PmCard $parent, array $employees, array &$seen): void
+    {
+        $frontend = rtrim(config('services.taskmandu.frontend_url', ''), '/');
+
+        foreach ($task['subTasks'] ?? [] as $s) {
+            $key = "project:{$project['_id']}:task:{$task['_id']}:sub:{$s['_id']}";
+            $seen[] = $key;
+
+            PmSubtask::updateOrCreate(['external_id' => $key], [
+                'project_id' => $project['_id'],
+                'project_name' => $project['name'],
+                'task_id' => $task['_id'],
+                'subtask_id' => $s['_id'],
+                'parent_title' => $task['title'],
+                'parent_assignee' => $parent->assignee,
+                'parent_due_at' => $task['dueDate'] ?? null,
+                'title' => $s['title'],
+                'assignee' => $this->names($employees, $s['assignedToId'] ?? []),
+                'assigned_by' => $s['assignedByName'] ?? null,
+                'status' => $s['status'] ?? 'Assigned',
+                'comments_count' => count($s['comments'] ?? []),
+                'remote_created_at' => ! empty($s['createdAt']) ? Carbon::parse($s['createdAt']) : null,
+                'url' => $frontend ? "{$frontend}/projects/{$project['_id']}" : null,
+            ]);
+        }
+    }
+
+    /**
+     * Assigns a sub-task in Taskmandu (PATCH, same call the Projects tab uses) and returns the
+     * display name, so the caller can update the local mirror without waiting for a sync.
+     */
+    public function assignSubTask(PmSubtask $sub, string $employeeId): string
+    {
+        $this->client->patch("/projects/{$sub->project_id}/tasks/{$sub->task_id}/subtasks/{$sub->subtask_id}", [
+            'assignedToId' => [$employeeId],
+        ]);
+
+        $name = collect($this->listEmployees())->firstWhere('employeeId', $employeeId)['name'] ?? null;
+
+        return $name ?: $employeeId;
     }
 
     /** Logs new tasks and status changes seen by this sync, for the daily report. */
@@ -269,22 +324,6 @@ class TaskmanduSync
 
             return [$this->client->post($path, $base), true];
         }
-    }
-
-    /**
-     * Delete a task that this PM app created. This is intentionally a narrow
-     * write-back: it only targets the task id recorded by the PM push action.
-     *
-     * Project-board tickets use the project task endpoint; standalone tickets
-     * use the standalone task endpoint.
-     */
-    public function deletePushedTask(string $taskId, ?string $projectId = null): void
-    {
-        $path = $projectId
-            ? "/projects/{$projectId}/tasks/{$taskId}"
-            : "/tasks/{$taskId}";
-
-        $this->client->delete($path);
     }
 
     /** For the assignee pickers. `id` is the Mongo _id, `employeeId` is what Taskmandu assigns by. */

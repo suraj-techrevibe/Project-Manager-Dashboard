@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import type { PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
+import type { Employee, PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
 import DigestPanel from './DigestPanel';
 import EmailModal from './EmailModal';
 import SinceStrip from './SinceStrip';
+import SubtaskInbox from './SubtaskInbox';
 import TeamWorkload, { levelOf, overloadThreshold } from './TeamWorkload';
 
 const severityClasses: Record<Severity, string> = {
@@ -331,6 +332,8 @@ export default function FlagsPanel({
   active: tabActive = true,
   flags: initialFlags,
   workload: initialWorkload = [],
+  subtasks: initialSubtasks = [],
+  staff: initialStaff = [],
   since: initialSince,
   lastSyncedAt: initialSynced = null,
   onOpenTask,
@@ -341,12 +344,16 @@ export default function FlagsPanel({
   /** Kept optional so older callers that still pass `metrics` keep compiling; counts are derived from `flags` below. */
   metrics?: PmMetrics;
   workload?: WorkloadRow[];
+  subtasks?: SubtaskFlag[];
+  staff?: Employee[];
   since?: SinceSummary;
   lastSyncedAt?: string | null;
   onOpenTask: (focus: TaskFocus) => void;
 }) {
   const [flags, setFlags] = useState(initialFlags);
   const [workload, setWorkload] = useState(initialWorkload);
+  const [subtasks, setSubtasks] = useState(initialSubtasks);
+  const [staff, setStaff] = useState(initialStaff);
   const [since, setSince] = useState<SinceSummary | undefined>(initialSince);
   const [lastSynced, setLastSynced] = useState<string | null>(initialSynced);
   const [syncing, setSyncing] = useState(false);
@@ -384,6 +391,8 @@ export default function FlagsPanel({
   function apply(d: TodayData) {
     setFlags(d.flags);
     setWorkload(d.workload);
+    setSubtasks(d.subtasks ?? []);
+    setStaff(d.staff ?? []);
     setSince(d.since);
     setLastSynced(d.lastSyncedAt);
   }
@@ -774,6 +783,18 @@ export default function FlagsPanel({
           </button>
         ))}
       </div>
+
+      {/* Sub-tasks nobody owns (or that are blocked) — buried inside tasks, so surfaced here */}
+      <SubtaskInbox
+        subtasks={subtasks}
+        staff={staff}
+        workload={workload}
+        onOpen={onOpenTask}
+        onResolved={(id, assignee) => {
+          setSubtasks((list) => list.filter((s) => s.id !== id));
+          if (assignee) flashMsg(`Assigned to ${assignee}`);
+        }}
+      />
 
       {/* Team workload: who has too much, who has nothing */}
       <div id="team-workload">

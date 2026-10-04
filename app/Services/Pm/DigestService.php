@@ -12,7 +12,7 @@ use Throwable;
  */
 class DigestService
 {
-    public function __construct(private FlagService $flags, private AutomationService $automation) {}
+    public function __construct(private FlagService $flags) {}
 
     /** True when at least one delivery channel is configured. */
     public function channels(): array
@@ -46,10 +46,10 @@ class DigestService
             'due_today' => $ofType('due_today'),
             'blocked' => $ofType('blocked'),
             'unassigned' => $ofType('unassigned'),
+            'subtasks' => $this->flags->subtasks(),
             'unverified' => $ofType('unverified'),
             'since' => $since,
             'idle' => collect($workload)->where('open', 0)->pluck('name')->values()->all(),
-            'automation_lines' => $this->automation->morningFollowUp(),
             'over_capacity' => collect($workload)
                 ->filter(fn ($w) => $capacity > 0 && $w['week_hours'] > $capacity)
                 ->map(fn ($w) => ['name' => $w['name'], 'hours' => $w['week_hours'], 'capacity' => $capacity])
@@ -72,7 +72,7 @@ class DigestService
 
         $m = $d['metrics'];
         $attention = ($m['overdue'] ?? 0) + ($m['blocked'] ?? 0) + ($m['due_today'] ?? 0);
-        if ($attention === 0 && empty($d['idle']) && empty($d['over_capacity']) && empty($d['unassigned'])) {
+        if ($attention === 0 && empty($d['idle']) && empty($d['over_capacity']) && empty($d['unassigned']) && empty($d['subtasks'])) {
             $lines[] = 'All clear: nothing overdue, blocked or due today.';
         }
 
@@ -110,11 +110,16 @@ class DigestService
         $section('Blocked', $d['blocked']);
         $section('Unassigned', $d['unassigned']);
 
-        if (! empty($d['automation_lines'])) {
+        // Sub-tasks nobody owns — easy to miss because they're buried inside a task.
+        $unownedSubs = array_values(array_filter($d['subtasks'] ?? [], fn ($s) => in_array('unassigned', $s['issues'], true)));
+        if ($unownedSubs) {
             $lines[] = '';
-            $lines[] = $bold('Follow-up');
-            foreach (array_slice($d['automation_lines'], 0, $max) as $line) {
-                $lines[] = '• '.$esc($line);
+            $lines[] = $bold('Unassigned sub-tasks ('.count($unownedSubs).')');
+            foreach (array_slice($unownedSubs, 0, $max) as $s) {
+                $lines[] = '• '.$esc($s['title']).' — '.$esc($s['project_name'].' › '.$s['parent_title']);
+            }
+            if (count($unownedSubs) > $max) {
+                $lines[] = '  …and '.(count($unownedSubs) - $max).' more';
             }
         }
 

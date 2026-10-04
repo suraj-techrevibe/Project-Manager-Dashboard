@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
-use App\Models\PmWaitingClient;
+use App\Models\PmSubtask;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\DigestService;
 use App\Services\Pm\FlagService;
@@ -12,7 +12,6 @@ use App\Services\Pm\GitHubService;
 use App\Services\Pm\GitService;
 use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
-use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -93,259 +92,6 @@ class PmController extends Controller
     }
 
     /** Records that the PM actually sent a nudge (e.g. copied the template message). */
-    /**
-     * PM command center: turns the synced Taskmandu snapshot into decisions and
-     * actions. Today remains the detailed task execution view; this endpoint
-     * deliberately answers "why does this matter?" and gives the PM a next step.
-     */
-    public function commandCenter(): JsonResponse
-    {
-        $flags = $this->flags->all();
-        $workload = collect($this->flags->workload($this->staff()));
-        $waiting = PmWaitingClient::query()
-            ->where('status', 'waiting')
-            ->orderBy('waiting_since')
-            ->get();
-
-        $cards = PmCard::query()
-            ->whereNotIn('status', ['Completed', 'Cancelled'])
-            ->get();
-
-        $actions = [];
-
-        // 1. Concrete task-level attention. These are intentionally richer than
-        // Today's counters: each item carries a recommended PM action.
-        foreach ($flags->sortBy(fn ($f) => ['danger' => 0, 'warning' => 1, 'neutral' => 2][$f['severity']] ?? 2) as $flag) {
-            $action = match ($flag['type']) {
-                'overdue' => 'Follow up',
-                'blocked' => 'Resolve blocker',
-                'unassigned' => 'Assign owner',
-                'stuck' => 'Ask for update',
-                'unverified' => 'Verify',
-                'due_today' => 'Check delivery',
-                default => 'Review task',
-            };
-
-            $actions[] = [
-                'kind' => 'task',
-                'priority' => ['danger' => 0, 'warning' => 1, 'neutral' => 2][$flag['severity']] ?? 2,
-                'card_id' => $flag['card_id'],
-                'task_id' => $flag['task_id'],
-                'project_id' => $flag['project_id'],
-                'project_name' => $flag['project_name'],
-                'title' => $flag['title'],
-                'assignee' => $flag['assignee'],
-                'reason' => $flag['detail'],
-                'action' => $action,
-            ];
-
-            if (count($actions) >= 8) break;
-        }
-
-        // 2. Capacity problems become actionable PM decisions.
-        foreach ($workload
-            ->filter(fn ($w) => ($w['week_hours'] ?? 0) > ($w['capacity'] ?? 40))
-            ->sortByDesc(fn ($w) => ($w['week_hours'] ?? 0) - ($w['capacity'] ?? 40))
-            ->take(4) as $w) {
-            $actions[] = [
-                'kind' => 'capacity',
-                'priority' => 0,
-                'card_id' => null,
-                'task_id' => null,
-                'project_id' => null,
-                'project_name' => null,
-                'title' => $w['name'].' is overloaded',
-                'assignee' => $w['name'],
-                'reason' => sprintf('%.1fh assigned against %.1fh capacity; %.1fh over.', $w['week_hours'] ?? 0, $w['capacity'] ?? 40, max(0, ($w['week_hours'] ?? 0) - ($w['capacity'] ?? 40))),
-                'action' => 'Rebalance work',
-            ];
-        }
-
-        $projects = $this->commandCenterProjects($cards, $waiting);
-
-        return response()->json([
-            'actions' => collect($actions)->take(12)->values()->all(),
-            'overloaded' => $workload
-                ->filter(fn ($w) => ($w['week_hours'] ?? 0) > ($w['capacity'] ?? 40))
-                ->sortByDesc(fn ($w) => ($w['week_hours'] ?? 0) - ($w['capacity'] ?? 40))
-                ->take(8)
-                ->values()
-                ->map(fn ($w) => [
-                    'name' => $w['name'],
-                    'week_hours' => (float) ($w['week_hours'] ?? 0),
-                    'capacity' => (float) ($w['capacity'] ?? 40),
-                    'excess' => round(max(0, ($w['week_hours'] ?? 0) - ($w['capacity'] ?? 40)), 1),
-                    'open' => (int) ($w['open'] ?? 0),
-                    'overdue' => (int) ($w['overdue'] ?? 0),
-                ])->all(),
-            'free' => $workload
-                ->sortByDesc(fn ($w) => ($w['capacity'] ?? 40) - ($w['week_hours'] ?? 0))
-                ->take(8)
-                ->values()
-                ->map(fn ($w) => [
-                    'name' => $w['name'],
-                    'week_hours' => (float) ($w['week_hours'] ?? 0),
-                    'capacity' => (float) ($w['capacity'] ?? 40),
-                    'room' => round(max(0, ($w['capacity'] ?? 40) - ($w['week_hours'] ?? 0)), 1),
-                    'open' => (int) ($w['open'] ?? 0),
-                ])->all(),
-            'waiting' => $waiting->map(fn ($w) => [
-                'id' => $w->id,
-                'title' => $w->title,
-                'project_id' => $w->project_id,
-                'waiting_since' => $w->waiting_since?->toDateString(),
-                'days' => $w->waiting_since ? (int) $w->waiting_since->diffInDays(now()) : 0,
-                'severity' => $w->waiting_since && $w->waiting_since->lt(now()->subDays(5)) ? 'red' : ($w->waiting_since && $w->waiting_since->lt(now()->subDays(3)) ? 'amber' : 'slate'),
-            ])->take(8)->values()->all(),
-            'projects' => $projects,
-            'recent' => PmActivity::query()
-                ->whereIn('type', ['created', 'status_change', 'comment'])
-                ->where('occurred_at', '>=', now()->subDay())
-                ->latest('occurred_at')
-                ->limit(12)
-                ->get()
-                ->map(fn ($a) => [
-                    'type' => $a->type,
-                    'title' => $a->title,
-                    'occurred_at' => $a->occurred_at?->toIso8601String(),
-                    'project' => $a->meta['project'] ?? null,
-                    'from' => $a->meta['from'] ?? null,
-                    'to' => $a->meta['to'] ?? null,
-                ])->values()->all(),
-        ]);
-    }
-
-    /**
-     * One deterministic risk model. No AI and no manually entered status.
-     * Scores are penalties from observable Taskmandu/PM data.
-     */
-    private function commandCenterProjects($cards, $waiting): array
-    {
-        $today = now()->startOfDay();
-        $all = PmCard::query()->whereNotNull('project_id')->get();
-
-        return $all->groupBy('project_id')->map(function ($rows, $projectId) use ($cards, $waiting, $today) {
-            $active = $rows->whereNotIn('status', ['Completed', 'Cancelled']);
-            $total = $rows->count();
-            $completed = $rows->where('status', 'Completed')->count();
-
-            $overdue = $active->filter(fn ($c) => $c->due_at && $c->due_at->lt($today))->count();
-            $dueSoon = $active->filter(function ($c) use ($today) {
-                if (! $c->due_at) return false;
-
-                $d = Carbon::parse($c->due_at)
-                    ->startOfDay()
-                    ->diffInDays($today, false);
-
-                return $d >= 0 && $d <= 5;
-            })->count();
-            $blocked = $active->where('status', 'Blocked')->count();
-            $unassigned = $active->filter(fn ($c) => blank($c->assignee))->count();
-            $last = $active->max('last_activity_at');
-            $idle = $last ? (int) Carbon::parse($last)->diffInDays(now()) : 999;
-
-            $waitingRows = $waiting->where('project_id', $projectId);
-            $waitingDays = $waitingRows->max(fn ($w) => $w->waiting_since ? $w->waiting_since->diffInDays(now()) : 0);
-
-            $teamNames = $active->pluck('assignee')->filter()->flatMap(fn ($names) => array_map('trim', explode(',', $names)))->unique();
-            $teamRows = $this->flags->workload($this->staff());
-            $team = collect($teamRows)->filter(fn ($w) => $teamNames->contains($w['name'] ?? ''));
-            $teamLoad = $team->count()
-                ? $team->avg(fn ($w) => ($w['capacity'] ?? 40) > 0 ? (($w['week_hours'] ?? 0) / ($w['capacity'] ?? 40)) * 100 : 0)
-                : 0;
-
-            $schedule = max(0, 100 - min(50, $overdue * 15) - min(30, $dueSoon * 6));
-            $tasks = $total ? round(($completed / $total) * 100) : 100;
-            $teamScore = $team->count() ? max(0, round(100 - max(0, $teamLoad - 70))) : 100;
-            $client = $waitingRows->count() ? max(0, 100 - min(70, ($waitingDays ?: 0) * 10)) : 100;
-            $delivery = max(0, 100 - min(35, $overdue * 10) - min(25, $blocked * 10) - min(20, $idle * 3));
-            $overall = (int) round(($delivery + $tasks + $schedule + $teamScore + $client) / 5);
-
-            $why = [];
-            if ($overdue) $why[] = $overdue.' overdue task'.($overdue === 1 ? '' : 's');
-            if ($blocked) $why[] = $blocked.' blocked task'.($blocked === 1 ? '' : 's');
-            if ($unassigned) $why[] = $unassigned.' unassigned task'.($unassigned === 1 ? '' : 's');
-            if ($waitingRows->count()) $why[] = 'client waiting '.($waitingDays ?? 0).' days';
-            if ($idle >= 3) $why[] = $idle === 999 ? 'no activity recorded' : $idle.' days since movement';
-
-            $health = $overall < 45 ? 'red' : ($overall < 70 ? 'amber' : 'green');
-
-            $nextDue = $active->filter(fn ($c) => $c->due_at)->sortBy('due_at')->first();
-
-            return [
-                'project_id' => $projectId,
-                'project_name' => $rows->first()->project_name ?: 'Unnamed project',
-                'score' => $overall,
-                'health' => $health,
-                'delivery' => $delivery,
-                'tasks' => $tasks,
-                'schedule' => $schedule,
-                'team' => $teamScore,
-                'client' => $client,
-                'overdue' => $overdue,
-                'blocked' => $blocked,
-                'unassigned' => $unassigned,
-                'idle_days' => $idle,
-                'waiting_days' => $waitingDays ?: 0,
-                'waiting_count' => $waitingRows->count(),
-                'due_soon' => $dueSoon,
-                'completed' => $completed,
-                'total' => $total,
-                'next_due' => $nextDue?->due_at?->toDateString(),
-                'why' => array_slice($why, 0, 4),
-            ];
-        })->sortBy('score')->take(10)->values()->all();
-    }
-
-    /** List only the pushes made by Brief to tickets and not already undone. */
-    public function recentPushes(): JsonResponse
-    {
-        $items = PmActivity::query()->where('type', 'pushed')->latest('occurred_at')->limit(30)->get()
-            ->filter(fn ($a) => empty($a->meta['undone_at']) && !empty($a->meta['task_id']))
-            ->map(fn ($a) => [
-                'id' => $a->id,
-                'title' => $a->title,
-                'task_id' => $a->meta['task_id'],
-                'project_id' => $a->meta['project_id'] ?? null,
-                'project_name' => $a->meta['project'] ?? null,
-                'occurred_at' => $a->occurred_at?->toIso8601String(),
-            ])->values()->all();
-
-        return response()->json(['pushes' => $items]);
-    }
-
-    /** Undo one PM-created ticket by deleting exactly the Taskmandu id recorded at push time. */
-    public function undoPush(PmActivity $activity): JsonResponse
-    {
-        if ($activity->type !== 'pushed' || empty($activity->meta['task_id'])) {
-            return response()->json(['error' => 'That activity is not an undoable PM ticket push.'], 422);
-        }
-        if (!empty($activity->meta['undone_at'])) {
-            return response()->json(['error' => 'This ticket has already been undone.'], 422);
-        }
-
-        try {
-            $this->taskmandu->deletePushedTask((string) $activity->meta['task_id'], $activity->meta['project_id'] ?? null);
-        } catch (RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        if ($cardId = $activity->card_id) {
-            PmCard::query()->whereKey($cardId)->delete();
-        }
-        $activity->update(['meta' => array_merge($activity->meta ?? [], [
-            'undone_at' => now()->toIso8601String(),
-            'undone_by' => request()->user()?->name,
-        ])]);
-        PmActivity::record('push_undone', null, [
-            'original_push_id' => $activity->id,
-            'task_id' => $activity->meta['task_id'],
-            'project_id' => $activity->meta['project_id'] ?? null,
-        ], $activity->title);
-
-        return response()->json(['ok' => true]);
-    }
-
     public function nudged(PmCard $card): JsonResponse
     {
         PmActivity::record('nudge', $card, ['template' => true]);
@@ -362,6 +108,8 @@ class PmController extends Controller
             'flags' => $flags->values(),
             'metrics' => $this->flags->metrics($flags),
             'workload' => $workload,
+            'subtasks' => $this->flags->subtasks(),
+            'staff' => $this->staff(),
             'since' => $this->flags->sinceLastWorkday($workload),
             'lastSyncedAt' => Cache::get('pm.last_synced_at'),
         ];
@@ -429,6 +177,31 @@ class PmController extends Controller
         PmActivity::record('snooze', $card);
 
         return back();
+    }
+
+    /** Assigns a sub-task right from Today (PATCHes Taskmandu, then updates the local mirror). */
+    public function assignSubtask(Request $r, PmSubtask $subtask): JsonResponse
+    {
+        $data = $r->validate(['employee_id' => 'required|string|max:100']);
+
+        try {
+            $name = $this->taskmandu->assignSubTask($subtask, $data['employee_id']);
+        } catch (RuntimeException $e) {
+            report($e);
+
+            return response()->json(['error' => "Couldn't assign that sub-task in Taskmandu: ".$e->getMessage()], 422);
+        }
+
+        $subtask->update(['assignee' => $name]);
+
+        return response()->json(['id' => $subtask->id, 'assignee' => $name]);
+    }
+
+    public function snoozeSubtask(PmSubtask $subtask): JsonResponse
+    {
+        $subtask->update(['snoozed_until' => now()->addDays(3)->toDateString()]);
+
+        return response()->json(['id' => $subtask->id]);
     }
 
     public function verify(PmCard $card): RedirectResponse
@@ -570,16 +343,6 @@ class PmController extends Controller
     private function pushTicket(array $t, ?string $projectId, array $employees, string $assignedBy): array
     {
         $due = $t['due_date'] ?? now()->addWeek()->toDateString();
-        $capacityWarning = null;
-        $employeeName = $employees[$t['assignee_employee_id']] ?? $t['assignee_employee_id'];
-        $load = collect($this->flags->workload())->firstWhere('name', $employeeName);
-        $estimate = isset($t['estimate_hours']) ? (float) $t['estimate_hours'] : 0.0;
-        if ($load && $estimate > 0 && (($load['week_hours'] ?? 0) + $estimate) > ($load['capacity'] ?? config('pm.weekly_capacity_hours', 40))) {
-            $capacityWarning = sprintf('%s would reach %.1fh against %.1fh weekly capacity.', $employeeName, ($load['week_hours'] ?? 0) + $estimate, $load['capacity'] ?? config('pm.weekly_capacity_hours', 40));
-            if (config('pm.automation.block_over_capacity', false)) {
-                throw new RuntimeException('Workload guard: '.$capacityWarning);
-            }
-        }
         $assigneeId = $t['assignee_employee_id'];
         $assignee = $employees[$assigneeId] ?? $assigneeId;
         $priority = $t['priority'] ?? 'Medium';
@@ -636,20 +399,13 @@ class PmController extends Controller
             ? PmCard::updateOrCreate(['external_id' => $externalId], $attrs)
             : PmCard::create($attrs);
 
-        PmActivity::record('pushed', $card, [
-            'task_id' => $taskId,
-            'project_id' => $project['id'],
-            'external_id' => $externalId,
-            'source' => 'brief',
-            'actor' => $assignedBy ?: null,
-        ]);
+        PmActivity::record('pushed', $card);
 
         return [
             'ok' => true,
             'task_id' => $taskId,
             'card_id' => $card->id,
             'fields_fallback' => $res['fallback'],
-            'capacity_warning' => $capacityWarning,
         ];
     }
 

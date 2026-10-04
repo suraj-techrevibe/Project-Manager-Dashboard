@@ -56,8 +56,6 @@ export const pmApi = {
   /** Current Today data without a page reload. */
   today: () => api.get<TodayData>('/today'),
 
-  commandCenter: () => api.get('/command-center'),
-
   /** Pull from Taskmandu now (can take a while), then return fresh Today data. */
   sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 180_000 }),
 
@@ -70,6 +68,11 @@ export const pmApi = {
   snooze: (cardId: number) => api.post(`/cards/${cardId}/snooze`),
 
   verify: (cardId: number) => api.post(`/cards/${cardId}/verify`),
+
+  /** Assign a sub-task from Today (updates Taskmandu, then the local copy). */
+  assignSubtask: (id: number, employeeId: string) => api.post<{ id: number; assignee: string }>(`/subtasks/${id}/assign`, { employee_id: employeeId }),
+
+  snoozeSubtask: (id: number) => api.post<{ id: number }>(`/subtasks/${id}/snooze`),
 
   draftBrief: (brief: string) =>
     api.post<{ tickets: DraftTicket[]; questions: string[]; truncated?: number }>('/brief', { brief }),
@@ -84,9 +87,6 @@ export const pmApi = {
       tickets,
       project_id: projectId || null,
     }),
-
-  recentPushes: () => api.get<{ pushes: Array<{ id: number; title: string; task_id: string; project_id: string | null; project_name: string | null; occurred_at: string }> }>('/brief/pushes'),
-  undoPush: (activityId: number) => api.post(`/brief/pushes/${activityId}/undo`),
 
   reports: () => api.get<{ reports: Report[] }>('/reports'),
 
@@ -209,18 +209,4 @@ export const pmApi = {
     api.patch<{ minute: MeetingMinutesFull }>(`/minutes/${id}`, data),
 
   minutesDelete: (id: number) => api.delete<{ deleted: true }>(`/minutes/${id}`),
-  automationNudgeBatch: () => api.get<{ batch: any }>('/automation/nudges'),
-  generateNudgeBatch: (idle_days?: number) => api.post<{ batch: any }>('/automation/nudges/generate', { idle_days }),
-  updateNudgeBatch: (id: number, items: any[]) => api.patch<{ batch: any }>(`/automation/nudges/${id}`, { items }),
-  sendNudgeBatch: (id: number) => api.post<{ sent: number; errors: string[] }>(`/automation/nudges/${id}/send`),
-  projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
-  waitingClient: () => api.get<{ items: any[] }>('/automation/waiting-client'),
-  addWaitingClient: (data: any) => api.post('/automation/waiting-client', data),
-  resolveWaitingClient: (id: number) => api.post(`/automation/waiting-client/${id}/resolve`),
-  meetingTemplates: () => api.get<{ templates: any[] }>('/automation/meeting-templates'),
-  saveMeetingTemplate: (data: any) => api.post('/automation/meeting-templates', data),
-  ticketPacks: () => api.get<{ packs: any[] }>('/automation/ticket-packs'),
-  saveTicketPack: (data: any) => api.post('/automation/ticket-packs', data),
-  pushTicketPack: (id: number, projectId: string) => api.post(`/automation/ticket-packs/${id}/push`, { project_id: projectId }),
-
 };

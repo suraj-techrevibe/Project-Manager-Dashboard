@@ -1,23 +1,21 @@
 import { Head } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import TodayDashboard from '@/Components/Pm/TodayDashboard';
+import FlagsPanel from '@/Components/Pm/FlagsPanel';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import GitPanel from '@/Components/Pm/GitPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import MeetingMinutesPanel from '@/Components/Pm/MeetingMinutesPanel';
-import AutomationPanel from '@/Components/Pm/AutomationPanel';
 import { setUrlParams, useUrlParam } from '@/lib/urlState';
-import type { PmFlag, PmMetrics, SinceSummary, TaskFocus, WorkloadRow } from '@/types/pm';
+import type { Employee, PmFlag, PmMetrics, SinceSummary, SubtaskFlag, TaskFocus, WorkloadRow } from '@/types/pm';
 
-type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects' | 'minutes' | 'automation';
+type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects' | 'minutes';
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'projects', label: 'Projects' },
   { key: 'minutes', label: 'Meeting minutes' },
-  { key: 'automation', label: 'Automation' },
   { key: 'brief', label: 'Brief to tickets' },
   { key: 'reports', label: 'Reports' },
   { key: 'scope', label: 'Scope check' },
@@ -28,12 +26,16 @@ export default function PmIndex({
   flags,
   metrics,
   workload,
+  subtasks,
+  staff,
   since,
   lastSyncedAt,
 }: {
   flags: PmFlag[];
   metrics: PmMetrics;
   workload: WorkloadRow[];
+  subtasks: SubtaskFlag[];
+  staff: Employee[];
   since: SinceSummary;
   lastSyncedAt: string | null;
 }) {
@@ -45,7 +47,7 @@ export default function PmIndex({
 
   // Clicking a task on Today jumps to Projects -> that project -> Tasks -> the task itself.
   function openTask(f: TaskFocus) {
-    setUrlParams({ tab: 'projects', project: f.projectId, ptab: 'tasks', task: f.taskId, sub: null });
+    setUrlParams({ tab: 'projects', project: f.projectId, ptab: 'tasks', task: f.taskId, sub: f.subId ?? null });
   }
 
   return (
@@ -71,9 +73,13 @@ export default function PmIndex({
 
         {/* Kept mounted (just hidden) so filters, pins and a fresh Sync survive a trip to another tab. */}
         <div hidden={tab !== 'today'}>
-          <TodayDashboard
+          <FlagsPanel
+            active={tab === 'today'}
             flags={flags}
+            metrics={metrics}
             workload={workload}
+            subtasks={subtasks}
+            staff={staff}
             since={since}
             lastSyncedAt={lastSyncedAt}
             onOpenTask={openTask}
@@ -81,7 +87,6 @@ export default function PmIndex({
         </div>
         {tab === 'projects' && <ProjectsPanel />}
         {tab === 'minutes' && <MeetingMinutesPanel />}
-        {tab === 'automation' && <AutomationPanel />}
         {tab === 'brief' && <BriefDrafter />}
         {tab === 'reports' && <ReportsPanel />}
         {tab === 'scope' && <ScopeCheck />}
