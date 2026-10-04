@@ -315,6 +315,16 @@ class PmController extends Controller
     private function pushTicket(array $t, ?string $projectId, array $employees, string $assignedBy): array
     {
         $due = $t['due_date'] ?? now()->addWeek()->toDateString();
+        $capacityWarning = null;
+        $employeeName = $employees[$t['assignee_employee_id']] ?? $t['assignee_employee_id'];
+        $load = collect($this->flags->workload())->firstWhere('name', $employeeName);
+        $estimate = isset($t['estimate_hours']) ? (float) $t['estimate_hours'] : 0.0;
+        if ($load && $estimate > 0 && (($load['week_hours'] ?? 0) + $estimate) > ($load['capacity'] ?? config('pm.weekly_capacity_hours', 40))) {
+            $capacityWarning = sprintf('%s would reach %.1fh against %.1fh weekly capacity.', $employeeName, ($load['week_hours'] ?? 0) + $estimate, $load['capacity'] ?? config('pm.weekly_capacity_hours', 40));
+            if (config('pm.automation.block_over_capacity', false)) {
+                throw new RuntimeException('Workload guard: '.$capacityWarning);
+            }
+        }
         $assigneeId = $t['assignee_employee_id'];
         $assignee = $employees[$assigneeId] ?? $assigneeId;
         $priority = $t['priority'] ?? 'Medium';
@@ -378,6 +388,7 @@ class PmController extends Controller
             'task_id' => $taskId,
             'card_id' => $card->id,
             'fields_fallback' => $res['fallback'],
+            'capacity_warning' => $capacityWarning,
         ];
     }
 
