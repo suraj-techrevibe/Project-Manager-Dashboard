@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
+use App\Models\PmDraft;
 use App\Models\PmSubtask;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\DigestService;
@@ -210,6 +211,76 @@ class PmController extends Controller
         PmActivity::record('verify', $card);
 
         return back();
+    }
+
+    /** Saved Brief drafts stay local to PM until tickets are pushed. */
+    public function briefDrafts(): JsonResponse
+    {
+        $drafts = PmDraft::query()->latest('updated_at')->limit(50)
+            ->get(['id','title','project_id','status','created_by','created_at','updated_at'])
+            ->map(fn (PmDraft $draft) => [
+                'id'=>$draft->id,'title'=>$draft->title,'project_id'=>$draft->project_id,
+                'status'=>$draft->status,'created_by'=>$draft->created_by,
+                'created_at'=>$draft->created_at?->toIso8601String(),
+                'updated_at'=>$draft->updated_at?->toIso8601String(),
+            ])->values();
+        return response()->json(['drafts'=>$drafts]);
+    }
+
+    public function briefDraftShow(PmDraft $draft): JsonResponse
+    {
+        return response()->json(['draft'=>$draft]);
+    }
+
+    public function briefDraftStore(Request $r): JsonResponse
+    {
+        $data=$this->validateBriefDraft($r);
+        $draft=PmDraft::create($data+[
+            'status'=>'draft',
+            'created_by'=>(string)($r->user()?->name ?? $r->user()?->id ?? ''),
+        ]);
+        return response()->json(['draft'=>$draft],201);
+    }
+
+    public function briefDraftUpdate(Request $r, PmDraft $draft): JsonResponse
+    {
+        $data=$this->validateBriefDraft($r);
+        $draft->update($data+['status'=>$draft->status==='pushed'?'partial':'draft']);
+        return response()->json(['draft'=>$draft->fresh()]);
+    }
+
+    public function briefDraftDestroy(PmDraft $draft): JsonResponse
+    {
+        $draft->delete();
+        return response()->json(['deleted'=>true]);
+    }
+
+    private function validateBriefDraft(Request $r): array
+    {
+        return $r->validate([
+            'title'=>'required|string|max:200','brief'=>'nullable|string|max:8000',
+            'project_id'=>['nullable','regex:/^[0-9a-fA-F]{24}$/'],
+            'tickets'=>'required|array|max:30',
+            'tickets.*.uid'=>'required|string|max:100','tickets.*.title'=>'nullable|string|max:200',
+            'tickets.*.description'=>'nullable|string|max:3000','tickets.*.level'=>'nullable|string|max:20',
+            'tickets.*.estimate_hours'=>'nullable|numeric|min:0|max:1000',
+            'tickets.*.priority'=>['nullable',Rule::in(['Low','Medium','High','Critical'])],
+            'tickets.*.assigneeId'=>'nullable|string|max:100','tickets.*.dueDate'=>'nullable|date_format:Y-m-d',
+            'tickets.*.state'=>['required',Rule::in(['draft','pushed','failed'])],
+            'tickets.*.error'=>'nullable|string|max:1000',
+        ]);
+    }
+
+    /** Recent tickets pushed to Taskmandu, for the Brief activity panel. */
+    public function recentPushes(): JsonResponse
+    {
+        $pushes=PmActivity::query()->where('type','pushed')->orderByDesc('occurred_at')->limit(8)
+            ->get(['id','title','meta','occurred_at'])
+            ->map(fn(PmActivity $a)=>[
+                'id'=>$a->id,'title'=>$a->title,'project_name'=>data_get($a->meta,'project'),
+                'occurred_at'=>$a->occurred_at?->toIso8601String(),
+            ])->values();
+        return response()->json(['pushes'=>$pushes]);
     }
 
     public function brief(Request $r): JsonResponse
