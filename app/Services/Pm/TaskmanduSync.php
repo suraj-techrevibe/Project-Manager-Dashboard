@@ -271,6 +271,22 @@ class TaskmanduSync
         }
     }
 
+    /**
+     * Delete a task that this PM app created. This is intentionally a narrow
+     * write-back: it only targets the task id recorded by the PM push action.
+     *
+     * Project-board tickets use the project task endpoint; standalone tickets
+     * use the standalone task endpoint.
+     */
+    public function deletePushedTask(string $taskId, ?string $projectId = null): void
+    {
+        $path = $projectId
+            ? "/projects/{$projectId}/tasks/{$taskId}"
+            : "/tasks/{$taskId}";
+
+        $this->client->delete($path);
+    }
+
     /** For the assignee pickers. `id` is the Mongo _id, `employeeId` is what Taskmandu assigns by. */
     public function listEmployees(): array
     {
