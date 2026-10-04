@@ -4,6 +4,7 @@ namespace App\Services\Pm;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
+use App\Models\PmContact;
 use App\Models\PmMeetingTemplate;
 use App\Models\PmNudgeBatch;
 use App\Models\PmProjectHealth;
@@ -11,15 +12,65 @@ use App\Models\PmTicketPack;
 use App\Models\PmWaitingClient;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use RuntimeException;
+use Throwable;
 
 class AutomationService
 {
     private const NUDGE_TEMPLATE = "Hi {assignee}, quick check-in on “{title}”. It is {status_note}. Can you please post an update and let me know if anything is blocking it?";
 
+    public function __construct(private TaskmanduSync $taskmandu) {}
+
+    /**
+     * lowercase name => email for everyone we can reach. Taskmandu's employee emails
+     * are the source; an address saved by hand (Today > email, Meeting minutes) wins
+     * over it, so a wrong or outdated address can be corrected here without touching Taskmandu.
+     *
+     * @return array<string, string>
+     */
+    public function emailDirectory(): array
+    {
+        $directory = [];
+
+        foreach ($this->employees() as $e) {
+            if (! empty($e['email']) && ! empty($e['name'])) {
+                $directory[mb_strtolower($e['name'])] = $e['email'];
+            }
+        }
+
+        foreach (PmContact::query()->get() as $c) {
+            $directory[mb_strtolower($c->name)] = $c->email;
+        }
+
+        return $directory;
+    }
+
+    /** Taskmandu staff, cached for 10 minutes (the Sync now button clears it). */
+    private function employees(): array
+    {
+        $staff = Cache::get('pm.employees');
+
+        // A list cached before emails were added has no 'email' key at all: fetch it again.
+        if ($staff === null || ($staff && ! array_key_exists('email', $staff[0]))) {
+            $staff = [];
+            if ($this->taskmandu->configured()) {
+                try {
+                    $staff = $this->taskmandu->listEmployees();
+                    Cache::put('pm.employees', $staff, 600);
+                } catch (Throwable $e) {
+                    report($e);
+                }
+            }
+        }
+
+        return $staff;
+    }
+
     public function generateNudges(?int $idleDays = null): PmNudgeBatch
     {
+        $directory = $this->emailDirectory();
         $idleDays ??= (int) config('pm.automation.idle_days', 3);
         $today = now()->startOfDay();
 
@@ -31,7 +82,7 @@ class AutomationService
         $items = $cards->filter(function (PmCard $c) use ($today, $idleDays) {
             return ($c->due_at && $c->due_at->lt($today))
                 || ($c->last_activity_at && $c->last_activity_at->lte(now()->subDays($idleDays)));
-        })->map(function (PmCard $c) {
+        })->map(function (PmCard $c) use ($directory) {
             $overdue = $c->due_at && $c->due_at->lt(now()->startOfDay());
             $days = $c->last_activity_at ? $c->last_activity_at->diffInDays(now()) : null;
             $statusNote = $overdue
@@ -39,12 +90,20 @@ class AutomationService
                 : ($days !== null ? "had no activity for {$days} days" : 'waiting for an update');
 
             $assignees = array_values(array_filter(array_map('trim', explode(',', (string) $c->assignee))));
+            $emails = [];
+            $missing = [];
+            foreach ($assignees as $name) {
+                ($email = $directory[mb_strtolower($name)] ?? null) ? $emails[] = $email : $missing[] = $name;
+            }
+
             return [
                 'card_id' => $c->id,
                 'title' => $c->title,
                 'assignee' => $c->assignee,
                 'assignees' => $assignees,
-                'email' => null,
+                // Shown in the review list only. The send step looks the addresses up again from the names.
+                'emails' => array_values(array_unique($emails)),
+                'missing' => $missing,
                 'project_id' => $c->project_id,
                 'project_name' => $c->project_name,
                 'task_id' => $c->task_id,
@@ -71,7 +130,8 @@ class AutomationService
             throw new RuntimeException('This nudge batch has already been sent.');
         }
 
-        $contacts = \App\Models\PmContact::query()->get()->keyBy(fn ($c) => mb_strtolower($c->name));
+        $directory = $this->emailDirectory();
+        $replyTo = config('pm.mail.reply_to');
         $sent = 0;
         $errors = [];
 
@@ -80,18 +140,22 @@ class AutomationService
 
             $emails = [];
             foreach ($item['assignees'] ?? [] as $name) {
-                $email = $contacts->get(mb_strtolower($name))?->email;
+                $email = $directory[mb_strtolower($name)] ?? null;
                 if ($email) $emails[] = $email;
             }
+            $emails = array_values(array_unique($emails));
 
             if (!$emails) {
-                $errors[] = "{$item['assignee']}: no email address saved";
+                $errors[] = "{$item['assignee']}: no email found in Taskmandu or saved here";
                 continue;
             }
 
             try {
-                Mail::raw($item['message'], function ($m) use ($emails, $item) {
+                Mail::raw($item['message'], function ($m) use ($emails, $item, $replyTo) {
                     $m->to($emails)->subject('PM follow-up: '.$item['title']);
+                    if ($replyTo) {
+                        $m->replyTo($replyTo);
+                    }
                 });
 
                 if ($card = PmCard::find($item['card_id'])) {

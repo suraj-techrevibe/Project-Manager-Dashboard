@@ -280,8 +280,33 @@ class TaskmanduSync
                 'id' => $e['_id'] ?? null,
                 'name' => trim($e['firstName'].' '.$e['lastName']),
                 'designation' => $e['designation'] ?? null,
+                'email' => self::emailOf($e),
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * The employee's email as stored in Taskmandu, or '' if the record has none.
+     * The field name isn't documented on this side, so the likely ones are tried,
+     * including an email on an expanded user object. Invalid values are ignored.
+     */
+    public static function emailOf(array $employee): string
+    {
+        $valid = fn ($v) => is_string($v) && filter_var(trim($v), FILTER_VALIDATE_EMAIL) ? strtolower(trim($v)) : null;
+
+        foreach (['email', 'officialEmail', 'workEmail', 'companyEmail', 'personalEmail'] as $key) {
+            if ($email = $valid($employee[$key] ?? null)) {
+                return $email;
+            }
+        }
+
+        foreach (['user', 'userId'] as $key) {
+            if (is_array($employee[$key] ?? null) && ($email = $valid($employee[$key]['email'] ?? null))) {
+                return $email;
+            }
+        }
+
+        return '';
     }
 }

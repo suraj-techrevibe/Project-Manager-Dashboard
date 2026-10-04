@@ -55,6 +55,8 @@ export default function AutomationPanel() {
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">{x.title}</div>
             <div className="text-xs text-slate-500">{x.assignee} · {x.reason}</div>
+            {x.emails?.length > 0 && <div className="text-xs text-slate-400">→ {x.emails.join(', ')}</div>}
+            {x.missing?.length > 0 && <div className="text-xs text-amber-600">No email found for {x.missing.join(', ')}, so this one will be skipped</div>}
             <textarea value={x.message} onChange={e => updateItem(i, { message: e.target.value })} className="mt-2 w-full rounded border border-slate-200 p-2 text-sm" />
           </div>
         </label>)}

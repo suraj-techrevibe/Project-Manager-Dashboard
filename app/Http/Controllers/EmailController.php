@@ -28,7 +28,8 @@ class EmailController extends Controller
         $staff = [];
         if ($this->taskmandu->configured()) {
             $staff = Cache::get('pm.employees');
-            if ($staff === null) {
+            // A list cached before emails were added has no 'email' key: fetch it again.
+            if ($staff === null || ($staff && ! array_key_exists('email', $staff[0]))) {
                 try {
                     $staff = $this->taskmandu->listEmployees();
                     Cache::put('pm.employees', $staff, 600);
@@ -42,7 +43,8 @@ class EmailController extends Controller
         $rows = collect($staff)->map(fn ($e) => [
             'name' => $e['name'],
             'designation' => $e['designation'] ?? null,
-            'email' => $saved->get(mb_strtolower($e['name']))?->email ?? '',
+            // An address saved by hand wins; otherwise the one stored in Taskmandu.
+            'email' => $saved->get(mb_strtolower($e['name']))?->email ?: ($e['email'] ?? ''),
         ]);
 
         $known = $rows->pluck('name')->map(fn ($n) => mb_strtolower($n));
