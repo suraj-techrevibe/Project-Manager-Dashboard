@@ -193,11 +193,13 @@ class PmController extends Controller
                 'id' => $w->id,
                 'title' => $w->title,
                 'project_id' => $w->project_id,
+                'card_id' => $w->card_id,
                 'waiting_since' => $w->waiting_since?->toDateString(),
                 'days' => $w->waiting_since ? (int) $w->waiting_since->diffInDays(now()) : 0,
                 'severity' => $w->waiting_since && $w->waiting_since->lt(now()->subDays(5)) ? 'red' : ($w->waiting_since && $w->waiting_since->lt(now()->subDays(3)) ? 'amber' : 'slate'),
             ])->take(8)->values()->all(),
             'projects' => $projects,
+            'aging' => $this->commandCenterAging($cards),
             'recent' => PmActivity::query()
                 ->whereIn('type', ['created', 'status_change', 'comment'])
                 ->where('occurred_at', '>=', now()->subDay())
@@ -295,6 +297,117 @@ class PmController extends Controller
                 'why' => array_slice($why, 0, 4),
             ];
         })->sortBy('score')->take(10)->values()->all();
+    }
+
+    /**
+     * Tasks that have gone quiet for at least three days, even when their due
+     * date has not passed. This catches stale work rather than only late work.
+     */
+    private function commandCenterAging($cards): array
+    {
+        return $cards
+            ->filter(fn ($c) => $c->last_activity_at && $c->last_activity_at->lt(now()->subDays(3)))
+            ->sortBy('last_activity_at')
+            ->take(12)
+            ->map(fn ($c) => [
+                'card_id' => $c->id,
+                'task_id' => $c->task_id,
+                'project_id' => $c->project_id,
+                'project_name' => $c->project_name,
+                'title' => $c->title,
+                'assignee' => $c->assignee,
+                'status' => $c->status,
+                'days' => (int) $c->last_activity_at->diffInDays(now()),
+                'last_activity_at' => $c->last_activity_at->toIso8601String(),
+            ])->values()->all();
+    }
+
+    /** Assign a synced Taskmandu task to one employee without leaving Command Center. */
+    public function commandCenterReassign(Request $r): JsonResponse
+    {
+        $data = $r->validate([
+            'card_id' => 'required|integer|exists:pm_cards,id',
+            'employee_id' => 'required|string|max:100',
+        ]);
+        $card = PmCard::findOrFail($data['card_id']);
+        if (! $card->task_id) {
+            return response()->json(['error' => 'This item has no Taskmandu task id.'], 422);
+        }
+
+        $employees = $this->taskmandu->listEmployees();
+        $employee = collect($employees)->first(fn ($e) => ($e['employeeId'] ?? null) === $data['employee_id']);
+        if (! $employee) {
+            return response()->json(['error' => 'That employee is not available in Taskmandu.'], 422);
+        }
+
+        $path = $card->project_id
+            ? "/projects/{$card->project_id}/tasks/{$card->task_id}"
+            : "/tasks/{$card->task_id}";
+        $this->taskmandu->patch($path, ['assignedToId' => [$data['employee_id']]]);
+
+        $old = $card->assignee;
+        $card->update(['assignee' => $employee['name'], 'last_activity_at' => now()]);
+        PmActivity::record('owner_change', $card, [
+            'from' => $old,
+            'to' => $employee['name'],
+            'source' => 'command_center',
+        ]);
+
+        return response()->json(['ok' => true, 'card' => $card->fresh()]);
+    }
+
+    /** Resolve a blocker by moving the Taskmandu task back into active work. */
+    public function commandCenterResolveBlocker(PmCard $card): JsonResponse
+    {
+        if (! $card->task_id) {
+            return response()->json(['error' => 'This item has no Taskmandu task id.'], 422);
+        }
+        if ($card->status !== 'Blocked') {
+            return response()->json(['error' => 'This task is no longer blocked.'], 422);
+        }
+
+        $path = $card->project_id
+            ? "/projects/{$card->project_id}/tasks/{$card->task_id}"
+            : "/tasks/{$card->task_id}";
+        $this->taskmandu->patch($path, ['status' => 'In Progress']);
+
+        $card->update(['status' => 'In Progress', 'last_activity_at' => now()]);
+        PmActivity::record('status_change', $card, [
+            'from' => 'Blocked',
+            'to' => 'In Progress',
+            'source' => 'command_center',
+        ]);
+
+        return response()->json(['ok' => true, 'card' => $card->fresh()]);
+    }
+
+    /** Generate a reviewable follow-up for a waiting item when it is tied to a task. */
+    public function commandCenterFollowUp(PmWaitingClient $item): JsonResponse
+    {
+        if ($item->status !== 'waiting') {
+            return response()->json(['error' => 'This waiting item is already resolved.'], 422);
+        }
+        if (! $item->card_id) {
+            return response()->json(['error' => 'Link this waiting item to a task before generating a follow-up.'], 422);
+        }
+
+        $card = PmCard::find($item->card_id);
+        if (! $card) {
+            return response()->json(['error' => 'The linked task no longer exists in the PM snapshot.'], 422);
+        }
+
+        $message = $this->claude->ask(
+            'Write a short, friendly client follow-up about the item below. Max 3 sentences. No emojis. Ask for the specific outstanding response. Do not invent details.',
+            json_encode([
+                'waiting_item' => $item->title,
+                'task' => $card->title,
+                'days_waiting' => $item->waiting_since ? $item->waiting_since->diffInDays(now()) : 0,
+            ]),
+            300
+        );
+        PmActivity::record('client_follow_up', $card, ['waiting_item_id' => $item->id, 'source' => 'command_center']);
+
+        return response()->json(['message' => trim($message)]);
     }
 
     /** List only the pushes made by Brief to tickets and not already undone. */
