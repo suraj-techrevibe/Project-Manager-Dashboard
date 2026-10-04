@@ -89,6 +89,8 @@ type QuestionKey = 'overloaded' | 'free' | 'duesoon' | 'overdue' | 'blocking' | 
 
 interface QuestionCtx {
   all: TaskCard[];
+  /** Open sub-tasks with nobody assigned (they aren't task cards, so counted separately). */
+  unassignedSubtasks: number;
   workload: WorkloadRow[];
   overloadAt: number;
 }
@@ -220,11 +222,11 @@ const QUESTIONS: { key: QuestionKey; label: string; run: (x: QuestionCtx) => Que
   {
     key: 'unowned',
     label: 'What has no owner?',
-    run: ({ all }) => {
+    run: ({ all, unassignedSubtasks }) => {
       const m = all.filter((c) => hasFlag(c, 'unassigned'));
-      return m.length
-        ? { text: `${plural(m.length, 'task')} with nobody assigned.`, match: (c) => hasFlag(c, 'unassigned') }
-        : { text: 'Every open task has an assignee.', match: () => false };
+      if (!m.length && !unassignedSubtasks) return { text: 'Every open task and sub-task has an owner.', match: () => false };
+      const parts = [m.length > 0 && plural(m.length, 'task'), unassignedSubtasks > 0 && plural(unassignedSubtasks, 'sub-task')].filter(Boolean);
+      return { text: `${parts.join(' and ')} with nobody assigned.`, match: (c) => hasFlag(c, 'unassigned') };
     },
   },
   {
@@ -545,21 +547,22 @@ export default function FlagsPanel({
   // The clicked question's one-line answer + which cards it keeps.
   const active = useMemo(() => {
     const q = QUESTIONS.find((x) => x.key === question);
-    return q ? { label: q.label, ...q.run({ all: allCards, workload, overloadAt }) } : null;
-  }, [question, allCards, workload, overloadAt]);
+    return q ? { label: q.label, ...q.run({ all: allCards, unassignedSubtasks: unassignedSubtasks.length, workload, overloadAt }) } : null;
+  }, [question, allCards, unassignedSubtasks, workload, overloadAt]);
 
   // One answer per predefined question, for the ordered checklist at the top of the page.
   const answers: CcAnswer[] = useMemo(
     () =>
       QUESTIONS.map((q) => {
-        const r = q.run({ all: allCards, workload, overloadAt });
+        const r = q.run({ all: allCards, unassignedSubtasks: unassignedSubtasks.length, workload, overloadAt });
         let count = allCards.filter((c) => r.match(c)).length;
+        if (q.key === 'unowned') count += unassignedSubtasks.length;
         if (q.key === 'overloaded') count = workload.filter((w) => ['over', 'heavy'].includes(levelOf(w, overloadAt))).length;
         else if (q.key === 'free') count = workload.filter((w) => w.open === 0 || levelOf(w, overloadAt) === 'light').length;
         else if (q.key === 'worst') count = tally(allCards.map(projectOf))[0]?.[1] ?? 0;
         return { key: q.key, label: q.label, text: r.text, count };
       }),
-    [allCards, workload, overloadAt]
+    [allCards, unassignedSubtasks, workload, overloadAt]
   );
 
   const isPinned = (id: number) => pins.includes(id);
@@ -594,6 +597,27 @@ export default function FlagsPanel({
           dueTs(a) - dueTs(b)
       );
   }, [allCards, filter, active, search, assignee, project, pinnedOnly, pins]);
+
+  // Sub-tasks are not task cards, so the filters above can't see them — which left "No owner: 1"
+  // opening an empty list. Sub-tasks only carry two issues (no owner / blocked): the No-owner
+  // tile and question show the unowned ones, any other flag or question has none to show, and
+  // with no filter the list shows every flagged sub-task, like it does every flagged task.
+  const listSubtasks = useMemo(() => {
+    if (pinnedOnly) return [];
+    const unowned = filter === 'unassigned' || question === 'unowned';
+    if ((filter || question) && !unowned) return [];
+    const q = search.trim().toLowerCase();
+
+    return subtasks
+      .filter((s) => !unowned || s.issues.includes('unassigned'))
+      .filter((s) => {
+        if (assignee === UNASSIGNED) return !s.assignee;
+        if (assignee) return (s.assignee ?? '').split(',').some((n) => n.trim() === assignee);
+        return true;
+      })
+      .filter((s) => (project === STANDALONE ? false : !project || s.project_name === project))
+      .filter((s) => !q || [s.title, s.parent_title, s.project_name, s.assignee].some((v) => v?.toLowerCase().includes(q)));
+  }, [subtasks, filter, question, pinnedOnly, assignee, project, search]);
 
   const totalTasks = useMemo(() => new Set(flags.map((f) => f.card_id)).size, [flags]);
   const pinnedVisible = cards.filter((c) => isPinned(c.card_id)).length;
@@ -915,6 +939,7 @@ export default function FlagsPanel({
       {filtersActive && (
         <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
           Showing {cards.length} of {totalTasks} flagged task{totalTasks === 1 ? '' : 's'}
+          {listSubtasks.length > 0 && <> + {plural(listSubtasks.length, 'sub-task')}</>}
           {filter && <> · “{filter.replace('_', ' ')}”</>}
           {active && <> · {active.label}</>}
           {pinnedOnly && <> · focus list</>}
@@ -924,10 +949,47 @@ export default function FlagsPanel({
         </div>
       )}
 
-      {cards.length === 0 ? (
+      {cards.length === 0 && listSubtasks.length === 0 ? (
         <p className="text-sm text-slate-500">{filtersActive ? 'Nothing matches those filters.' : 'No flags. Board looks healthy.'}</p>
       ) : (
         <div className="flex flex-col gap-3">
+          {/* Sub-tasks needing a decision — click one to land on it inside Projects → project → task */}
+          {listSubtasks.length > 0 && (
+            <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-violet-700">
+                Sub-tasks needing a decision · {listSubtasks.length}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {listSubtasks.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => onOpenTask({ projectId: s.project_id, taskId: s.task_id, subId: s.subtask_id })}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-left transition hover:bg-violet-50"
+                  >
+                    <span aria-hidden className="text-violet-400">↳</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-slate-900">{s.title || 'Untitled sub-task'}</span>
+                      <span className="block truncate text-xs text-slate-500">
+                        {s.project_name} · sub-task of {s.parent_title}
+                        {s.parent_assignee ? ` (${s.parent_assignee})` : ''}
+                      </span>
+                    </span>
+                    {s.issues.map((i) => (
+                      <span
+                        key={i}
+                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${i === 'unassigned' ? 'bg-violet-100 text-violet-700' : 'bg-orange-100 text-orange-700'}`}
+                      >
+                        {i === 'unassigned' ? 'No owner' : 'Blocked'}
+                      </span>
+                    ))}
+                    {s.parent_overdue && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700">Parent overdue</span>}
+                    <span className="shrink-0 text-xs text-slate-500">Open →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {cards.map((c, idx) => {
             const t = c.task;
             const due = dueLabel(t.due_at);
