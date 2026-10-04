@@ -278,10 +278,10 @@ export default function BriefDrafter() {
         })
       );
 
-      const fellBack = data.results.some((r) => r.ok && r.fields_fallback);
+      const fellBack = data.results.some((r) => r.ok && r.fields_fallback);\n      const capacityWarnings = data.results.filter((r) => r.ok && r.capacity_warning).map((r) => r.capacity_warning);
       setPushSummary(
         `${data.created} pushed${data.failed ? `, ${data.failed} failed — fix them or press Retry on each` : ''}.${
-          fellBack ? ' Taskmandu wouldn’t accept priority/hours/tags on create, so those went into the description.' : ''
+          fellBack ? ' Taskmandu wouldn’t accept priority/hours/tags on create, so those went into the description.' : ''}\n          ${capacityWarnings.length ? ' Workload warning: ' + capacityWarnings.join(' ') : ''
         }`
       );
       loadContext(); // refresh workload counts + duplicate list
