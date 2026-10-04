@@ -32,6 +32,9 @@ function errorText(e: any, fallback: string): string {
 
 export default function BriefDrafter() {
   const [brief, setBrief] = useState('');
+  const [briefTitle, setBriefTitle] = useState('Untitled brief');
+  const [draftId, setDraftId] = useState<number | null>(null);
+  const [savedDrafts, setSavedDrafts] = useState<Array<{ id: number; title: string; project_id: string | null; status: string; updated_at: string }>>([]);
   const [tickets, setTickets] = useState<EditableTicket[]>([]);
   const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [skipped, setSkipped] = useState<Record<string, boolean>>({});
@@ -65,6 +68,7 @@ export default function BriefDrafter() {
 
   useEffect(() => {
     loadContext();
+    loadSavedDrafts();
     pmApi.recentPushes().then(({ data }) => setRecentPushes(data.pushes)).catch(() => {});
     pmApi
       .projects()
@@ -132,6 +136,68 @@ export default function BriefDrafter() {
   }, [brief, tickets, aiQuestions]);
 
   const askClient = questions.filter((q) => !skipped[q]);
+
+  async function loadSavedDrafts() {
+    try {
+      const { data } = await pmApi.briefDrafts();
+      setSavedDrafts(data.drafts);
+    } catch {}
+  }
+
+  async function saveDraft() {
+    if (!briefTitle.trim()) return setDraftError('Give this brief a title.');
+    if (!brief.trim() && !tickets.length) return setDraftError('Add some notes or tickets before saving.');
+    setDraftError(null);
+    try {
+      const payload = {
+        title: briefTitle.trim(),
+        brief,
+        project_id: projectId || null,
+        tickets,
+      };
+      const { data } = draftId
+        ? await pmApi.updateBriefDraft(draftId, payload)
+        : await pmApi.saveBriefDraft(payload);
+      setDraftId(data.draft.id);
+      setBriefTitle(data.draft.title);
+      setNotice('Draft saved. Nothing has been pushed to Taskmandu.');
+      await loadSavedDrafts();
+    } catch (e) {
+      setDraftError(errorText(e, "Couldn't save this draft."));
+    }
+  }
+
+  async function openDraft(id: number) {
+    try {
+      const { data } = await pmApi.briefDraft(id);
+      setDraftId(data.draft.id);
+      setBriefTitle(data.draft.title);
+      setBrief(data.draft.brief ?? '');
+      setProjectId(data.draft.project_id ?? '');
+      setTickets(data.draft.tickets ?? []);
+      setDraftError(null);
+      setNotice('Draft loaded. Edit anything, then save again.');
+    } catch (e) {
+      setDraftError(errorText(e, "Couldn't load that draft."));
+    }
+  }
+
+  async function deleteDraft(id: number) {
+    if (!window.confirm('Delete this saved brief draft?')) return;
+    try {
+      await pmApi.deleteBriefDraft(id);
+      if (draftId === id) {
+        setDraftId(null);
+        setBriefTitle('Untitled brief');
+        setBrief('');
+        setTickets([]);
+      }
+      await loadSavedDrafts();
+      setNotice('Draft deleted.');
+    } catch (e) {
+      setDraftError(errorText(e, "Couldn't delete that draft."));
+    }
+  }
 
   /* ---------------- drafting ---------------- */
 
@@ -288,6 +354,7 @@ export default function BriefDrafter() {
         `${data.created} pushed${data.failed ? `, ${data.failed} failed — fix them or press Retry on each` : ''}.${fellBack ? ' Taskmandu wouldn’t accept priority/hours/tags on create, so those went into the description.' : ''}${warningText}`
       );
       loadContext(); // refresh workload counts + duplicate list
+      await loadSavedDrafts();
     } catch (e: any) {
       setPushError(
         e?.response
@@ -357,6 +424,34 @@ export default function BriefDrafter() {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <input
+          value={briefTitle}
+          onChange={(e) => setBriefTitle(e.target.value)}
+          maxLength={200}
+          placeholder="Brief title"
+          className={`${inputCls} min-w-[16rem] flex-1 font-medium`}
+        />
+        {draftId && <span className="text-xs text-slate-400">Draft #{draftId}</span>}
+        <button onClick={saveDraft} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+          Save draft
+        </button>
+      </div>
+
+      {savedDrafts.length > 0 && (
+        <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+          <div className="mb-1 text-xs font-semibold text-slate-600">Saved drafts</div>
+          <div className="flex flex-wrap gap-1.5">
+            {savedDrafts.map((d) => (
+              <div key={d.id} className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
+                <button onClick={() => openDraft(d.id)} className="text-xs text-slate-700 hover:underline">{d.title}</button>
+                <button onClick={() => deleteDraft(d.id)} className="text-xs text-slate-400 hover:text-red-600" title="Delete draft">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <textarea
         value={brief}
         onChange={(e) => {
