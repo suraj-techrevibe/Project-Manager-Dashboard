@@ -56,7 +56,10 @@ export const pmApi = {
   /** Current Today data without a page reload. */
   today: () => api.get<TodayData>('/today'),
 
-  commandCenter: () => api.get('/command-center'),
+  commandCenter: () => api.get<import('../types/pm').CommandCenterData>('/command-center'),
+  commandCenterReassign: (cardId: number, employeeId: string) => api.post(`/command-center/reassign`, { card_id: cardId, employee_id: employeeId }),
+  commandCenterResolveBlocker: (cardId: number) => api.post(`/command-center/cards/${cardId}/resolve-blocker`),
+  commandCenterFollowUp: (itemId: number) => api.post<{ message: string }>(`/command-center/waiting/${itemId}/follow-up`),
 
   /** Pull from Taskmandu now (can take a while), then return fresh Today data. */
   sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 180_000 }),
