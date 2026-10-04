@@ -45,6 +45,12 @@ export default function PmIndex({
   const tab: Tab = tabs.some((t) => t.key === tabParam) ? (tabParam as Tab) : 'today';
   const setTab = (t: Tab) => setUrlParams({ tab: t === 'today' ? null : t, project: null, ptab: null, task: null, sub: null, minute: null });
 
+  // Redirect buttons on Today: jump to another tab, or straight into one project.
+  const goTab = (t: string) => {
+    if (tabs.some((x) => x.key === t)) setTab(t as Tab);
+  };
+  const openProject = (id: string) => setUrlParams({ tab: 'projects', project: id, ptab: null, task: null, sub: null });
+
   // Clicking a task on Today jumps to Projects -> that project -> Tasks -> the task itself.
   function openTask(f: TaskFocus) {
     setUrlParams({ tab: 'projects', project: f.projectId, ptab: 'tasks', task: f.taskId, sub: f.subId ?? null });
@@ -54,7 +60,7 @@ export default function PmIndex({
     <AuthenticatedLayout header={<h2 className="text-lg font-medium text-slate-800">PM agent</h2>}>
       <Head title="PM agent" />
 
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <div className="mb-4 flex flex-wrap gap-1.5">
           {tabs.map((t) => (
             <button
@@ -83,6 +89,8 @@ export default function PmIndex({
             since={since}
             lastSyncedAt={lastSyncedAt}
             onOpenTask={openTask}
+            onNavigate={goTab}
+            onOpenProject={openProject}
           />
         </div>
         {tab === 'projects' && <ProjectsPanel />}

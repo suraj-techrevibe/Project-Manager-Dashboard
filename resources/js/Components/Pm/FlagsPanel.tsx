@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import type { Employee, PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
+import type { Employee, PmFlag, PmMetrics, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
 import DigestPanel from './DigestPanel';
 import EmailModal from './EmailModal';
-import SinceStrip from './SinceStrip';
 import SubtaskInbox from './SubtaskInbox';
-import TeamWorkload, { levelOf, overloadThreshold } from './TeamWorkload';
+import { levelOf, overloadThreshold } from './TeamWorkload';
+import TodayCommandCenter, { type CcAnswer } from './TodayCommandCenter';
 
 const severityClasses: Record<Severity, string> = {
   danger: 'border-red-300 bg-red-50/60',
@@ -123,7 +123,7 @@ const QUESTIONS: { key: QuestionKey; label: string; run: (x: QuestionCtx) => Que
       if (!workload.length) return { text: 'No workload data yet — press Sync now first.', match: () => false };
       const heavy = workload.filter((w) => ['over', 'heavy'].includes(levelOf(w, overloadAt)));
       if (!heavy.length) {
-        return { text: 'Nobody is over capacity this week. See Team workload above for the spread.', match: () => true };
+        return { text: 'Nobody is over capacity this week. See Team capacity below for the spread.', match: () => true };
       }
       const names = new Set(heavy.map((w) => w.name));
       return {
@@ -356,6 +356,8 @@ export default function FlagsPanel({
   since: initialSince,
   lastSyncedAt: initialSynced = null,
   onOpenTask,
+  onNavigate,
+  onOpenProject,
 }: {
   /** False while another tab is showing, so shortcut keys don't fire there. */
   active?: boolean;
@@ -368,6 +370,10 @@ export default function FlagsPanel({
   since?: SinceSummary;
   lastSyncedAt?: string | null;
   onOpenTask: (focus: TaskFocus) => void;
+  /** Switch to another tab (projects, minutes, brief, reports, scope, git). */
+  onNavigate?: (tab: string) => void;
+  /** Open one project in the Projects tab. */
+  onOpenProject?: (projectId: string) => void;
 }) {
   const [flags, setFlags] = useState(initialFlags);
   const [workload, setWorkload] = useState(initialWorkload);
@@ -542,17 +548,19 @@ export default function FlagsPanel({
     return q ? { label: q.label, ...q.run({ all: allCards, workload, overloadAt }) } : null;
   }, [question, allCards, workload, overloadAt]);
 
-  const unassignedTasks = useMemo(
-    () => allCards.filter((c) => !c.task.assignee),
-    [allCards]
+  // One answer per predefined question, for the ordered checklist at the top of the page.
+  const answers: CcAnswer[] = useMemo(
+    () =>
+      QUESTIONS.map((q) => {
+        const r = q.run({ all: allCards, workload, overloadAt });
+        let count = allCards.filter((c) => r.match(c)).length;
+        if (q.key === 'overloaded') count = workload.filter((w) => ['over', 'heavy'].includes(levelOf(w, overloadAt))).length;
+        else if (q.key === 'free') count = workload.filter((w) => w.open === 0 || levelOf(w, overloadAt) === 'light').length;
+        else if (q.key === 'worst') count = tally(allCards.map(projectOf))[0]?.[1] ?? 0;
+        return { key: q.key, label: q.label, text: r.text, count };
+      }),
+    [allCards, workload, overloadAt]
   );
-
-  const unassignedSubtasks = useMemo(
-    () => subtasks.filter((s) => s.issues.includes('unassigned')),
-    [subtasks]
-  );
-
-  const unassignedTotal = unassignedTasks.length + unassignedSubtasks.length;
 
   const isPinned = (id: number) => pins.includes(id);
 
@@ -795,104 +803,79 @@ export default function FlagsPanel({
           }}
         />
       )}
-      {/* ===== Header: freshness, quick actions, jump nav ===== */}
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={syncNow}
-            disabled={syncing}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
-          >
-            {syncing ? 'Syncing…' : 'Sync now'}
-          </button>
-          <span className={`text-xs ${stale ? 'font-medium text-amber-600' : 'text-slate-500'}`}>
-            {lastSynced ? `Last synced ${ago(lastSynced)}` : 'Not synced from this app yet'}
-            {stale && ' — data may be out of date'}
-          </span>
-          <div className="ml-auto flex flex-wrap items-center gap-1.5">
-            {pins.length > 0 && (
-              <button
-                onClick={() => setPinnedOnly((p) => !p)}
-                className={`rounded-md border px-2.5 py-1 text-xs ${
-                  pinnedOnly ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                ★ Focus ({pins.length}/{MAX_PINS})
-              </button>
-            )}
-            <button onClick={copyStandup} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50">
-              Copy stand-up
-            </button>
-            <button
-              onClick={() => setShowDigest((v) => !v)}
-              className={`rounded-md border px-2.5 py-1 text-xs ${
-                showDigest ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              Morning digest
-            </button>
-          </div>
-        </div>
-
-        {/* Jump nav — click to scroll straight to a section below */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
-          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Jump to</span>
-          {JUMP_TARGETS.map((j) => (
-            <button
-              key={j.id}
-              onClick={() => jumpTo(j.id)}
-              className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
-            >
-              {j.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {syncError && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{syncError}</div>}
-      {flash && <div className="mb-3 rounded-md bg-slate-900 px-3 py-2 text-xs text-white">{flash}</div>}
+      {syncError && <div className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{syncError}</div>}
+      {flash && <div className="mb-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{flash}</div>}
 
       {showDigest && <DigestPanel onClose={() => setShowDigest(false)} />}
 
-      <TodayDecisionDashboard
+      <TodayCommandCenter
         counts={counts}
+        workload={workload}
+        overloadAt={overloadAt}
+        cards={allCards}
         riskProjects={riskProjects}
         waitingCards={waitingCards}
         agingCards={agingCards}
-        workload={workload}
-        since={since}
-        timelineProjects={timelineProjects}
-        projectsLoading={projectsLoading}
         unassignedTasks={unassignedTasks}
         unassignedSubtasks={unassignedSubtasks}
         staff={staff}
+        since={since}
+        timelineProjects={timelineProjects}
+        projectsLoading={projectsLoading}
+        lastSynced={lastSynced}
+        stale={stale}
+        syncing={syncing}
+        onSync={syncNow}
+        showDigest={showDigest}
+        onToggleDigest={() => setShowDigest((v) => !v)}
+        onCopyStandup={copyStandup}
+        pinCount={pins.length}
+        maxPins={MAX_PINS}
+        pinnedOnly={pinnedOnly}
+        onTogglePinned={() => setPinnedOnly((v) => !v)}
+        answers={answers}
+        activeKey={question}
+        onAsk={(key) => {
+          setFilter(null);
+          setQuestion(key as QuestionKey);
+          jumpTo('task-list');
+        }}
+        onClearAsk={() => setQuestion(null)}
+        onFilter={(type) => {
+          setQuestion(null);
+          setFilter((cur) => (cur === type ? null : type));
+          jumpTo('task-list');
+        }}
+        onOpenCard={open}
+        onNudgeCard={copyNudge}
         onOpenTask={onOpenTask}
         onAssignTask={assignParentTask}
         onAssignSubtask={async (id, employeeId) => {
           try {
             const { data } = await pmApi.assignSubtask(id, employeeId);
             setSubtasks((list) => list.filter((s) => s.id !== id));
-            flashMsg("Assigned to " + data.assignee);
+            flashMsg('Assigned to ' + data.assignee);
             await syncNow();
           } catch (e) {
             flashMsg(errMsg(e, "Couldn't assign the sub-task."));
           }
         }}
-        onFilter={(type) => {
-          setQuestion(null);
-          setFilter((cur) => cur === type ? null : type);
-          jumpTo('task-list');
-        }}
-        onOpenAging={() => {
-          setQuestion('stuck');
-          jumpTo('task-list');
-        }}
         onOpenSince={openSinceItem}
         onShowFree={showFree}
+        onPickPerson={(name) => {
+          setQuestion(null);
+          setFilter(null);
+          setAssignee(name);
+          jumpTo('task-list');
+        }}
+        onNavigate={onNavigate}
+        onOpenProject={onOpenProject}
       />
 
       {/* ===== Task list ===== */}
-      <div id="task-list" className="scroll-mt-4">
+      <div id="task-list" className="mt-8 scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h3 className="mb-1 text-xl font-semibold text-slate-900">All flagged tasks</h3>
+      <p className="mb-4 text-sm text-slate-500">Everything the board flagged, most urgent first. Filter, search, nudge, snooze or verify from here.</p>
       {/* Filters */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <input
@@ -1120,133 +1103,6 @@ export default function FlagsPanel({
 
 
 type RiskProject = { id: string; name: string; score: number; overdue: number; blocked: number; stuck: number; flags: number };
-
-function TodayDecisionDashboard({
-  counts, riskProjects, waitingCards, agingCards, workload, since, timelineProjects, projectsLoading,
-  unassignedTasks, unassignedSubtasks, staff, onOpenTask, onAssignTask, onAssignSubtask, onFilter, onOpenAging, onOpenSince, onShowFree,
-}: {
-  counts: Record<FlagType, number>;
-  riskProjects: RiskProject[];
-  waitingCards: TaskCard[];
-  agingCards: TaskCard[];
-  workload: WorkloadRow[];
-  since?: SinceSummary;
-  timelineProjects: Project[];
-  projectsLoading: boolean;
-  unassignedTasks: TaskCard[];
-  unassignedSubtasks: SubtaskFlag[];
-  staff: Employee[];
-  onOpenTask: (f: TaskFocus) => void;
-  onAssignTask: (c: TaskCard, employeeId: string) => void;
-  onAssignSubtask: (id: number, employeeId: string) => void;
-  onFilter: (type: FlagType) => void;
-  onOpenAging: () => void;
-  onOpenSince: (it: SinceItem) => void;
-  onShowFree: () => void;
-}) {
-  const attention = counts.overdue + counts.due_today + counts.blocked + counts.stuck;
-  const overloaded = workload.filter((w) => levelOf(w, overloadThreshold(workload)) === 'over').length;
-  const free = workload.filter((w) => w.open === 0).length;
-
-  return (
-    <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <div><h2 className="text-base font-semibold text-slate-900">Today at a glance</h2><p className="text-xs text-slate-500">The decisions that need attention first.</p></div>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${attention ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{attention ? attention + ' items need attention' : 'Board looks healthy'}</span>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-4">
-          {([
-            ['overdue','Overdue'], ['due_today','Due today'], ['blocked','Blocked'], ['stuck','Stuck 3+ days']
-          ] as [FlagType,string][]).map(([key,label]) => (
-            <button key={key} onClick={() => onFilter(key)} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left hover:bg-slate-100">
-              <div className="text-xs text-slate-500">{label}</div><div className={`mt-1 text-3xl font-semibold ${counts[key] ? 'text-slate-900' : 'text-slate-300'}`}>{counts[key]}</div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHead title="Project risk & health" sub="Projects with the strongest warning signals." />
-          {riskProjects.length ? <div className="space-y-3">{riskProjects.slice(0,6).map((p) => (
-            <div key={p.id} className="rounded-xl border border-slate-100 p-3">
-              <div className="flex justify-between"><span className="font-medium text-sm text-slate-900">{p.name}</span><span className={`text-xs font-semibold ${p.score < 60 ? 'text-red-600' : p.score < 80 ? 'text-amber-600' : 'text-emerald-600'}`}>{p.score}/100</span></div>
-              <div className="mt-2 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-slate-700" style={{width: p.score + '%'}} /></div>
-              <div className="mt-2 text-[11px] text-slate-500">{p.flags} flagged · {p.overdue} overdue · {p.blocked} blocked · {p.stuck} stuck</div>
-            </div>
-          ))}</div> : <Empty text="No project risk signals." />}
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHead title="Waiting for client" sub="Likely waiting/approval work surfaced from task data." />
-          {waitingCards.length ? <div className="divide-y divide-slate-100">{waitingCards.slice(0,6).map((c) => (
-            <button key={c.card_id} onClick={() => c.task.project_id && c.task.task_id && onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50">
-              <span className="min-w-0"><span className="block truncate text-sm font-medium">{c.task.title}</span><span className="text-xs text-slate-400">{c.task.project_name ?? 'Standalone'}</span></span><span className="text-xs text-slate-500">Open →</span>
-            </button>
-          ))}</div> : <Empty text="Nothing currently looks like client-waiting work." />}
-        </section>
-      </div>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHead title="Capacity planner" sub="Who is overloaded, and who can take work?" />
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MiniStat label="People" value={workload.length} /><MiniStat label="Overloaded" value={overloaded} /><MiniStat label="Free" value={free} /><MiniStat label="Unassigned" value={unassignedTasks.length + unassignedSubtasks.length} />
-        </div>
-        <TeamWorkload workload={workload} selected="" onSelect={() => {}} />
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHead title="What changed" sub="Recent movement since the last workday." />
-        {since ? <SinceStrip since={since} onOpenItem={onOpenSince} onShowFree={onShowFree} /> : <Empty text="No change data yet." />}
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHead title="Project timeline & milestones" sub="A compact project-level timeline; detailed Gantt remains in each project." />
-        {projectsLoading ? <Empty text="Loading projects…" /> : timelineProjects.length ? <div className="space-y-3 overflow-x-auto">{timelineProjects.map((p) => {
-          const start = new Date(p.startDate ?? p.createdAt).getTime();
-          const end = new Date(p.endDate ?? p.tasks.map(t=>t.dueDate).filter(Boolean).sort().at(-1) ?? p.createdAt).getTime();
-          const span = Math.max(86400000, end-start);
-          const pct = (v:number) => Math.max(0,Math.min(100,((v-start)/span)*100));
-          const done=p.tasks.filter(t=>t.status==='Completed').length;
-          return <button key={p._id} onClick={()=>p.tasks[0] && onOpenTask({projectId:p._id,taskId:p.tasks[0]._id})} className="block min-w-[720px] w-full text-left">
-            <div className="mb-1 flex justify-between text-xs"><span className="font-medium text-slate-800">{p.name}</span><span className="text-slate-400">{done}/{p.tasks.length} done</span></div>
-            <div className="relative h-8 rounded-lg bg-slate-100"><div className="absolute top-1/2 h-3 -translate-y-1/2 rounded bg-slate-700" style={{left:'0%',width:Math.max(8,pct(end))+'%'}} /><div className="absolute inset-y-0 border-l border-dashed border-slate-400" style={{left:pct(Date.now())+'%'}} /></div>
-            <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>{new Date(start).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span><span>{new Date(end).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></div>
-          </button>;
-        })}</div> : <Empty text="No project dates or tasks available." />}
-      </section>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/30 p-5 shadow-sm">
-          <SectionHead title="No owner" sub="Assign these directly instead of hunting through the task list." />
-          <div className="space-y-2">
-            {unassignedTasks.slice(0,5).map(c=><OwnerRow key={c.card_id} title={c.task.title} meta={c.task.project_name ?? 'Standalone'} staff={staff} onOpen={()=>onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} onAssign={(id)=>onAssignTask(c,id)} />)}
-            {unassignedSubtasks.slice(0,5).map(s=><OwnerRow key={'s'+s.id} title={s.title} meta={(s.project_name ?? '')+' · '+s.parent_title} staff={staff} onOpen={()=>onOpenTask({projectId:s.project_id,taskId:s.task_id,subId:s.subtask_id})} onAssign={(id)=>onAssignSubtask(s.id,id)} />)}
-            {!unassignedTasks.length&&!unassignedSubtasks.length&&<Empty text="Everything has an owner." />}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHead title="Task aging" sub="Work that has stopped moving and needs a decision." />
-          {agingCards.length ? <div className="divide-y divide-slate-100">{agingCards.slice(0,7).map(c=><button key={c.card_id} onClick={()=>c.task.project_id && c.task.task_id && onOpenTask({projectId:c.task.project_id,taskId:c.task.task_id})} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50"><span className="min-w-0"><span className="block truncate text-sm font-medium">{c.task.title}</span><span className="text-xs text-slate-400">{c.task.project_name ?? 'Standalone'} · {daysAgo(c.task.last_activity_at) ?? '—'}d idle</span></span><span className="text-xs font-medium text-amber-700">Open →</span></button>)}</div> : <Empty text="No task has been idle for 3+ days." />}
-          {agingCards.length > 7 && <button onClick={onOpenAging} className="mt-3 text-xs font-medium text-slate-600 underline">View all aging work</button>}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function SectionHead({title,sub}:{title:string;sub:string}) {
-  return <div className="mb-4"><h3 className="text-sm font-semibold text-slate-900">{title}</h3><p className="mt-0.5 text-xs text-slate-500">{sub}</p></div>;
-}
-function MiniStat({label,value}:{label:string;value:number}) {
-  return <div className="rounded-xl border border-slate-100 bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold text-slate-900">{value}</div></div>;
-}
-function Empty({text}:{text:string}) { return <div className="rounded-xl bg-slate-50 px-4 py-5 text-sm text-slate-500">{text}</div>; }
-function OwnerRow({title,meta,staff,onOpen,onAssign}:{title:string;meta:string;staff:Employee[];onOpen:()=>void;onAssign:(id:string)=>void}) {
-  return <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3"><button onClick={onOpen} className="min-w-0 flex-1 text-left"><div className="truncate text-sm font-medium text-slate-900">{title}</div><div className="truncate text-xs text-slate-400">{meta}</div></button><select defaultValue="" onChange={e=>e.target.value&&onAssign(e.target.value)} className="max-w-40 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"><option value="">Assign…</option>{staff.map(s=><option key={s.employeeId} value={s.employeeId}>{s.name}</option>)}</select></div>;
-}
 
 function Detail({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
