@@ -12,7 +12,7 @@ use Throwable;
  */
 class DigestService
 {
-    public function __construct(private FlagService $flags) {}
+    public function __construct(private FlagService $flags, private AutomationService $automation) {}
 
     /** True when at least one delivery channel is configured. */
     public function channels(): array
@@ -49,6 +49,7 @@ class DigestService
             'unverified' => $ofType('unverified'),
             'since' => $since,
             'idle' => collect($workload)->where('open', 0)->pluck('name')->values()->all(),
+            'automation_lines' => $this->automation->morningFollowUp(),
             'over_capacity' => collect($workload)
                 ->filter(fn ($w) => $capacity > 0 && $w['week_hours'] > $capacity)
                 ->map(fn ($w) => ['name' => $w['name'], 'hours' => $w['week_hours'], 'capacity' => $capacity])
@@ -108,6 +109,14 @@ class DigestService
         $section('Due today', $d['due_today']);
         $section('Blocked', $d['blocked']);
         $section('Unassigned', $d['unassigned']);
+
+        if (! empty($d['automation_lines'])) {
+            $lines[] = '';
+            $lines[] = $bold('Follow-up');
+            foreach (array_slice($d['automation_lines'], 0, $max) as $line) {
+                $lines[] = '• '.$esc($line);
+            }
+        }
 
         $people = [];
         if ($d['idle']) {
