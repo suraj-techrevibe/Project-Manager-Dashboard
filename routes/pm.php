@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
@@ -25,6 +26,18 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::delete('reports/{report}', [ReportController::class, 'destroy'])->name('reports.destroy');
     Route::post('scope', [PmController::class, 'scope'])->name('scope');
     Route::post('scope/email', [PmController::class, 'scopeEmail'])->name('scope.email');
+
+    // Meeting minutes — plain local CRUD, no Taskmandu involved. "draft" is
+    // the only AI step: reshapes pasted rough notes into the standard
+    // fields, returned for review, nothing saved until the PM hits Save.
+    // Action items get onto a Taskmandu board via the existing
+    // projects.tasks.store route (called from the frontend), not from here.
+    Route::get('minutes', [MeetingMinutesController::class, 'index'])->name('minutes.index');
+    Route::post('minutes', [MeetingMinutesController::class, 'store'])->name('minutes.store');
+    Route::post('minutes/draft', [MeetingMinutesController::class, 'draft'])->name('minutes.draft');
+    Route::get('minutes/{minute}', [MeetingMinutesController::class, 'show'])->name('minutes.show');
+    Route::patch('minutes/{minute}', [MeetingMinutesController::class, 'update'])->name('minutes.update');
+    Route::delete('minutes/{minute}', [MeetingMinutesController::class, 'destroy'])->name('minutes.destroy');
 
     // Git status is safe to expose to any authed user; the mutating actions
     // (fetch/pull/push/checkout) run real git commands against the server's

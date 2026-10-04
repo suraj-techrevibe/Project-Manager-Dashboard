@@ -6,14 +6,16 @@ import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import GitPanel from '@/Components/Pm/GitPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
+import MeetingMinutesPanel from '@/Components/Pm/MeetingMinutesPanel';
 import { setUrlParams, useUrlParam } from '@/lib/urlState';
 import type { PmFlag, PmMetrics, SinceSummary, TaskFocus, WorkloadRow } from '@/types/pm';
 
-type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects';
+type Tab = 'today' | 'brief' | 'reports' | 'scope' | 'git' | 'projects' | 'minutes';
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'projects', label: 'Projects' },
+  { key: 'minutes', label: 'Meeting minutes' },
   { key: 'brief', label: 'Brief to tickets' },
   { key: 'reports', label: 'Reports' },
   { key: 'scope', label: 'Scope check' },
@@ -37,7 +39,7 @@ export default function PmIndex({
   // so Back/Forward and reload keep your place.
   const tabParam = useUrlParam('tab');
   const tab: Tab = tabs.some((t) => t.key === tabParam) ? (tabParam as Tab) : 'today';
-  const setTab = (t: Tab) => setUrlParams({ tab: t === 'today' ? null : t, project: null, ptab: null, task: null, sub: null });
+  const setTab = (t: Tab) => setUrlParams({ tab: t === 'today' ? null : t, project: null, ptab: null, task: null, sub: null, minute: null });
 
   // Clicking a task on Today jumps to Projects -> that project -> Tasks -> the task itself.
   function openTask(f: TaskFocus) {
@@ -78,6 +80,7 @@ export default function PmIndex({
           />
         </div>
         {tab === 'projects' && <ProjectsPanel />}
+        {tab === 'minutes' && <MeetingMinutesPanel />}
         {tab === 'brief' && <BriefDrafter />}
         {tab === 'reports' && <ReportsPanel />}
         {tab === 'scope' && <ScopeCheck />}

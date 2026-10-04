@@ -328,6 +328,51 @@ export interface PullRequest {
   url: string;
 }
 
+export interface ActionItem {
+  task: string;
+  owner: string;
+  due_date: string | null;
+}
+
+export interface MeetingMinutesSummary {
+  id: number;
+  title: string;
+  meeting_date: string;
+  attendees: string[];
+  action_items: ActionItem[];
+}
+
+export interface MeetingMinutesFull extends Omit<MeetingMinutesSummary, 'action_items'> {
+  agenda_items: string[];
+  discussion: string | null;
+  decisions: string[];
+  action_items: ActionItem[];
+  raw_notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MinutesDraft {
+  title: string;
+  attendees: string[];
+  agenda_items: string[];
+  discussion: string;
+  decisions: string[];
+  action_items: ActionItem[];
+}
+
+export interface MinutesInput {
+  title: string;
+  meeting_date: string;
+  attendees?: string[];
+  agenda_items?: string[];
+  discussion?: string;
+  decisions?: string[];
+  action_items?: ActionItem[];
+  raw_notes?: string;
+}
+
 export interface ReportItem {
   title: string;
   project: string | null;

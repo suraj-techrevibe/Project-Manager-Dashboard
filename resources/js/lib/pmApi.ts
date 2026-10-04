@@ -19,6 +19,10 @@ import type {
   VariableInput,
   ProjectMember,
   MemberRole,
+  MeetingMinutesSummary,
+  MeetingMinutesFull,
+  MinutesDraft,
+  MinutesInput,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
 
@@ -175,4 +179,20 @@ export const pmApi = {
 
   removeProjectMember: (projectId: string, memberId: string) =>
     api.delete<P>(`/projects/${projectId}/members/${memberId}`),
+
+  // ---- Meeting minutes (plain local CRUD, no Taskmandu) -----------------
+
+  minutesList: () => api.get<{ minutes: MeetingMinutesSummary[] }>('/minutes'),
+
+  minutesShow: (id: number) => api.get<{ minute: MeetingMinutesFull }>(`/minutes/${id}`),
+
+  /** Reshapes pasted rough notes into the standard fields — nothing is saved. */
+  minutesDraft: (notes: string) => api.post<{ draft: MinutesDraft }>('/minutes/draft', { notes }),
+
+  minutesCreate: (data: MinutesInput) => api.post<{ minute: MeetingMinutesFull }>('/minutes', data),
+
+  minutesUpdate: (id: number, data: Partial<MinutesInput>) =>
+    api.patch<{ minute: MeetingMinutesFull }>(`/minutes/${id}`, data),
+
+  minutesDelete: (id: number) => api.delete<{ deleted: true }>(`/minutes/${id}`),
 };
