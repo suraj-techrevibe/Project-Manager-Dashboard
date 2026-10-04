@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PmActivity;
 use App\Models\PmCard;
 use App\Services\Pm\ClaudeClient;
+use App\Services\Pm\DigestService;
 use App\Services\Pm\FlagService;
 use App\Services\Pm\GitHubService;
 use App\Services\Pm\GitService;
@@ -26,6 +27,7 @@ class PmController extends Controller
         private TaskmanduSync $taskmandu,
         private GitService $git,
         private GitHubService $github,
+        private DigestService $digest,
     ) {}
 
     public function index(): Response
@@ -59,6 +61,33 @@ class PmController extends Controller
         Cache::forget('pm.employees');
 
         return response()->json($this->todayPayload() + ['synced' => $synced]);
+    }
+
+    /** The morning digest as text, plus which delivery channels are configured. */
+    public function digest(): JsonResponse
+    {
+        $data = $this->digest->build($this->staff());
+
+        return response()->json([
+            'text' => $this->digest->text($data),
+            'channels' => $this->digest->channels(),
+        ]);
+    }
+
+    /** Sends the morning digest now to the configured Slack / email channels. */
+    public function digestSend(): JsonResponse
+    {
+        if (! in_array(true, $this->digest->channels(), true)) {
+            return response()->json(['error' => 'No delivery channel set. Add PM_DIGEST_SLACK_WEBHOOK and/or PM_DIGEST_EMAIL to .env.'], 422);
+        }
+
+        $result = $this->digest->send($this->digest->build($this->staff()));
+
+        if (! $result['sent']) {
+            return response()->json(['error' => 'Digest not sent: '.implode('; ', $result['errors'])], 422);
+        }
+
+        return response()->json($result);
     }
 
     /** Records that the PM actually sent a nudge (e.g. copied the template message). */

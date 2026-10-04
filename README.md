@@ -78,6 +78,22 @@ Level, estimate and priority are sent as real fields (`tags`, `estimatedHours`, 
 rejects them on the standalone create call (400/422) the push is retried once without them and a
 `Level | Est | Priority` line is added to the description instead; the UI says when that happened.
 
+### Meeting-notes mode (v6)
+
+Paste meeting notes and press **From meeting notes**. Only the action items become tickets; discussion,
+attendees and decisions are ignored. No AI, no API key.
+
+A line is an action item when it has `TODO`, `Action:` / `AI:` / `Follow-up:` / `Task:`, a `[ ]` checkbox, or an
+`@name`, or when it sits under an `Action items:` / `Next steps:` / `To do:` heading.
+
+- **Assignee** from `@name`: full name, first name, last name or a unique prefix. If two people fit (two Priyas)
+  or nobody does, the ticket is left unassigned and the notice names the mention.
+- **Due date** from `by Friday`, `next Tuesday`, `tomorrow`, `EOD`, `end of week`, `next week`, `12 Oct`,
+  `Oct 12`, `12/10` (day first) or `2026-10-12`. "By Friday" on a Friday means next Friday. A date already in
+  the past is left blank, and the notice says so.
+- `urgent`, `asap`, `high priority` or `!!` set the priority to High and are removed from the title.
+- Hours and level are keyword guesses, same as the line splitter. Review before pushing.
+
 ## Daily and weekly reports
 
 The **Reports** tab lists saved reports as collapsible cards, newest first. Pick **Daily** or **Weekly**, a date,
@@ -213,3 +229,19 @@ click). Options, roughly by how much you trust your setup:
 - **Nudge tracking** — "Copy nudge" (no AI) and "Draft with AI" both log a `nudge` activity; cards show
   "Nudged 2d ago".
 - Shortcuts on Today: j/k move, o open, p pin (max 3, saved in the browser), n nudge, s snooze, v verify, / search.
+
+## Morning digest (v6)
+
+A short message with the top flags: overdue (oldest first), due today, blocked, unassigned, the
+since-yesterday counts, who has no tasks, who is over capacity, and how many done tasks wait for you to verify.
+
+- **In the app:** Today -> **Morning digest** shows the exact text, with Copy and **Send to ...**.
+- **Automatically:** `pm:digest` runs weekdays at `PM_DIGEST_TIME` (default 09:00, app timezone) when at least
+  one channel is set. It syncs from Taskmandu first, like `pm:report`. Needs the scheduler running.
+- **Channels** (set either or both in `.env`):
+  - `PM_DIGEST_SLACK_WEBHOOK` - a Slack Incoming Webhook URL for the channel.
+  - `PM_DIGEST_EMAIL` - one or more addresses, comma separated; uses your `MAIL_*` settings
+    (the default `MAIL_MAILER=log` only writes to the log, so set a real mailer for email).
+- `php artisan pm:digest --dry` prints it without sending; `--no-sync` skips the sync.
+- One channel failing does not stop the other; the command exits non-zero and says which one failed.
+- Tests: `php artisan test` (the test database is now in-memory SQLite, see `phpunit.xml`).

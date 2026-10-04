@@ -10,6 +10,8 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('today', [PmController::class, 'today'])->name('today');
     Route::post('sync', [PmController::class, 'sync'])->name('sync');
+    Route::get('digest', [PmController::class, 'digest'])->name('digest');
+    Route::post('digest/send', [PmController::class, 'digestSend'])->name('digest.send');
     Route::post('cards/{card}/nudged', [PmController::class, 'nudged'])->name('nudged');
     Route::post('cards/{card}/nudge', [PmController::class, 'nudge'])->name('nudge');
     Route::post('cards/{card}/snooze', [PmController::class, 'snooze'])->name('snooze');

@@ -97,6 +97,11 @@ export interface TodayData {
   lastSyncedAt: string | null;
 }
 
+export interface DigestPreview {
+  text: string;
+  channels: { slack: boolean; email: boolean };
+}
+
 export interface DraftTicket {
   title: string;
   description: string;

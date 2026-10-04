@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import type { PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
+import DigestPanel from './DigestPanel';
 import SinceStrip from './SinceStrip';
 import TeamWorkload, { levelOf, overloadThreshold } from './TeamWorkload';
 
@@ -363,6 +364,7 @@ export default function FlagsPanel({
   const [pins, setPins] = useState<number[]>(loadPins);
   const [sel, setSel] = useState<number | null>(null);
   const [workloadKey, setWorkloadKey] = useState(0);
+  const [showDigest, setShowDigest] = useState(false);
 
   const [question, setQuestion] = useState<QuestionKey | null>(null);
 
@@ -690,10 +692,20 @@ export default function FlagsPanel({
           <button onClick={copyStandup} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50">
             Copy stand-up
           </button>
+          <button
+            onClick={() => setShowDigest((v) => !v)}
+            className={`rounded-md border px-2.5 py-1 text-xs ${
+              showDigest ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Morning digest
+          </button>
         </div>
       </div>
       {syncError && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{syncError}</div>}
       {flash && <div className="mb-3 rounded-md bg-slate-900 px-3 py-2 text-xs text-white">{flash}</div>}
+
+      {showDigest && <DigestPanel onClose={() => setShowDigest(false)} />}
 
       {since && <SinceStrip since={since} onOpenItem={openSinceItem} onShowFree={showFree} />}
 

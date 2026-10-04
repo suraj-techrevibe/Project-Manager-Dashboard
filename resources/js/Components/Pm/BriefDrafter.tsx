@@ -12,6 +12,7 @@ import {
   splitBrief,
   type EditableTicket,
 } from '../../lib/briefHeuristics';
+import { localISO, parseMeetingNotes } from '../../lib/meetingNotes';
 import { TASK_PRIORITIES } from '../../types/pm';
 import type { BriefContext, Project, PushTicket } from '../../types/pm';
 
@@ -192,6 +193,35 @@ export default function BriefDrafter() {
     );
   }
 
+  function fromMeetingNotes() {
+    if (!brief.trim()) return setDraftError('Paste your meeting notes first');
+    const res = parseMeetingNotes(brief, employees);
+    if (!res.tickets.length) {
+      return setDraftError('No action items found. Mark them with TODO, @name or "by Friday", or put them under an "Action items:" heading.');
+    }
+
+    const assigned = res.tickets.filter((t) => t.assigneeId).length;
+    const dated = res.tickets.filter((t) => t.dueDate).length;
+    const bits = [
+      `Found ${res.tickets.length} action item${res.tickets.length === 1 ? '' : 's'} (${assigned} with an assignee, ${dated} with a due date); ${res.ignored} other line${res.ignored === 1 ? '' : 's'} ignored.`,
+    ];
+    if (res.unmatched.length) {
+      bits.push(
+        employees.length
+          ? `No single match for ${res.unmatched.join(', ')}, so pick those yourself.`
+          : `Couldn't load employees, so ${res.unmatched.join(', ')} weren't matched.`
+      );
+    }
+    if (res.dropped) bits.push(`${res.dropped} more beyond ${MAX_TICKETS} were dropped.`);
+    bits.push(...res.warnings);
+    bits.push('Hours and level are keyword guesses, so review them.');
+
+    setDraftError(null);
+    setAiQuestions([]);
+    loadDrafts(res.tickets);
+    setNotice(bits.join(' '));
+  }
+
   /* ---------------- editing ---------------- */
 
   const update = (uid: string, patch: Partial<EditableTicket>) =>
@@ -283,7 +313,7 @@ export default function BriefDrafter() {
   }
 
   const over = brief.length > BRIEF_MAX_CHARS;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localISO(new Date());
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -293,7 +323,7 @@ export default function BriefDrafter() {
           setBrief(e.target.value);
           setDraftError(null);
         }}
-        placeholder="Paste a raw client brief here — or one task per line for the no-AI splitter..."
+        placeholder="Paste a raw client brief, one task per line for the no-AI splitter, or meeting notes (TODO @name by Friday)..."
         className="min-h-[110px] w-full resize-y rounded-md border border-slate-200 p-2 text-sm"
       />
       <div className="mt-1 flex items-center justify-between text-xs">
@@ -311,6 +341,14 @@ export default function BriefDrafter() {
           title="Turns bullets, numbered lines and plain lines into tickets. No AI, no API key."
         >
           Split without AI
+        </button>
+        <button
+          onClick={fromMeetingNotes}
+          disabled={loading}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          title='Picks out only the action items: lines with TODO / Action: / [ ] / @name, or under an "Action items:" heading. Fills in the assignee from @name and the due date from "by Friday", "12 Oct", "tomorrow"… No AI.'
+        >
+          From meeting notes
         </button>
         <button
           onClick={draft}

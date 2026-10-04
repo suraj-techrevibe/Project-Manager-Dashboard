@@ -9,6 +9,7 @@ import type {
   GitStatus,
   PullRequest,
   Employee,
+  DigestPreview,
   TodayData,
   Project,
   ProjectInput,
@@ -51,6 +52,12 @@ export const pmApi = {
 
   /** Pull from Taskmandu now (can take a while), then return fresh Today data. */
   sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 180_000 }),
+
+  /** The morning digest as text, plus which delivery channels are configured. */
+  digest: () => api.get<DigestPreview>('/digest'),
+
+  /** Send the morning digest now to the configured Slack / email channels. */
+  sendDigest: () => api.post<{ sent: string[]; errors: Record<string, string> }>('/digest/send', undefined, { timeout: 60_000 }),
 
   snooze: (cardId: number) => api.post(`/cards/${cardId}/snooze`),
 
