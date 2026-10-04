@@ -46,6 +46,24 @@ const metricLabels: { key: keyof PmMetrics; label: string; color: string }[] = [
   { key: 'unassigned', label: 'Unassigned', color: 'text-amber-600' },
 ];
 
+// The two tiles that matter most get a big, red, top-of-page treatment;
+// everything else is still visible but a size down.
+const CRITICAL_KEYS: (keyof PmMetrics)[] = ['overdue', 'blocked'];
+const CRITICAL_METRICS = metricLabels.filter((m) => CRITICAL_KEYS.includes(m.key));
+const SECONDARY_METRICS = metricLabels.filter((m) => !CRITICAL_KEYS.includes(m.key));
+
+// Section anchors for the "Jump to" bar — click to scroll straight there.
+const JUMP_TARGETS: { id: string; label: string }[] = [
+  { id: 'critical-metrics', label: 'Critical' },
+  { id: 'since-strip', label: 'Since yesterday' },
+  { id: 'team-workload', label: 'Team workload' },
+  { id: 'task-list', label: 'Task list' },
+];
+
+function jumpTo(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 const UNASSIGNED = '__unassigned';
 const STANDALONE = '__standalone';
 
@@ -682,51 +700,114 @@ export default function FlagsPanel({
           }}
         />
       )}
-      {/* Freshness + quick actions */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button
-          onClick={syncNow}
-          disabled={syncing}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
-        >
-          {syncing ? 'Syncing…' : 'Sync now'}
-        </button>
-        <span className={`text-xs ${stale ? 'font-medium text-amber-600' : 'text-slate-500'}`}>
-          {lastSynced ? `Last synced ${ago(lastSynced)}` : 'Not synced from this app yet'}
-          {stale && ' — data may be out of date'}
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          {pins.length > 0 && (
+      {/* ===== Header: freshness, quick actions, jump nav ===== */}
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={syncNow}
+            disabled={syncing}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+          <span className={`text-xs ${stale ? 'font-medium text-amber-600' : 'text-slate-500'}`}>
+            {lastSynced ? `Last synced ${ago(lastSynced)}` : 'Not synced from this app yet'}
+            {stale && ' — data may be out of date'}
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {pins.length > 0 && (
+              <button
+                onClick={() => setPinnedOnly((p) => !p)}
+                className={`rounded-md border px-2.5 py-1 text-xs ${
+                  pinnedOnly ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                ★ Focus ({pins.length}/{MAX_PINS})
+              </button>
+            )}
+            <button onClick={copyStandup} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50">
+              Copy stand-up
+            </button>
             <button
-              onClick={() => setPinnedOnly((p) => !p)}
+              onClick={() => setShowDigest((v) => !v)}
               className={`rounded-md border px-2.5 py-1 text-xs ${
-                pinnedOnly ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                showDigest ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              ★ Focus ({pins.length}/{MAX_PINS})
+              Morning digest
             </button>
-          )}
-          <button onClick={copyStandup} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50">
-            Copy stand-up
-          </button>
-          <button
-            onClick={() => setShowDigest((v) => !v)}
-            className={`rounded-md border px-2.5 py-1 text-xs ${
-              showDigest ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            Morning digest
-          </button>
+          </div>
+        </div>
+
+        {/* Jump nav — click to scroll straight to a section below */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Jump to</span>
+          {JUMP_TARGETS.map((j) => (
+            <button
+              key={j.id}
+              onClick={() => jumpTo(j.id)}
+              className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              {j.label}
+            </button>
+          ))}
         </div>
       </div>
+
       {syncError && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{syncError}</div>}
       {flash && <div className="mb-3 rounded-md bg-slate-900 px-3 py-2 text-xs text-white">{flash}</div>}
 
       {showDigest && <DigestPanel onClose={() => setShowDigest(false)} />}
 
-      {since && <SinceStrip since={since} onOpenItem={openSinceItem} onShowFree={showFree} />}
+      {/* ===== Critical numbers — big, right at the top ===== */}
+      <div id="critical-metrics" className="mb-4 scroll-mt-4">
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Needs your attention</div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+          {CRITICAL_METRICS.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => {
+                setQuestion(null);
+                setFilter((cur) => (cur === m.key ? null : (m.key as FlagType)));
+                jumpTo('task-list');
+              }}
+              className={`rounded-xl p-4 text-left transition ${
+                filter === m.key ? 'bg-slate-900 ring-2 ring-slate-900' : 'border border-red-200 bg-red-50 hover:bg-red-100'
+              }`}
+            >
+              <div className={`mb-1 text-xs font-medium ${filter === m.key ? 'text-slate-300' : 'text-red-700'}`}>{m.label}</div>
+              <div className={`text-4xl font-semibold ${filter === m.key ? 'text-white' : 'text-red-700'}`}>{counts[m.key as FlagType]}</div>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {SECONDARY_METRICS.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => {
+                setQuestion(null);
+                setFilter((cur) => (cur === m.key ? null : (m.key as FlagType)));
+                jumpTo('task-list');
+              }}
+              className={`rounded-lg p-3 text-left transition ${
+                filter === m.key ? 'bg-slate-900 ring-2 ring-slate-900' : 'bg-slate-50 hover:bg-slate-100'
+              }`}
+            >
+              <div className={`mb-1 text-xs ${filter === m.key ? 'text-slate-300' : 'text-slate-500'}`}>{m.label}</div>
+              <div className={`text-2xl font-medium ${filter === m.key ? 'text-white' : m.color}`}>{counts[m.key as FlagType]}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ===== Since yesterday ===== */}
+      <div id="since-strip" className="scroll-mt-4">
+        {since && <SinceStrip since={since} onOpenItem={openSinceItem} onShowFree={showFree} />}
+      </div>
 
       {/* Question buttons: click one to filter the list and see the answer */}
+      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Ask a question</div>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {QUESTIONS.map((q) => (
           <button
@@ -735,6 +816,7 @@ export default function FlagsPanel({
               if (question === q.key) return setQuestion(null);
               clearFilters(); // a question replaces other filters, so the answer matches the list
               setQuestion(q.key);
+              jumpTo('task-list');
             }}
             className={`rounded-md border px-2.5 py-1 text-xs transition ${
               question === q.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -757,29 +839,13 @@ export default function FlagsPanel({
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {metricLabels.map((m) => (
-          <button
-            key={m.key}
-            onClick={() => {
-              setQuestion(null);
-              setFilter((cur) => (cur === m.key ? null : (m.key as FlagType)));
-            }}
-            className={`rounded-lg p-3 text-left transition ${
-              filter === m.key ? 'bg-slate-900 ring-2 ring-slate-900' : 'bg-slate-50 hover:bg-slate-100'
-            }`}
-          >
-            <div className={`mb-1 text-xs ${filter === m.key ? 'text-slate-300' : 'text-slate-500'}`}>{m.label}</div>
-            <div className={`text-2xl font-medium ${filter === m.key ? 'text-white' : m.color}`}>{counts[m.key as FlagType]}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Team workload: who has too much, who has nothing */}
-      <div id="team-workload">
+      {/* ===== Team workload: who has too much, who has nothing ===== */}
+      <div id="team-workload" className="scroll-mt-4">
         <TeamWorkload workload={workload} selected={assignee} onSelect={setAssignee} forceOpen={workloadKey} />
       </div>
 
+      {/* ===== Task list ===== */}
+      <div id="task-list" className="scroll-mt-4">
       {/* Filters */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <input
@@ -1000,6 +1066,7 @@ export default function FlagsPanel({
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
