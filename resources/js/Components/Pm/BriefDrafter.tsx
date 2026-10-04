@@ -6,8 +6,7 @@ import {
   autoAssign,
   blankTicket,
   findExisting,
-  keywordQuestions,
-  questionsEmail,
+  
   sameTitle,
   splitBrief,
   type EditableTicket,
@@ -36,9 +35,6 @@ export default function BriefDrafter() {
   const [draftId, setDraftId] = useState<number | null>(null);
   const [savedDrafts, setSavedDrafts] = useState<Array<{ id: number; title: string; project_id: string | null; status: string; updated_at: string }>>([]);
   const [tickets, setTickets] = useState<EditableTicket[]>([]);
-  const [aiQuestions, setAiQuestions] = useState<string[]>([]);
-  const [skipped, setSkipped] = useState<Record<string, boolean>>({});
-  const [copied, setCopied] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -130,13 +126,6 @@ export default function BriefDrafter() {
     return out;
   }, [tickets, ctx]);
 
-  const questions = useMemo(() => {
-    const text = `${brief}\n${tickets.map((t) => `${t.title} ${t.description}`).join('\n')}`;
-    return Array.from(new Set([...aiQuestions, ...keywordQuestions(text)]));
-  }, [brief, tickets, aiQuestions]);
-
-  const askClient = questions.filter((q) => !skipped[q]);
-
   async function loadSavedDrafts() {
     try {
       const { data } = await pmApi.briefDrafts();
@@ -218,42 +207,12 @@ export default function BriefDrafter() {
     setPushSummary(null);
   }
 
-  async function draft() {
-    const problem = checkBrief();
-    if (problem) return setDraftError(problem);
-
-    setDraftError(null);
-    setNotice(null);
-    setLoading(true);
-    try {
-      const { data } = await pmApi.draftBrief(brief.trim());
-      loadDrafts(
-        data.tickets.map((t) =>
-          blankTicket({
-            title: t.title,
-            description: t.description ?? '',
-            level: t.level === 'senior dev' ? 'senior dev' : 'intern',
-            estimate_hours: Number.isFinite(Number(t.estimate_hours)) ? Number(t.estimate_hours) : 2,
-          })
-        )
-      );
-      setAiQuestions(data.questions ?? []);
-      if (!data.tickets.length) setDraftError('The AI returned no tickets — add more detail to the brief and try again.');
-      else if (data.truncated) setNotice(`The AI drafted ${data.truncated} more than the ${MAX_TICKETS}-ticket limit; the extras were dropped.`);
-    } catch (e) {
-      setDraftError(errorText(e, "Couldn't draft tickets. Check your connection and try again."));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function splitLocally() {
     if (!brief.trim()) return setDraftError('Paste a brief first');
     const { tickets: fresh, dropped } = splitBrief(brief);
     if (!fresh.length) return setDraftError('Nothing to split — put one task per line (bullets or numbers work best).');
 
     setDraftError(null);
-    setAiQuestions([]);
     loadDrafts(fresh);
     setNotice(
       `Split without AI: level and hours are guesses from keywords, so review them.${
@@ -286,7 +245,6 @@ export default function BriefDrafter() {
     bits.push('Hours and level are keyword guesses, so review them.');
 
     setDraftError(null);
-    setAiQuestions([]);
     loadDrafts(res.tickets);
     setNotice(bits.join(' '));
   }
@@ -403,22 +361,6 @@ export default function BriefDrafter() {
         </div>
       )}
 
-  async function copyQuestions() {
-    const text = questionsEmail(askClient);
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  }
-
   const over = brief.length > BRIEF_MAX_CHARS;
   const today = localISO(new Date());
 
@@ -436,6 +378,12 @@ export default function BriefDrafter() {
         <button onClick={saveDraft} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
           Save draft
         </button>
+      </div>
+
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">Draft: write & save</span>
+        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Ready: review before push</span>
+        <span className="rounded-full bg-green-50 px-2 py-1 text-green-700">Pushed: in Taskmandu</span>
       </div>
 
       {savedDrafts.length > 0 && (
@@ -468,33 +416,15 @@ export default function BriefDrafter() {
         {draftError && <span className="text-red-600">{draftError}</span>}
       </div>
 
-      <div className="mt-2 flex flex-wrap justify-end gap-2">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-slate-400">Write your notes, then add the actual tickets below. Nothing is sent to Taskmandu until you confirm.</span>
         <button
           onClick={splitLocally}
           disabled={loading}
           className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          title="Turns bullets, numbered lines and plain lines into tickets. No AI, no API key."
+          title="Turns each line into a ticket. No AI."
         >
-          Split without AI
-        </button>
-
-                <MeetingPicker
-          employees={employees}
-          disabled={loading}
-          onError={setDraftError}
-          onLoad={(fresh, msg) => {
-            setDraftError(null);
-            setAiQuestions([]);
-            loadDrafts(fresh);
-            setNotice(msg);
-          }}
-        />
-        <button
-          onClick={draft}
-          disabled={loading || over}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-        >
-          {loading ? 'Drafting…' : 'Draft with AI'}
+          Turn lines into tickets
         </button>
       </div>
 
@@ -650,37 +580,6 @@ export default function BriefDrafter() {
             + Add ticket
           </button>
 
-          {/* Client questions */}
-          {questions.length > 0 && (
-            <div className="mt-3 rounded-md bg-amber-50 p-2.5 text-xs text-amber-800">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="font-medium">Ask the client first</span>
-                <button
-                  onClick={copyQuestions}
-                  disabled={!askClient.length}
-                  className="rounded-md bg-white px-2 py-1 font-medium text-amber-800 shadow-sm hover:bg-amber-100 disabled:opacity-50"
-                >
-                  {copied ? 'Copied ✓' : 'Copy as email'}
-                </button>
-              </div>
-              <ul className="flex flex-col gap-1">
-                {questions.map((q) => (
-                  <li key={q}>
-                    <label className="flex cursor-pointer items-start gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={!skipped[q]}
-                        onChange={() => setSkipped((s) => ({ ...s, [q]: !s[q] }))}
-                        className="mt-0.5"
-                      />
-                      <span>{q}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* Push */}
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
             <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputCls} title="Where the tasks should land">
@@ -692,7 +591,10 @@ export default function BriefDrafter() {
               ))}
             </select>
             <button
-              onClick={() => pushList(pending)}
+              onClick={() => {
+                if (!window.confirm(`Push ${pending.length} ticket${pending.length === 1 ? '' : 's'} to Taskmandu now?`)) return;
+                void pushList(pending);
+              }}
               disabled={pushing || pending.length === 0}
               className="ml-auto rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
             >
