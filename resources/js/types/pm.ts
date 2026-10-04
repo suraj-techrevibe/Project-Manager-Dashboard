@@ -127,7 +127,7 @@ export interface PushResult {
   task_id?: string | null;
   card_id?: number;
   /** true when Taskmandu rejected priority/hours/tags on create and they went into the description instead */
-  fields_fallback?: boolean;
+  fields_fallback?: boolean;\n  capacity_warning?: string | null;
 }
 
 export interface ExistingTitle {
