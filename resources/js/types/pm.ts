@@ -516,10 +516,22 @@ export interface CommandCenterData {
     next_due: string | null;
     why: string[];
   }>;
+  aging: Array<{
+    card_id: number;
+    task_id: string | null;
+    project_id: string | null;
+    project_name: string | null;
+    title: string;
+    assignee: string | null;
+    status: string;
+    days: number;
+    last_activity_at: string;
+  }>;
   waiting: Array<{
     id: number;
     title: string;
     project_id: string | null;
+    card_id: number | null;
     waiting_since: string | null;
     days: number;
     severity: 'red' | 'amber' | 'slate';
