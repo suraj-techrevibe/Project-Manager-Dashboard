@@ -478,3 +478,12 @@ export interface SendEmailInput {
   /** When set, the send is also logged as a nudge on that task. */
   card_id?: number;
 }
+
+export interface CommandCenterData {
+  actions: Array<{ kind: string; priority: number; card_id: number; title: string; project_id: string | null; project_name: string | null; assignee: string | null; reason: string; action: string; task_id: string | null }>;
+  overloaded: Array<{ name: string; week_hours: number; capacity: number; excess: number }>;
+  free: Array<{ name: string; week_hours: number; capacity: number; room: number }>;
+  projects: Array<{ project_id: string; project_name: string; score: number; health: 'red' | 'amber' | 'green'; overdue: number; blocked: number; unassigned: number; idle_days: number }>;
+  waiting: Array<{ id: number; title: string; project_id: string | null; waiting_since: string | null; days: number }>;
+  recent: Array<{ type: string; title: string | null; occurred_at: string | null; project: string | null }>;
+}
