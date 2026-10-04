@@ -480,10 +480,56 @@ export interface SendEmailInput {
 }
 
 export interface CommandCenterData {
-  actions: Array<{ kind: string; priority: number; card_id: number; title: string; project_id: string | null; project_name: string | null; assignee: string | null; reason: string; action: string; task_id: string | null }>;
-  overloaded: Array<{ name: string; week_hours: number; capacity: number; excess: number }>;
-  free: Array<{ name: string; week_hours: number; capacity: number; room: number }>;
-  projects: Array<{ project_id: string; project_name: string; score: number; health: 'red' | 'amber' | 'green'; overdue: number; blocked: number; unassigned: number; idle_days: number }>;
-  waiting: Array<{ id: number; title: string; project_id: string | null; waiting_since: string | null; days: number }>;
-  recent: Array<{ type: string; title: string | null; occurred_at: string | null; project: string | null }>;
+  actions: Array<{
+    kind: string;
+    priority: number;
+    card_id: number | null;
+    title: string;
+    project_id: string | null;
+    project_name: string | null;
+    assignee: string | null;
+    reason: string;
+    action: string;
+    task_id: string | null;
+  }>;
+  overloaded: Array<{ name: string; week_hours: number; capacity: number; excess: number; open: number; overdue: number }>;
+  free: Array<{ name: string; week_hours: number; capacity: number; room: number; open: number }>;
+  projects: Array<{
+    project_id: string;
+    project_name: string;
+    score: number;
+    health: 'red' | 'amber' | 'green';
+    delivery: number;
+    tasks: number;
+    schedule: number;
+    team: number;
+    client: number;
+    overdue: number;
+    blocked: number;
+    unassigned: number;
+    idle_days: number;
+    waiting_days: number;
+    waiting_count: number;
+    due_soon: number;
+    completed: number;
+    total: number;
+    next_due: string | null;
+    why: string[];
+  }>;
+  waiting: Array<{
+    id: number;
+    title: string;
+    project_id: string | null;
+    waiting_since: string | null;
+    days: number;
+    severity: 'red' | 'amber' | 'slate';
+  }>;
+  recent: Array<{
+    type: string;
+    title: string | null;
+    occurred_at: string | null;
+    project: string | null;
+    from: string | null;
+    to: string | null;
+  }>;
 }
