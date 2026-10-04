@@ -204,4 +204,18 @@ export const pmApi = {
     api.patch<{ minute: MeetingMinutesFull }>(`/minutes/${id}`, data),
 
   minutesDelete: (id: number) => api.delete<{ deleted: true }>(`/minutes/${id}`),
+  automationNudgeBatch: () => api.get<{ batch: any }>('/automation/nudges'),
+  generateNudgeBatch: (idle_days?: number) => api.post<{ batch: any }>('/automation/nudges/generate', { idle_days }),
+  updateNudgeBatch: (id: number, items: any[]) => api.patch<{ batch: any }>(`/automation/nudges/${id}`, { items }),
+  sendNudgeBatch: (id: number) => api.post<{ sent: number; errors: string[] }>(`/automation/nudges/${id}/send`),
+  projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
+  waitingClient: () => api.get<{ items: any[] }>('/automation/waiting-client'),
+  addWaitingClient: (data: any) => api.post('/automation/waiting-client', data),
+  resolveWaitingClient: (id: number) => api.post(`/automation/waiting-client/${id}/resolve`),
+  meetingTemplates: () => api.get<{ templates: any[] }>('/automation/meeting-templates'),
+  saveMeetingTemplate: (data: any) => api.post('/automation/meeting-templates', data),
+  ticketPacks: () => api.get<{ packs: any[] }>('/automation/ticket-packs'),
+  saveTicketPack: (data: any) => api.post('/automation/ticket-packs', data),
+  pushTicketPack: (id: number, projectId: string) => api.post(`/automation/ticket-packs/${id}/push`, { project_id: projectId }),
+
 };
