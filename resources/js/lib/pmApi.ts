@@ -25,6 +25,9 @@ import type {
   MeetingMinutesFull,
   MinutesDraft,
   MinutesInput,
+  BriefDraft,
+  BriefDraftInput,
+  BriefDraftSummary,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
 
@@ -76,6 +79,12 @@ export const pmApi = {
 
   draftBrief: (brief: string) =>
     api.post<{ tickets: DraftTicket[]; questions: string[]; truncated?: number }>('/brief', { brief }),
+  briefDrafts: () => api.get<{ drafts: BriefDraftSummary[] }>('/brief/drafts'),
+  briefDraft: (id: number) => api.get<{ draft: BriefDraft }>(`/brief/drafts/${id}`),
+  saveBriefDraft: (data: BriefDraftInput) => api.post<{ draft: BriefDraft }>('/brief/drafts', data),
+  updateBriefDraft: (id: number, data: BriefDraftInput) => api.patch<{ draft: BriefDraft }>(`/brief/drafts/${id}`, data),
+  deleteBriefDraft: (id: number) => api.delete<{ deleted: true }>(`/brief/drafts/${id}`),
+  recentPushes: () => api.get<{ pushes: Array<{ id: number; title: string; project_name: string | null; occurred_at: string }> }>('/recent-pushes'),
 
   employees: () => api.get<{ employees: Employee[] }>('/employees'),
 
