@@ -39,40 +39,54 @@ class MeetingMinutesController extends Controller
     public function store(Request $r): JsonResponse
     {
         $data = $this->validated($r);
-        $assignedBy = $r->user()?->name;
-
-        try {
-            $created = $this->resolveProjects($data, $assignedBy);
-        } catch (RuntimeException $e) {
-            return $this->projectFailure($e);
-        }
-
-        $data['created_by'] = $assignedBy;
+        $data['created_by'] = $r->user()?->name;
         $minute = MeetingMinutes::create($data);
 
-        return response()->json(['minute' => $this->full($minute), 'created_projects' => $created], 201);
+        return response()->json(['minute' => $this->full($minute)], 201);
     }
 
     public function update(Request $r, MeetingMinutes $minute): JsonResponse
     {
         $data = $this->validated($r);
-        $assignedBy = $minute->created_by ?: $r->user()?->name;
-
-        try {
-            $created = $this->resolveProjects($data, $assignedBy);
-        } catch (RuntimeException $e) {
-            return $this->projectFailure($e);
-        }
-
         $minute->update($data);
 
-        return response()->json(['minute' => $this->full($minute), 'created_projects' => $created]);
+        return response()->json(['minute' => $this->full($minute)]);
     }
 
     public function destroy(MeetingMinutes $minute): JsonResponse
     {
         $minute->delete();
         return response()->json(['deleted' => true]);
+    }
+
+    public function pushToTaskmandu(Request $r, MeetingMinutes $minute): JsonResponse
+    {
+        if (($minute->status ?? 'final') !== 'final') {
+            return response()->json([
+                'error' => 'Only finalized meeting minutes can be pushed to Taskmandu.',
+                'message' => 'Only finalized meeting minutes can be pushed to Taskmandu.',
+            ], 422);
+        }
+
+        $data = [
+            'title' => $minute->title,
+            'status' => 'final',
+            'meeting_date' => $minute->meeting_date?->toDateString(),
+            'work_items' => $minute->work_items ?? [],
+        ];
+
+        try {
+            $created = $this->resolveProjects($data, $minute->created_by ?: $r->user()?->name);
+        } catch (RuntimeException $e) {
+            return $this->projectFailure($e);
+        }
+
+        $minute->update(['work_items' => $data['work_items']]);
+
+        return response()->json([
+            'minute' => $this->full($minute->fresh()),
+            'created_projects' => $created,
+        ]);
     }
 
     public function draft(Request $r): JsonResponse
