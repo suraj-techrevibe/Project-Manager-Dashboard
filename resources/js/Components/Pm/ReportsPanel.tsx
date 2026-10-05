@@ -98,8 +98,9 @@ function UpdatePart({ c }: { c: DailyContent | WeeklyContent }) {
   ].filter((b) => b.lines.length);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-      <h3 className="mb-3 text-base font-semibold text-slate-900">Update</h3>
+    <div className="rounded-lg border border-green-200 bg-green-50/40 p-4">
+      <h3 className="mb-0.5 text-base font-semibold text-green-800">Part 1 — Summary</h3>
+      <p className="mb-3 text-xs text-slate-500">Plain language, no project-board jargon — anyone can read this, including your boss.</p>
       {blocks.length ? (
         <div className="flex flex-col gap-4">
           {blocks.map((b) => (
@@ -295,12 +296,12 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
         </p>
         <div className="flex gap-1.5">
           {report.content.kind && (
-            <button onClick={() => onCopy('update')} className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800" title="Just the Update section — the one to send to your boss">
-              {copied === 'update' ? 'Copied ✓' : 'Copy update'}
+            <button onClick={() => onCopy('update')} className="rounded-md bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800" title="Just Part 1 — the plain-language summary to send your boss">
+              {copied === 'update' ? 'Copied ✓' : 'Copy Part 1 (for boss)'}
             </button>
           )}
-          <button onClick={() => onCopy('full')} className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200">
-            {copied === 'full' ? 'Copied ✓' : report.content.kind ? 'Copy full report' : 'Copy as text'}
+          <button onClick={() => onCopy('full')} className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200" title="Part 1 + Part 2 — summary plus the raw board data, for your own records">
+            {copied === 'full' ? 'Copied ✓' : report.content.kind ? 'Copy both parts' : 'Copy as text'}
           </button>
           <button onClick={onDelete} className="rounded-md border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-600">
             Delete
@@ -313,9 +314,9 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
       {c.kind === 'daily' || c.kind === 'weekly' ? (
         <>
           <UpdatePart c={c} />
-          <details open className="mt-4">
-            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-600">
-              Project details <span className="font-normal text-slate-400">· from the task board</span>
+          <details className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-700">
+              Part 2 — Technical details <span className="font-normal text-slate-400">· raw project-board data, for you not your boss</span>
             </summary>
             <div className="mt-3">{c.kind === 'daily' ? <DailyDetails c={c} /> : <WeeklyDetails c={c} />}</div>
           </details>

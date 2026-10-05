@@ -2,6 +2,8 @@ import type { DailyContent, Report, ReportItem, WeeklyContent } from '../types/p
 
 type Content = DailyContent | WeeklyContent;
 
+const RULE = '─'.repeat(40);
+
 const item = (t: ReportItem) => `${t.title}${t.project ? ` [${t.project}]` : ''} — ${t.assignee ?? 'unassigned'}`;
 
 function section(out: string[], title: string, lines: string[], empty: string | null = 'None.') {
@@ -9,9 +11,20 @@ function section(out: string[], title: string, lines: string[], empty: string | 
   out.push(title.toUpperCase(), lines.length ? lines.map((l) => `• ${l}`).join('\n') : empty!, '');
 }
 
-/** Part 1: the plain-language update — what the PM did, what is blocked, what's next. */
+/**
+ * Part 1: the plain-language summary — anyone can read this, no project-board
+ * jargon. What got done, what's blocked, what's next. This is the part a
+ * non-technical boss actually wants.
+ */
 export function updateText(c: Content): string {
-  const out: string[] = [`${c.kind === 'weekly' ? 'WEEKLY' : 'DAILY'} REPORT — ${c.label}`, `Prepared by: ${c.prepared_by}`, ''];
+  const out: string[] = [
+    `${c.kind === 'weekly' ? 'WEEKLY' : 'DAILY'} REPORT — ${c.label}`,
+    `Prepared by: ${c.prepared_by}`,
+    RULE,
+    '',
+    'PART 1 — SUMMARY',
+    RULE,
+  ];
   section(out, 'What I did', c.my_actions, 'Nothing logged.');
   section(out, 'Blockers / waiting on', c.blocker_notes, null);
   section(out, c.kind === 'weekly' ? 'Next week' : 'Tomorrow', c.plan, 'Nothing planned yet.');
@@ -19,9 +32,9 @@ export function updateText(c: Content): string {
   return out.join('\n').trimEnd() + '\n';
 }
 
-/** Part 2: the technical board data. */
+/** Part 2: the technical board data — for the PM's own tracking, not the boss. */
 function detailsText(c: Content): string {
-  const out: string[] = ['PROJECT DETAILS (from the task board)', ''];
+  const out: string[] = ['PART 2 — TECHNICAL DETAILS', RULE, '(From the project board — not meant for a non-technical reader)', ''];
 
   if (c.kind === 'daily') {
     out.push('TODAY AT A GLANCE', c.summary_text, `Board: ${c.board_text}`, '');
@@ -87,9 +100,9 @@ function detailsText(c: Content): string {
   return out.join('\n').trimEnd() + '\n';
 }
 
-/** Which text a copy button gives: just the update, or update + project details. */
+/** Which text a copy button gives: just the plain-language part, or both parts. */
 export function reportText(report: Report, part: 'update' | 'full'): string {
   const c = report.content;
   if (c.kind !== 'daily' && c.kind !== 'weekly') return report.body; // old-format report
-  return part === 'update' ? updateText(c) : `${updateText(c)}\n${detailsText(c)}`;
+  return part === 'update' ? updateText(c) : `${updateText(c)}\n${RULE}\n\n${detailsText(c)}`;
 }
