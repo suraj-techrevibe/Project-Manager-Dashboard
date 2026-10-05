@@ -44,7 +44,7 @@ class PmController extends Controller
             return redirect('/pm/'.$tab.($qs !== '' ? '?'.$qs : ''));
         }
 
-        return Inertia::render('Pm/Index', $this->todayPayload());
+        return Inertia::render('Pm/App', ['page' => 'today'] + $this->todayPayload());
     }
 
     /** Fresh Today data without a page reload (used after Sync now). */

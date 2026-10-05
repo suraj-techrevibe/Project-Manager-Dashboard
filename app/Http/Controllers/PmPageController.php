@@ -15,31 +15,31 @@ class PmPageController extends Controller
 {
     public function projects(): Response
     {
-        return Inertia::render('Pm/Projects');
+        return Inertia::render('Pm/App', ['page' => 'projects']);
     }
 
     public function minutes(): Response
     {
-        return Inertia::render('Pm/Minutes');
+        return Inertia::render('Pm/App', ['page' => 'minutes']);
     }
 
     public function brief(): Response
     {
-        return Inertia::render('Pm/Brief');
+        return Inertia::render('Pm/App', ['page' => 'brief']);
     }
 
     public function reports(): Response
     {
-        return Inertia::render('Pm/Reports');
+        return Inertia::render('Pm/App', ['page' => 'reports']);
     }
 
     public function scope(): Response
     {
-        return Inertia::render('Pm/Scope');
+        return Inertia::render('Pm/App', ['page' => 'scope']);
     }
 
     public function git(): Response
     {
-        return Inertia::render('Pm/Git');
+        return Inertia::render('Pm/App', ['page' => 'git']);
     }
 }

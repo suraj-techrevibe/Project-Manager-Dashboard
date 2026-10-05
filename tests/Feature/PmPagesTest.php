@@ -33,13 +33,13 @@ class PmPagesTest extends TestCase
     public static function pages(): array
     {
         return [
-            'today' => ['/pm', 'Pm/Index'],
-            'projects' => ['/pm/projects', 'Pm/Projects'],
-            'minutes' => ['/pm/minutes', 'Pm/Minutes'],
-            'brief' => ['/pm/brief', 'Pm/Brief'],
-            'reports' => ['/pm/reports', 'Pm/Reports'],
-            'scope' => ['/pm/scope', 'Pm/Scope'],
-            'git' => ['/pm/git', 'Pm/Git'],
+            'today' => ['/pm', 'Pm/App'],
+            'projects' => ['/pm/projects', 'Pm/App'],
+            'minutes' => ['/pm/minutes', 'Pm/App'],
+            'brief' => ['/pm/brief', 'Pm/App'],
+            'reports' => ['/pm/reports', 'Pm/App'],
+            'scope' => ['/pm/scope', 'Pm/App'],
+            'git' => ['/pm/git', 'Pm/App'],
         ];
     }
 
@@ -76,7 +76,7 @@ class PmPagesTest extends TestCase
         foreach (['today', 'nonsense', 'automation'] as $tab) {
             $this->withoutVite()->actingAs($user)->get('/pm?tab='.$tab)
                 ->assertOk()
-                ->assertInertia(fn ($page) => $page->component('Pm/Index'));
+                ->assertInertia(fn ($page) => $page->component('Pm/App'));
         }
     }
 
@@ -100,7 +100,7 @@ class PmPagesTest extends TestCase
         $res = $this->withoutVite()->actingAs(User::factory()->create())->get('/pm');
 
         $res->assertInertia(fn ($page) => $page
-            ->component('Pm/Index')
+            ->component('Pm/App')
             ->has('flags', 1)
             ->where('flags.0.title', 'Late thing')
             ->has('tasks', 3));
