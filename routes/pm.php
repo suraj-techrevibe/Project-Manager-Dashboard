@@ -20,13 +20,11 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::post('cards/{card}/verify', [PmController::class, 'verify'])->name('verify');
     Route::post('subtasks/{subtask}/assign', [PmController::class, 'assignSubtask'])->name('subtasks.assign');
     Route::post('subtasks/{subtask}/snooze', [PmController::class, 'snoozeSubtask'])->name('subtasks.snooze');
-    Route::post('brief', [PmController::class, 'brief'])->name('brief');
     Route::get('brief/drafts', [PmController::class, 'briefDrafts'])->name('brief.drafts');
     Route::post('brief/drafts', [PmController::class, 'briefDraftStore'])->name('brief.drafts.store');
     Route::get('brief/drafts/{draft}', [PmController::class, 'briefDraftShow'])->name('brief.drafts.show');
     Route::patch('brief/drafts/{draft}', [PmController::class, 'briefDraftUpdate'])->name('brief.drafts.update');
     Route::delete('brief/drafts/{draft}', [PmController::class, 'briefDraftDestroy'])->name('brief.drafts.destroy');
-    Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::get('brief/context', [PmController::class, 'briefContext'])->name('brief.context');
     Route::post('brief/push', [PmController::class, 'push'])->name('brief.push');
     Route::get('employees', [PmController::class, 'employees'])->name('employees');
