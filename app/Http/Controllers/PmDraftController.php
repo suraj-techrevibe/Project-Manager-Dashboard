@@ -16,7 +16,13 @@ class PmDraftController extends Controller
 {
     public function index(): JsonResponse
     {
-        $drafts = PmDraft::query()->latest('updated_at')->limit(50)->get()->map(fn (PmDraft $d) => $this->summary($d))->all();
+        $drafts = PmDraft::query()
+            ->latest('updated_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (PmDraft $d) => $this->summary($d))
+            ->all();
+
         return response()->json(['drafts' => $drafts]);
     }
 
@@ -38,17 +44,21 @@ class PmDraftController extends Controller
     public function destroy(PmDraft $draft): JsonResponse
     {
         $draft->delete();
+
         return response()->json(['ok' => true]);
     }
 
     public function verify(PmDraft $draft): JsonResponse
     {
         $draft->update(['status' => $draft->status === 'verified' ? 'draft' : 'verified']);
+
         return response()->json(['draft' => $this->full($draft->fresh())]);
     }
 
     private function save(PmDraft $draft, Request $r): JsonResponse
     {
+        // Drafts are works in progress, so this is deliberately lenient: blank
+        // titles, no assignee etc. are fine here. push() enforces the real rules.
         $data = $r->validate([
             'title' => 'nullable|string|max:200',
             'brief' => 'nullable|string|max:8000',
@@ -66,6 +76,7 @@ class PmDraftController extends Controller
             'tickets.*.error' => 'nullable|string|max:500',
         ]);
 
+        // Normalise to exactly the shape the editor expects (no nulls).
         $tickets = collect($data['tickets'])->map(fn ($t) => [
             'uid' => (string) $t['uid'],
             'title' => (string) ($t['title'] ?? ''),
@@ -81,7 +92,6 @@ class PmDraftController extends Controller
 
         $pushed = collect($tickets)->where('state', 'pushed')->count();
         $status = $tickets === [] || $pushed === 0 ? 'draft' : ($pushed === count($tickets) ? 'pushed' : 'partial');
-        if ($draft->status === 'verified' && $pushed === 0) $status = 'verified';
 
         $draft->fill([
             'title' => $this->titleFor($data['title'] ?? null, $data['brief'] ?? null, $draft),
@@ -94,17 +104,24 @@ class PmDraftController extends Controller
         return response()->json(['draft' => $this->summary($draft)]);
     }
 
+    /** Explicit title wins; otherwise the first line of the brief; otherwise keep / "Untitled draft". */
     private function titleFor(?string $title, ?string $brief, PmDraft $draft): string
     {
-        if (filled($title)) return mb_substr(trim($title), 0, 200);
-        if ($draft->exists && filled($draft->title) && $draft->title !== 'Untitled draft') return $draft->title;
+        if (filled($title)) {
+            return mb_substr(trim($title), 0, 200);
+        }
+        if ($draft->exists && filled($draft->title) && $draft->title !== 'Untitled draft') {
+            return $draft->title;
+        }
         $first = collect(preg_split('/\R/', (string) $brief))->map(fn ($l) => trim((string) $l))->first(fn ($l) => $l !== '');
+
         return $first ? mb_substr(ltrim($first, "-*#• \t"), 0, 80) : 'Untitled draft';
     }
 
     private function summary(PmDraft $d): array
     {
         $tickets = $d->tickets ?? [];
+
         return [
             'id' => $d->id,
             'title' => $d->title,
@@ -118,6 +135,9 @@ class PmDraftController extends Controller
 
     private function full(PmDraft $d): array
     {
-        return $this->summary($d) + ['brief' => (string) $d->brief, 'tickets' => $d->tickets ?? []];
+        return $this->summary($d) + [
+            'brief' => (string) $d->brief,
+            'tickets' => $d->tickets ?? [],
+        ];
     }
 }
