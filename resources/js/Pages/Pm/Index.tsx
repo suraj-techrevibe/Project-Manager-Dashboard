@@ -40,19 +40,15 @@ export default function PmIndex({
   since: SinceSummary;
   lastSyncedAt: string | null;
 }) {
-  // The tab lives in the URL (?tab=projects) like the rest of the /pm navigation,
-  // so Back/Forward and reload keep your place.
   const tabParam = useUrlParam('tab');
   const tab: Tab = tabs.some((t) => t.key === tabParam) ? (tabParam as Tab) : 'today';
   const setTab = (t: Tab) => setUrlParams({ tab: t === 'today' ? null : t, project: null, ptab: null, task: null, sub: null, minute: null });
 
-  // Redirect buttons on Today: jump to another tab, or straight into one project.
   const goTab = (t: string) => {
     if (tabs.some((x) => x.key === t)) setTab(t as Tab);
   };
   const openProject = (id: string) => setUrlParams({ tab: 'projects', project: id, ptab: null, task: null, sub: null });
 
-  // Clicking a task on Today jumps to Projects -> that project -> Tasks -> the task itself.
   function openTask(f: TaskFocus) {
     setUrlParams({ tab: 'projects', project: f.projectId, ptab: 'tasks', task: f.taskId, sub: f.subId ?? null });
   }
@@ -78,7 +74,6 @@ export default function PmIndex({
           ))}
         </div>
 
-        {/* Kept mounted (just hidden) so filters, pins and a fresh Sync survive a trip to another tab. */}
         <div hidden={tab !== 'today'}>
           <FlagsPanel
             active={tab === 'today'}
@@ -97,8 +92,10 @@ export default function PmIndex({
         {tab === 'projects' && <ProjectsPanel />}
         {tab === 'minutes' && <MeetingMinutesPanel />}
         {tab === 'brief' && <>
-          <PmDraftsPanel />
           <BriefDrafter />
+          <div className="mt-4">
+            <PmDraftsPanel />
+          </div>
         </>}
         {tab === 'reports' && <ReportsPanel />}
         {tab === 'scope' && <ScopeCheck />}
