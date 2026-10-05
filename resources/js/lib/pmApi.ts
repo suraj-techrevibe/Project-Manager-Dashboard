@@ -224,5 +224,8 @@ export const pmApi = {
   minutesUpdate: (id: number, data: Partial<MinutesInput>) =>
     api.patch<{ minute: MeetingMinutesFull; created_projects?: CreatedProject[] }>(`/minutes/${id}`, data),
 
+  minutesPush: (id: number) =>
+    api.post<{ minute: MeetingMinutesFull; created_projects?: CreatedProject[] }>(`/minutes/${id}/push`),
+
   minutesDelete: (id: number) => api.delete<{ deleted: true }>(`/minutes/${id}`),
 };
