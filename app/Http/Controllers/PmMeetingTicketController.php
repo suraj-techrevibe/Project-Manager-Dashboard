@@ -22,7 +22,7 @@ class PmMeetingTicketController extends Controller
         ])->validate();
         $employees=$this->taskmandu->employeeMap(); $results=[];
         foreach($data['tickets'] as $i=>$ticket){try{$results[]=['index'=>$i]+$this->pushOne($ticket,$employees,(string)$request->user()?->name);}catch(RuntimeException $e){$results[]=['index'=>$i,'ok'=>false,'error'=>$e->getMessage()];}}
-        $ok=collect($results)->where('ok',true); $created=$ok->where('action','created')->count(); $updated=$ok->where('action','updated')->count(); return response()->json(['results'=>$results,'created'=>$created,'updated'=>$updated,'failed'=>count($results)-$ok->count()]);
+        $ok=collect($results)->where('ok',true); $updated=$ok->where('action','updated')->count(); $newlyCreated=$ok->where('action','created')->count(); return response()->json(['results'=>$results,'created'=>$ok->count(),'newly_created'=>$newlyCreated,'updated'=>$updated,'failed'=>count($results)-$ok->count()]);
     }
 
     private function pushOne(array $ticket,array $employees,string $assignedBy):array
@@ -42,7 +42,7 @@ class PmMeetingTicketController extends Controller
                 $task=$this->taskmandu->getProjectTask($projectId,$taskId);
                 $res=$this->taskmandu->updateProjectTask($projectId,$taskId,$ticket['title'],trim($ticket['description']??''),$assigneeId,$assignedBy,$due,$extra);
                 $subSync=$this->taskmandu->syncProjectTaskSubtasks($projectId,$taskId,$subtasks,$assignedBy);
-                $projectName=$existing->project_name??$ticket['project_name']??null; $task=$res['data']['tasks']??$task; $task=collect($task)->firstWhere('_id',$taskId)??$this->taskmandu->getProjectTask($projectId,$taskId); $subtasksCount=count($subtasks);
+                $projectName=$existing->project_name??$ticket['project_name']??null; $updatedTasks=$res['data']['tasks']??[]; $task=collect($updatedTasks)->firstWhere('_id',$taskId)??$this->taskmandu->getProjectTask($projectId,$taskId); $subtasksCount=count($subtasks);
                 $url=rtrim((string)config('services.taskmandu.frontend_url'),'/')."/projects/{$projectId}";
             } else {
                 $res=$this->taskmandu->updateTask($taskId,$ticket['title'],trim($ticket['description']??''),$assigneeId,$due,$extra); $task=$res['data']??[]; $projectName=null; $subtasksCount=0; $subSync=['created'=>0,'updated'=>0,'total'=>0]; $url=rtrim((string)config('services.taskmandu.frontend_url'),'/')."/tasks/{$taskId}";
