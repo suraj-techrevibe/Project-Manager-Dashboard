@@ -64,7 +64,7 @@ class PmController extends Controller
         return response()->json($this->todayPayload() + ['synced' => $synced]);
     }
 
-public function recentPushes()
+    public function recentPushes()
 {
     return response()->json([
         'pushes' => PmActivity::query()
