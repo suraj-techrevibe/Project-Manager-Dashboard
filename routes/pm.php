@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(function () {
     Route::get('/', [PmController::class, 'index'])->name('index');
+    Route::get('recent-pushes', [PmController::class, 'recentPushes'])
+    ->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('today', [PmController::class, 'today'])->name('today');
     Route::post('sync', [PmController::class, 'sync'])->name('sync');

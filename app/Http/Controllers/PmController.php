@@ -64,6 +64,27 @@ class PmController extends Controller
         return response()->json($this->todayPayload() + ['synced' => $synced]);
     }
 
+public function recentPushes()
+{
+    return response()->json([
+        'pushes' => PmActivity::query()
+            ->where('type', 'pushed')
+            ->latest('occurred_at')
+            ->limit(8)
+            ->get([
+                'id',
+                'title',
+                'occurred_at',
+            ])
+            ->map(fn ($activity) => [
+                'id' => $activity->id,
+                'title' => $activity->title,
+                'project_name' => data_get($activity->meta, 'project'),
+                'occurred_at' => $activity->occurred_at,
+            ]),
+    ]);
+}
+
     /** The morning digest as text, plus which delivery channels are configured. */
     public function digest(): JsonResponse
     {
