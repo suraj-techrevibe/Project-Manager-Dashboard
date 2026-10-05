@@ -137,6 +137,7 @@ export interface DraftTicket {
 
 /** One ticket as sent to /pm/brief/push — each carries its own assignee and due date. */
 export interface PushTicket {
+  project_id: string;
   title: string;
   description: string;
   level: string;
@@ -172,16 +173,31 @@ export interface BriefDraftSummary {
   updated_at: string;
 }
 
+export interface BriefTicket {
+  uid: string;
+  projectId: string;
+  projectTitle: string;
+  title: string;
+  description: string;
+  level: string;
+  estimate_hours: number | '';
+  priority: TaskPriority;
+  assigneeId: string;
+  dueDate: string;
+  state: 'draft' | 'pushed' | 'failed';
+  error?: string;
+}
+
 export interface BriefDraft extends BriefDraftSummary {
   brief: string | null;
-  tickets: Array<{ uid: string; title: string; description: string; level: string; estimate_hours: number | ''; priority: TaskPriority; assigneeId: string; dueDate: string; state: 'draft' | 'pushed' | 'failed'; error?: string }>;
+  tickets: BriefTicket[];
 }
 
 export interface BriefDraftInput {
   title: string;
   brief: string;
   project_id: string | null;
-  tickets: Array<{ uid: string; title: string; description: string; level: string; estimate_hours: number | ''; priority: TaskPriority; assigneeId: string; dueDate: string; state: 'draft' | 'pushed' | 'failed'; error?: string }>;
+  tickets: BriefTicket[];
 }
 
 export interface BriefContext {
