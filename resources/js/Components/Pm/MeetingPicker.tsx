@@ -19,10 +19,8 @@ function findProject(name: string, projects: Project[]): Project | null {
   return candidates.length === 1 ? candidates[0] : null;
 }
 
-function descriptionFor(m: MeetingMinutesSummary, w: MeetingWorkItem): string {
-  const lines = [`From meeting: ${m.title} (${shortDate(m.meeting_date)})`];
-  if (w.discussion.trim()) lines.push('', w.discussion.trim());
-  return lines.join('\n');
+function descriptionFor(w: MeetingWorkItem): string {
+  return w.discussion?.trim() ?? '';
 }
 
 export default function MeetingPicker({
@@ -90,7 +88,7 @@ export default function MeetingPicker({
 
           return blankTicket({
             title: w.requirement.trim(),
-            description: descriptionFor(m, w),
+            description: descriptionFor(w),
             assigneeId: hit && hit !== 'ambiguous' ? hit.employeeId : '',
             dueDate,
             projectId: project?._id ?? '',
@@ -118,7 +116,7 @@ export default function MeetingPicker({
       if (missingProjects.length) bits.push(`Project confirmation required for: ${Array.from(new Set(missingProjects)).join(', ')}.`);
       if (past) bits.push(`${past} due date${past === 1 ? ' was' : 's were'} in the past, so ${past === 1 ? 'it was' : 'they were'} left blank.`);
       if (sourceCount > MAX_TICKETS) bits.push(`${sourceCount - MAX_TICKETS} more beyond ${MAX_TICKETS} were dropped.`);
-      bits.push(workItems.length ? 'Each Work Item is one parent Task; Action Items are real Subtasks and keep their own due dates.' : 'This is a legacy meeting, so its action items are loaded as individual tickets.');
+      bits.push(workItems.length ? 'Each Work Item is one parent Task; Requirement is the task title, Discussion is the task description, and Action Items are real Subtasks.' : 'This is a legacy meeting, so its action items are loaded as individual tickets.');
       bits.push('Meeting title/date/attendees stay context only.');
       setOpen(false);
       onLoad(tickets, bits.join(' '), { id: m.id, title: m.title, meeting_date: m.meeting_date, minutes: JSON.stringify(m.work_items ?? m.action_items ?? []) });
