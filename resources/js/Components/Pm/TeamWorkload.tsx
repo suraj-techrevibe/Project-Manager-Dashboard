@@ -52,11 +52,14 @@ export default function TeamWorkload({
   selected,
   onSelect,
   forceOpen,
+  bare = false,
 }: {
   workload: WorkloadRow[];
   selected: string;
   onSelect: (name: string) => void;
   forceOpen?: number;
+  /** Render without its own card/header — for use inside a <Section> (always expanded). */
+  bare?: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const [hidden, setHidden] = useState<string[]>(loadHidden);
@@ -117,8 +120,8 @@ export default function TeamWorkload({
   const unknown = workload.reduce((n, w) => n + (w.no_estimate ?? 0), 0);
 
   return (
-    <div className="mb-3 rounded-lg border border-slate-200 bg-white" key={forceOpen}>
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2 text-left">
+    <div className={bare ? '' : 'mb-3 rounded-lg border border-slate-200 bg-white'} key={forceOpen}>
+      <button onClick={() => setOpen((o) => !o)} className={`flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2 text-left ${bare ? 'hidden' : ''}`}>
         <span className="text-sm font-medium text-slate-800">Team workload</span>
         <span className="flex flex-wrap items-center gap-1.5 text-xs">
           {free.length > 0 && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-700">{free.length} with no tasks</span>}
@@ -128,8 +131,8 @@ export default function TeamWorkload({
         </span>
       </button>
 
-      {open && (
-        <div className="border-t border-slate-100 px-3 pb-3 pt-2">
+      {(bare || open) && (
+        <div className={bare ? '' : 'border-t border-slate-100 px-3 pb-3 pt-2'}>
           {suggestion && (
             <div className="mb-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
               Rebalance: move about <b>{suggestion.hours}h</b> of this week's work from <b>{suggestion.from}</b> to{' '}
@@ -151,7 +154,7 @@ export default function TeamWorkload({
                   <button
                     onClick={() => onSelect(on ? '' : w.name)}
                     className={`flex min-w-0 flex-1 items-center gap-3 rounded-md border px-2.5 py-1.5 text-left transition ${
-                      on ? 'border-slate-900 bg-slate-50' : 'border-transparent hover:bg-slate-50'
+                      on ? 'border-indigo-600 bg-slate-50' : 'border-transparent hover:bg-slate-50'
                     }`}
                     title="Click to show only this person's tasks"
                   >

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
 import type { Employee, Project, ProjectComment, ProjectTask, SubTask, TaskPriority, TaskStatus } from '../../../types/pm';
@@ -261,13 +261,6 @@ function SubTasks({
   const [showAssignees, setShowAssignees] = useState(false);
   // The expanded sub-task is in the URL (?sub=<id>).
   const openSub = useUrlParam('sub');
-
-  // Arriving from a Today link (?sub=<id>): bring that sub-task into view.
-  useEffect(() => {
-    if (!openSub) return;
-    const t = setTimeout(() => document.getElementById(`sub-${openSub}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-    return () => clearTimeout(t);
-  }, [openSub]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [deleting, setDeleting] = useState<SubTask | null>(null);
 
@@ -312,7 +305,7 @@ function SubTasks({
         const done = s.status === 'Completed';
         const open = openSub === s._id;
         return (
-          <div key={s._id} id={`sub-${s._id}`} className={`rounded-lg border p-2 ${open ? 'border-slate-400 bg-slate-50/60' : 'border-slate-100'}`}>
+          <div key={s._id} className="rounded-lg border border-slate-100 p-2">
             <div className="flex items-start gap-2">
               <input type="checkbox" checked={done} onChange={() => toggle(s)} disabled={busy === s._id} className="mt-1" />
               <div className="min-w-0 flex-1">
@@ -347,7 +340,7 @@ function SubTasks({
                     placeholder="Comment…"
                     className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-xs"
                   />
-                  <button onClick={() => comment(s)} disabled={busy === `c-${s._id}` || !(drafts[s._id] ?? '').trim()} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
+                  <button onClick={() => comment(s)} disabled={busy === `c-${s._id}` || !(drafts[s._id] ?? '').trim()} className="rounded bg-indigo-600 px-2 py-1 text-xs text-white disabled:opacity-50">
                     Post
                   </button>
                 </div>

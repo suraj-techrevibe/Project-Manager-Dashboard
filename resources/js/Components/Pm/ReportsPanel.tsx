@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { reportText } from '../../lib/Reporttext';
 import type { DailyContent, Report, ReportItem, ReportPill, WeeklyContent } from '../../types/pm';
+import { EmptyState, JumpNav, Notice, PageHeader, Section as UiSection, btnChip, btnPrimary, btnSecondary } from './ui/kit';
 
-const inputCls = 'rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-slate-400 focus:outline-none';
+const inputCls = 'rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
 
 const todayStr = () => {
   const d = new Date();
@@ -295,7 +296,7 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
         </p>
         <div className="flex gap-1.5">
           {report.content.kind && (
-            <button onClick={() => onCopy('update')} className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800" title="Just the Update section — the one to send to your boss">
+            <button onClick={() => onCopy('update')} className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700" title="Just the Update section — the one to send to your boss">
               {copied === 'update' ? 'Copied ✓' : 'Copy update'}
             </button>
           )}
@@ -424,28 +425,41 @@ export default function ReportsPanel() {
     setTimeout(() => setCopied((cur) => (cur?.id === r.id ? null : cur)), 1500);
   }
 
+  const weeklyCount = reports.filter((r) => r.kind === 'weekly').length;
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Generate */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="mb-2 flex items-center gap-3">
-          <span className="text-sm font-medium text-slate-800">New report</span>
-          <div className="flex gap-1">
-            {(['daily', 'weekly'] as const).map((k) => (
-              <button
-                key={k}
-                onClick={() => setKind(k)}
-                className={`rounded-md px-2.5 py-1 text-xs capitalize ${kind === k ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-              >
-                {k}
-              </button>
-            ))}
-          </div>
+      <PageHeader
+        icon="chart"
+        title="Reports"
+        description="Daily and weekly summaries built from what actually happened on the board."
+        status={reports.length ? `${reports.length} saved · ${weeklyCount} weekly` : undefined}
+        links={[
+          { label: 'Today', tab: 'today' },
+          { label: 'Projects', tab: 'projects' },
+          { label: 'Meeting minutes', tab: 'minutes' },
+        ]}
+      />
+
+      <JumpNav
+        items={[
+          { id: 'report-new', label: 'New report' },
+          { id: 'report-list', label: 'Saved reports', count: reports.length },
+        ]}
+      />
+
+      <UiSection id="report-new" title="New report" subtitle="Generate a daily or weekly report" tone="brand">
+        <div className="mb-3 flex gap-1.5">
+          {(['daily', 'weekly'] as const).map((k) => (
+            <button key={k} onClick={() => setKind(k)} className={`${btnChip(kind === k)} capitalize`}>
+              {k}
+            </button>
+          ))}
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="sm:w-44">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="sm:w-48">
             <input type="date" value={date} max={todayStr()} onChange={(e) => setDate(e.target.value || todayStr())} className={`${inputCls} w-full`} />
-            {kind === 'weekly' && <div className="mt-0.5 text-[11px] text-slate-400">Any day — covers that whole Mon–Sun week</div>}
+            {kind === 'weekly' && <div className="mt-1 text-[11px] text-slate-400">Any day — covers that whole Mon–Sun week</div>}
           </div>
           <textarea
             value={notes}
@@ -455,65 +469,65 @@ export default function ReportsPanel() {
             className={`${inputCls} min-w-0 flex-1 resize-y`}
           />
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500">
-            <input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} />
+            <input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
             Refresh from Taskmandu first
           </label>
           <span className="text-xs text-slate-400">{notes.length.toLocaleString()} / 6,000</span>
-          <button onClick={generate} disabled={generating} className="ml-auto rounded-md bg-slate-900 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+          <button onClick={generate} disabled={generating} className={`${btnPrimary} ml-auto`}>
             {generating ? 'Generating…' : existing ? `Regenerate ${kind} report` : `Generate ${kind} report`}
           </button>
         </div>
-        {existing && !generating && <p className="mt-1.5 text-xs text-amber-700">A {kind} report for this {kind === 'weekly' ? 'week' : 'date'} already exists — generating replaces it.</p>}
-        {genError && <p className="mt-1.5 text-xs text-red-600">{genError}</p>}
-        {warning && <p className="mt-1.5 text-xs text-amber-700">{warning}</p>}
-      </div>
+        <div className="mt-2 flex flex-col gap-2 empty:hidden">
+          {existing && !generating && <Notice tone="warn">A {kind} report for this {kind === 'weekly' ? 'week' : 'date'} already exists — generating replaces it.</Notice>}
+          {genError && <Notice tone="danger">{genError}</Notice>}
+          {warning && <Notice tone="warn">{warning}</Notice>}
+        </div>
+      </UiSection>
 
-      {/* List: newest first, each one collapsed until clicked */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs text-slate-400">Reports{reports.length ? ` (${reports.length})` : ''}</span>
-          {reports.length > 1 && (
-            <button
-              onClick={() => setOpenIds((prev) => (prev.size ? new Set() : new Set(reports.map((r) => r.id))))}
-              className="text-xs text-slate-500 hover:text-slate-800"
-            >
+      <UiSection
+        id="report-list"
+        title="Saved reports"
+        count={reports.length || undefined}
+        subtitle="Newest first — click one to open it"
+        tone="info"
+        actions={
+          reports.length > 1 ? (
+            <button onClick={() => setOpenIds((prev) => (prev.size ? new Set() : new Set(reports.map((r) => r.id))))} className={btnSecondary}>
               {openIds.size ? 'Collapse all' : 'Expand all'}
             </button>
-          )}
-        </div>
-
+          ) : undefined
+        }
+      >
         {loadingList ? (
           <p className="text-sm text-slate-400">Loading…</p>
         ) : listError ? (
-          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          <Notice tone="danger">
             {listError}{' '}
-            <button onClick={load} className="underline">
+            <button onClick={load} className="font-medium underline">
               Retry
             </button>
-          </div>
+          </Notice>
         ) : reports.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400">
-            No reports yet. Generate one above — after that, a daily report is also created each weekday evening and a weekly one on Fridays.
-          </p>
+          <EmptyState title="No reports yet">Generate one above — after that, a daily report is also created each weekday evening and a weekly one on Fridays.</EmptyState>
         ) : (
           <div className="flex flex-col gap-2">
             {reports.map((r) => {
               const open = openIds.has(r.id);
               return (
-                <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-slate-300">
                   <button onClick={() => toggle(r.id)} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
                     <span className={`text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
+                      <span className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium text-slate-900">{r.kind === 'weekly' ? `Week of ${niceDate(r.report_date)}` : niceDate(r.report_date)}</span>
-                        <span className={`rounded px-1 text-[10px] ${r.kind === 'weekly' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>{r.kind}</span>
-                        {r.auto && <span className="rounded bg-slate-100 px-1 text-[10px] text-slate-500">auto</span>}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.kind === 'weekly' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>{r.kind}</span>
+                        {r.auto && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">auto</span>}
                       </span>
                       <span className="block truncate text-xs text-slate-400">{r.content.summary_text}</span>
                     </span>
-                    <span className="hidden flex-wrap justify-end gap-1 sm:flex">
+                    <span className="hidden flex-wrap justify-end gap-1 md:flex">
                       {(r.content.pills ?? []).map((p) => (
                         <span key={p.text} className={`rounded-full px-2 py-0.5 text-[11px] ${tone[p.tone]}`}>
                           {p.text}
@@ -527,7 +541,7 @@ export default function ReportsPanel() {
             })}
           </div>
         )}
-      </div>
+      </UiSection>
     </div>
   );
 }

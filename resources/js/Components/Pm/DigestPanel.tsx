@@ -95,7 +95,7 @@ export default function DigestPanel({ onClose }: { onClose: () => void }) {
             <button
               onClick={send}
               disabled={sending || noChannel}
-              className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
               title={noChannel ? 'Set PM_DIGEST_SLACK_WEBHOOK and/or PM_DIGEST_EMAIL in .env first' : `Send to ${where} now`}
             >
               {sending ? 'Sending…' : noChannel ? 'Send now (not set up)' : `Send to ${where}`}

@@ -19,18 +19,21 @@ export default function SinceStrip({
   since,
   onOpenItem,
   onShowFree,
+  bare = false,
 }: {
   since: SinceSummary;
   onOpenItem: (item: SinceItem) => void;
   onShowFree?: () => void;
+  /** Render without its own card/title — for use inside a <Section>. */
+  bare?: boolean;
 }) {
   const [open, setOpen] = useState<Key | null>(null);
   const group: SinceGroup | null = open ? since[open] : null;
 
   return (
-    <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-sm font-medium text-slate-800">Since {since.label}</span>
+    <div className={bare ? '' : 'mb-3 rounded-lg border border-slate-200 bg-white p-3'}>
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${bare && since.tracked ? 'hidden' : 'mb-2'}`}>
+        {!bare && <span className="text-sm font-medium text-slate-800">Since {since.label}</span>}
         {!since.tracked && (
           <span className="text-xs text-slate-400">
             Changes appear here after your next sync — the very first sync only sets a baseline.

@@ -3,6 +3,7 @@ import { pmApi } from '../../lib/pmApi';
 import type { Project, ProjectStatus } from '../../types/pm';
 import { setUrlParams, useUrlParam } from '../../lib/urlState';
 import { PROJECT_STATUSES } from '../../types/pm';
+import { EmptyState, JumpNav, PageHeader, Pill, Section, StatTile, btnChip, btnPrimary, btnSecondary } from './ui/kit';
 import ProjectWorkspace, { ColorPicker } from './Projects/ProjectWorkspace';
 import {
   Badge,
@@ -12,6 +13,7 @@ import {
   ProgressBar,
   err,
   ghostBtn,
+  isOverdue,
   inputCls,
   primaryBtn,
   projectProgress,
@@ -33,7 +35,8 @@ export default function ProjectsPanel() {
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
-  const [health, setHealth] = useState<Record<string, any>>({});
+  // Quick filter driven by the overview tiles.
+  const [risk, setRisk] = useState<'all' | 'overdue' | 'blocked'>('all');
 
   // Which project is open lives in the URL (?project=<id>), not in React state.
   const openId = useUrlParam('project');
@@ -46,8 +49,6 @@ export default function ProjectsPanel() {
     try {
       const { data } = await pmApi.projects();
       setProjects(data.projects);
-      const h = await pmApi.projectHealth();
-      setHealth(Object.fromEntries(h.data.health.map((x: any) => [x.project_id, x])));
     } catch (e) {
       setError(err(e, "Couldn't load projects from Taskmandu."));
     } finally {
@@ -87,72 +88,196 @@ export default function ProjectsPanel() {
     );
   }
 
-  // Search + status filter are client-side (like Taskmandu's list page) — we already hold every project.
+  // Search + status + risk filters are client-side (like Taskmandu's list page) — we already hold every project.
   const q = search.trim().toLowerCase();
+  const stats = (p: Project) => ({
+    overdue: p.tasks.filter(isOverdue).length,
+    blocked: p.tasks.filter((t) => t.status === 'Blocked').length,
+  });
   const filtered = projects.filter((p) => {
     const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.manager.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
-    return matchesSearch && (statusFilter === 'All' || p.status === statusFilter);
+    const st = stats(p);
+    const matchesRisk = risk === 'all' || (risk === 'overdue' ? st.overdue > 0 : st.blocked > 0);
+    return matchesSearch && matchesRisk && (statusFilter === 'All' || p.status === statusFilter);
   });
 
   const totalTasks = projects.reduce((n, p) => n + p.tasks.length, 0);
   const doneTasks = projects.reduce((n, p) => n + p.tasks.filter((t) => t.status === 'Completed').length, 0);
+  const overdueTasks = projects.reduce((n, p) => n + stats(p).overdue, 0);
+  const blockedTasks = projects.reduce((n, p) => n + stats(p).blocked, 0);
+  const atRisk = projects.filter((p) => stats(p).overdue > 0 || stats(p).blocked > 0).length;
+  const donePct = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const filtersOn = Boolean(search || statusFilter !== 'All' || risk !== 'all');
+  const goList = () => document.getElementById('projects-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search projects…"
-          className="min-w-[160px] flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-        />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | 'All')} className="rounded-md border border-slate-300 px-2 py-1.5 text-sm">
-          <option value="All">All statuses</option>
-          {PROJECT_STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <button onClick={load} disabled={loading} className={`${ghostBtn} disabled:opacity-50`}>Refresh</button>
-        <button onClick={() => setShowNew(true)} className={primaryBtn}>New project</button>
-      </div>
+      <PageHeader
+        icon="folder"
+        title="Projects"
+        description="Live from Taskmandu — open a project to manage its tasks, documents, secrets and members."
+        status={projects.length ? `${projects.length} project${projects.length === 1 ? '' : 's'} · ${totalTasks} task${totalTasks === 1 ? '' : 's'}` : undefined}
+        actions={
+          <>
+            <button onClick={load} disabled={loading} className={btnSecondary}>
+              {loading ? 'Loading…' : 'Refresh'}
+            </button>
+            <button onClick={() => setShowNew(true)} className={btnPrimary}>
+              + New project
+            </button>
+          </>
+        }
+        links={[
+          { label: 'Today', tab: 'today' },
+          { label: 'Meeting minutes', tab: 'minutes' },
+          { label: 'Brief to tickets', tab: 'brief' },
+          { label: 'Reports', tab: 'reports' },
+        ]}
+      />
 
-      {projects.length > 0 && (
-        <p className="text-xs text-slate-400">
-          {projects.length} project{projects.length === 1 ? '' : 's'} · {totalTasks} task{totalTasks === 1 ? '' : 's'} · {doneTasks} done
-        </p>
-      )}
+      <JumpNav
+        items={[
+          { id: 'projects-overview', label: 'Overview' },
+          { id: 'projects-list', label: 'All projects', count: projects.length },
+        ]}
+      />
 
       <ErrorNote message={error} />
-      {loading && <p className="text-sm text-slate-500">Loading projects…</p>}
 
-      {!loading && !error && projects.length === 0 && <p className="text-sm text-slate-500">No projects found in Taskmandu.</p>}
-      {!loading && projects.length > 0 && filtered.length === 0 && <p className="text-sm text-slate-500">No projects match that filter.</p>}
+      <Section id="projects-overview" title="Overview" subtitle="Click a number to filter the list below" tone="brand">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <StatTile
+            label="Projects"
+            value={projects.length}
+            hint={atRisk ? `${atRisk} at risk` : 'none at risk'}
+            active={!filtersOn}
+            onClick={() => {
+              setRisk('all');
+              setStatusFilter('All');
+              setSearch('');
+              goList();
+            }}
+          />
+          <StatTile
+            label="Overdue tasks"
+            value={overdueTasks}
+            tone={overdueTasks ? 'danger' : 'neutral'}
+            hint="projects with late tasks"
+            active={risk === 'overdue'}
+            onClick={() => {
+              setRisk((r) => (r === 'overdue' ? 'all' : 'overdue'));
+              goList();
+            }}
+          />
+          <StatTile
+            label="Blocked tasks"
+            value={blockedTasks}
+            tone={blockedTasks ? 'warn' : 'neutral'}
+            hint="projects with blockers"
+            active={risk === 'blocked'}
+            onClick={() => {
+              setRisk((r) => (r === 'blocked' ? 'all' : 'blocked'));
+              goList();
+            }}
+          />
+          <StatTile label="Completed" value={`${donePct}%`} tone="ok" hint={`${doneTasks} of ${totalTasks} tasks`} />
+          <StatTile
+            label="Active projects"
+            value={projects.filter((p) => p.status === 'Active').length}
+            tone="info"
+            active={statusFilter === 'Active'}
+            onClick={() => {
+              setStatusFilter((s) => (s === 'Active' ? 'All' : 'Active'));
+              goList();
+            }}
+          />
+        </div>
+      </Section>
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        {filtered.map((p) => {
-          const progress = projectProgress(p);
-          return (
-            <button key={p._id} onClick={() => openProject(p._id)} className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-slate-300">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${p.color || 'bg-slate-300'}`} />
-                  <div className="truncate font-medium text-slate-900">{p.name}</div>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {health[p._id] && <span className={"rounded-full px-2 py-0.5 text-[10px] font-medium " + (health[p._id].health === 'red' ? 'bg-red-100 text-red-700' : health[p._id].health === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700')}>Health {health[p._id].score}</span>}
+      <Section
+        id="projects-list"
+        title="All projects"
+        count={filtersOn ? `${filtered.length} of ${projects.length}` : projects.length}
+        tone="info"
+        actions={
+          filtersOn ? (
+            <button
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('All');
+                setRisk('all');
+              }}
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+            >
+              Clear filters
+            </button>
+          ) : undefined
+        }
+      >
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search projects…"
+            aria-label="Search projects"
+            className="min-w-[10rem] flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {(['All', ...PROJECT_STATUSES] as const).map((s) => (
+              <button key={s} onClick={() => setStatusFilter(s)} className={btnChip(statusFilter === s)}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {loading && <p className="text-sm text-slate-500">Loading projects…</p>}
+        {!loading && !error && projects.length === 0 && <EmptyState title="No projects found in Taskmandu" />}
+        {!loading && projects.length > 0 && filtered.length === 0 && <EmptyState title="No projects match those filters" />}
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((p) => {
+            const progress = projectProgress(p);
+            const st = stats(p);
+            return (
+              <button
+                key={p._id}
+                onClick={() => openProject(p._id)}
+                className="group flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`h-3 w-3 shrink-0 rounded-full ${p.color || 'bg-slate-300'}`} />
+                    <div className="truncate font-semibold text-slate-900 group-hover:text-indigo-700">{p.name}</div>
+                  </div>
                   <Badge className={projectStatusColors[p.status]}>{p.status}</Badge>
                 </div>
-              </div>
-              {p.description && <div className="mt-1 line-clamp-2 text-xs text-slate-500">{p.description}</div>}
-              {progress.total > 0 && <ProgressBar pct={progress.pct} className="mt-3" />}
-              <div className="mt-2 text-xs text-slate-400">
-                {progress.total} task{progress.total === 1 ? '' : 's'} · {progress.done} done · {p.members.length} member{p.members.length === 1 ? '' : 's'}
-                {p.manager && ` · ${p.manager}`}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                {p.description && <div className="mt-1.5 line-clamp-2 text-xs text-slate-500">{p.description}</div>}
+
+                <div className="mt-3">
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>
+                      {progress.done}/{progress.total} tasks done
+                    </span>
+                    <span>{progress.pct}%</span>
+                  </div>
+                  <ProgressBar pct={progress.pct} />
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  {st.overdue > 0 && <Pill tone="danger">{st.overdue} overdue</Pill>}
+                  {st.blocked > 0 && <Pill tone="warn">{st.blocked} blocked</Pill>}
+                  {st.overdue === 0 && st.blocked === 0 && progress.total > 0 && <Pill tone="ok">On track</Pill>}
+                  <span className="ml-auto text-[11px] text-slate-400">
+                    {p.members.length} member{p.members.length === 1 ? '' : 's'}
+                    {p.manager && ` · ${p.manager}`}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Section>
 
       {showNew && (
         <NewProjectModal

@@ -101,7 +101,7 @@ export default function TasksTab({
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`rounded-md px-3 py-1 text-sm capitalize ${view === v ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              className={`rounded-md px-3 py-1 text-sm capitalize ${view === v ? 'bg-indigo-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
             >
               {v}
             </button>
@@ -202,7 +202,7 @@ function TaskCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={`cursor-grab rounded-lg border bg-white p-3 transition active:cursor-grabbing ${dragging ? 'opacity-40' : ''} ${
-        highlighted ? 'border-slate-900 ring-2 ring-slate-900/30' : 'border-slate-200'
+        highlighted ? 'border-indigo-600 ring-2 ring-indigo-500/30' : 'border-slate-200'
       }`}
     >
       <div className="flex items-start justify-between gap-2">

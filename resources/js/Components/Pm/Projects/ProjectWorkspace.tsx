@@ -3,6 +3,7 @@ import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
 import type { Employee, Project, ProjectStatus } from '../../../types/pm';
 import { PROJECT_STATUSES } from '../../../types/pm';
+import { Icon, Pill, StatTile } from '../ui/kit';
 import DocumentsTab from './DocumentsTab';
 import MembersTab from './MembersTab';
 import SecretsTab from './SecretsTab';
@@ -20,6 +21,7 @@ import {
   formatDate,
   formatTimestamp,
   ghostBtn,
+  isOverdue,
   inputCls,
   primaryBtn,
   projectProgress,
@@ -93,36 +95,74 @@ export default function ProjectWorkspace({
     { key: 'members', label: 'Members', count: project.members.length },
   ];
 
+  const progress = projectProgress(project);
+  const overdue = project.tasks.filter(isOverdue).length;
+  const blocked = project.tasks.filter((t) => t.status === 'Blocked').length;
+  const inProgress = project.tasks.filter((t) => t.status === 'In Progress').length;
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-700">← Projects</button>
-        <div className="flex items-center gap-2">
-          <button onClick={refresh} disabled={refreshing} className={`${ghostBtn} disabled:opacity-50`}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
-          <button onClick={() => setShowEdit(true)} className={ghostBtn}>Edit project</button>
-          <button onClick={() => setConfirmDelete(true)} className={dangerBtn}>Delete project</button>
-        </div>
-      </div>
+      {/* Header card: where you are, what state it's in, and the actions */}
+      <header className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-indigo-50/40 p-4 shadow-sm sm:p-5">
+        <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1.5 text-xs text-slate-500">
+          <button onClick={onBack} className="font-medium text-indigo-600 hover:text-indigo-800">
+            Projects
+          </button>
+          <span aria-hidden>/</span>
+          <span className="truncate text-slate-700">{project.name}</span>
+        </nav>
 
-      <div className="flex items-center gap-2">
-        <span className={`h-3 w-3 shrink-0 rounded-full ${project.color || 'bg-slate-300'}`} />
-        <h3 className="text-lg font-medium text-slate-900">{project.name}</h3>
-        <Badge className={projectStatusColors[project.status]}>{project.status}</Badge>
-      </div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${project.color || 'bg-slate-300'}`} />
+              <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">{project.name}</h1>
+              <Badge className={projectStatusColors[project.status]}>{project.status}</Badge>
+              {overdue > 0 && <Pill tone="danger">{overdue} overdue</Pill>}
+              {blocked > 0 && <Pill tone="warn">{blocked} blocked</Pill>}
+            </div>
+            {project.manager && <p className="mt-1 text-sm text-slate-500">Managed by {project.manager}</p>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={refresh} disabled={refreshing} className={`${ghostBtn} inline-flex items-center gap-1.5 disabled:opacity-50`}>
+              <Icon name="refresh" className="h-3.5 w-3.5" />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button onClick={() => setShowEdit(true)} className={ghostBtn}>Edit project</button>
+            <button onClick={() => setConfirmDelete(true)} className={dangerBtn}>Delete</button>
+          </div>
+        </div>
+
+        {/* Click a number to jump to the matching tab */}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile label="Progress" value={`${progress.pct}%`} tone="ok" hint={`${progress.done} of ${progress.total} done`} onClick={() => setTab('tasks')} />
+          <StatTile label="In progress" value={inProgress} tone="info" onClick={() => setTab('tasks')} />
+          <StatTile label="Overdue" value={overdue} tone={overdue ? 'danger' : 'neutral'} onClick={() => setTab('tasks')} />
+          <StatTile label="Blocked" value={blocked} tone={blocked ? 'warn' : 'neutral'} onClick={() => setTab('tasks')} />
+        </div>
+      </header>
 
       <ErrorNote message={error} />
 
-      <div className="flex flex-wrap gap-1 border-b border-slate-200">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t.key ? 'border-slate-900 font-medium text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-          >
-            {t.label}
-            {t.count !== undefined && <span className="ml-1 text-xs text-slate-400">{t.count}</span>}
-          </button>
-        ))}
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div role="tablist" className="flex min-w-max">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={tab === t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+                tab === t.key ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              {t.label}
+              {t.count !== undefined && (
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] leading-none ${tab === t.key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>{t.count}</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'details' && <DetailsTab project={project} />}
@@ -195,8 +235,6 @@ function DetailsTab({ project }: { project: Project }) {
         <ProgressBar pct={progress.pct} />
       </div>
 
-      <ProjectTimeline project={project} />
-
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2">
         <Info label="Project manager" value={project.manager || 'Unassigned'} />
         <Info label="Status" value={project.status} />
@@ -220,95 +258,6 @@ function DetailsTab({ project }: { project: Project }) {
   );
 }
 
-function ProjectTimeline({ project }: { project: Project }) {
-  const tasks = [...project.tasks].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const parseDate = (value: string | null | undefined) => {
-    if (!value) return null;
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
-  const projectStart = parseDate(project.startDate) ?? today;
-  const taskDates = tasks.map((t) => parseDate(t.dueDate)).filter(Boolean) as Date[];
-  const projectEnd = parseDate(project.endDate) ?? taskDates.reduce((max, d) => d > max ? d : max, projectStart);
-  const startMs = projectStart.getTime();
-  const endMs = Math.max(projectEnd.getTime(), startMs + 86400000);
-  const span = endMs - startMs;
-  const days = Math.max(7, Math.ceil(span / 86400000));
-  const chartWidth = Math.max(760, days * 42);
-  const pct = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - startMs) / span) * 100));
-  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const marks = Array.from({ length: Math.ceil(days / 7) + 1 }, (_, i) => {
-    const d = new Date(startMs + Math.min(days, i * 7) * 86400000);
-    return { d, p: pct(d) };
-  });
-  const todayP = pct(today);
-  const todayVisible = today.getTime() >= startMs && today.getTime() <= endMs;
-
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h4 className="text-sm font-medium text-slate-900">Project timeline</h4>
-          <p className="text-xs text-slate-500">Gantt view of project tasks.</p>
-        </div>
-        <span className="text-xs text-slate-500">{tasks.length} tasks</span>
-      </div>
-      {tasks.length === 0 ? (
-        <div className="mt-4 rounded-lg bg-slate-50 p-4 text-xs text-slate-500">Add project tasks to see the Gantt timeline.</div>
-      ) : (
-        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-          <div style={{ minWidth: 1040 }}>
-            <div className="grid border-b border-slate-200 bg-slate-50" style={{ gridTemplateColumns: '240px 1fr' }}>
-              <div className="border-r border-slate-200 px-3 py-2 text-xs font-medium text-slate-500">Task</div>
-              <div className="relative h-10" style={{ width: chartWidth }}>
-                {marks.map(({ d, p }) => <div key={d.toISOString()} className="absolute inset-y-0 border-l border-slate-200 px-2 py-2 text-[11px] text-slate-500" style={{ left: p + '%' }}>{fmt(d)}</div>)}
-              </div>
-            </div>
-            {tasks.map((task) => {
-              const due = parseDate(task.dueDate) ?? projectEnd;
-              const taskStart = parseDate(task.createdAt) ?? projectStart;
-              const left = pct(taskStart);
-              const width = Math.max(1.5, Math.min(100 - left, ((due.getTime() - taskStart.getTime()) / span) * 100));
-              const overdue = task.status !== 'Completed' && task.status !== 'Cancelled' && due < today;
-              const bar = task.status === 'Completed' ? 'bg-emerald-500' : task.status === 'Blocked' ? 'bg-rose-500' : overdue ? 'bg-amber-500' : 'bg-slate-700';
-              return (
-                <div key={task._id} className="grid min-h-12 border-b border-slate-100" style={{ gridTemplateColumns: '240px 1fr' }}>
-                  <div className="flex min-w-0 items-center border-r border-slate-100 px-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-xs font-medium text-slate-700" title={task.title}>{task.title}</div>
-                      <div className="text-[10px] text-slate-400">{task.status} · due {fmt(due)}</div>
-                    </div>
-                  </div>
-                  <div className="relative" style={{ width: chartWidth }}>
-                    {marks.map(({ d, p }) => <div key={d.toISOString()} className="absolute inset-y-0 border-l border-slate-100" style={{ left: p + '%' }} />)}
-                    {todayVisible && <div className="absolute inset-y-0 z-10 w-px bg-slate-400" style={{ left: todayP + '%' }} title="Today" />}
-                    <div className="absolute top-1/2 h-6 -translate-y-1/2 rounded" style={{ left: left + '%', width: width + '%', minWidth: 36 }}>
-                      <div className={'h-full w-full rounded ' + bar} title={task.title} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            <div className="grid bg-slate-50" style={{ gridTemplateColumns: '240px 1fr' }}>
-              <div className="border-r border-slate-200 px-3 py-2 text-[11px] text-slate-400">Project dates</div>
-              <div className="flex justify-between px-2 py-2 text-[10px] text-slate-400" style={{ width: chartWidth }}>
-                <span>Start {fmt(projectStart)}</span><span>End {fmt(projectEnd)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-slate-500">
-        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-slate-700" />Active</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-emerald-500" />Completed</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-rose-500" />Blocked</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-amber-500" />Overdue</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded bg-slate-400" />Today</span>
-      </div>
-    </div>
-  );
-}
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -415,7 +364,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (bg:
           type="button"
           title={c.name}
           onClick={() => onChange(c.bg)}
-          className={`h-6 w-6 rounded-full ${c.bg} ${value === c.bg ? 'ring-2 ring-slate-900 ring-offset-2' : ''}`}
+          className={`h-6 w-6 rounded-full ${c.bg} ${value === c.bg ? 'ring-2 ring-indigo-600 ring-offset-2' : ''}`}
         />
       ))}
     </div>

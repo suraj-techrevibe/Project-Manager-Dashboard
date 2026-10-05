@@ -16,6 +16,7 @@ import {
   topicsFor,
 } from '../../lib/minutesFormat';
 import EmailModal from './EmailModal';
+import { EmptyState, JumpNav, PageHeader, Section, StatTile, btnChip, btnPrimary } from './ui/kit';
 import type { ActionItem, MeetingMinutesFull, MeetingMinutesSummary, MinutesStatus, MinutesTopic, Project } from '../../types/pm';
 import {
   ErrorNote,
@@ -155,39 +156,84 @@ export default function MeetingMinutesPanel() {
     );
   }
 
+  const jumpToList = () => document.getElementById('minutes-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const drafts = minutes.filter((m) => m.status === 'draft').length;
+  const finals = minutes.filter((m) => m.status === 'final').length;
+  const openActions = minutes.reduce((n, m) => n + (m.status === 'final' ? 0 : m.action_items.length), 0);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-slate-700">Meeting minutes</h3>
-        <button onClick={() => setEditing({ minute: null, copy: false })} className={primaryBtn}>New meeting</button>
-      </div>
+      <PageHeader
+        icon="notes"
+        title="Meeting minutes"
+        description="Record decisions and action items, then turn them into tasks."
+        status={minutes.length ? `${minutes.length} meeting${minutes.length === 1 ? '' : 's'} · ${drafts} draft${drafts === 1 ? '' : 's'}` : undefined}
+        actions={
+          <button onClick={() => setEditing({ minute: null, copy: false })} className={btnPrimary}>
+            + New meeting
+          </button>
+        }
+        links={[
+          { label: 'Brief to tickets', tab: 'brief' },
+          { label: 'Projects', tab: 'projects' },
+          { label: 'Today', tab: 'today' },
+        ]}
+      />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <JumpNav
+        items={[
+          { id: 'minutes-overview', label: 'Overview' },
+          { id: 'minutes-list', label: 'All meetings', count: minutes.length },
+        ]}
+      />
+
+      <Section id="minutes-overview" title="Overview" tone="brand">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile label="Meetings" value={minutes.length} active={filter === 'all'} onClick={() => { setFilter('all'); jumpToList(); }} />
+          <StatTile label="Drafts" value={drafts} tone={drafts ? 'warn' : 'neutral'} hint="not finalised" active={filter === 'draft'} onClick={() => { setFilter('draft'); jumpToList(); }} />
+          <StatTile label="Final" value={finals} tone="ok" active={filter === 'final'} onClick={() => { setFilter('final'); jumpToList(); }} />
+          <StatTile label="Action items" value={openActions} tone={openActions ? 'info' : 'neutral'} hint="in draft meetings" />
+        </div>
+      </Section>
+
+      <Section
+        id="minutes-list"
+        title="All meetings"
+        count={visible.length}
+        tone="info"
+        actions={
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search title or attendee…"
+            aria-label="Search meetings"
+            className="w-40 rounded-lg border border-slate-300 px-2.5 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-56"
+          />
+        }
+      >
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {(['all', 'draft', 'final'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`rounded-full px-3 py-1 text-xs ${filter === f ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
+          <button key={f} onClick={() => setFilter(f)} className={btnChip(filter === f)}>
             {f === 'all' ? 'All' : f === 'draft' ? `Drafts${drafts ? ` (${drafts})` : ''}` : 'Final'}
           </button>
         ))}
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search title or attendee…"
-          className="ml-auto w-56 rounded-md border border-slate-300 px-2 py-1 text-sm"
-        />
       </div>
 
       <ErrorNote message={error} />
       {loading && <p className="text-sm text-slate-500">Loading…</p>}
       {!loading && minutes.length === 0 && !error && (
-        <p className="text-sm text-slate-500">No meeting minutes yet — click "New meeting" to add one.</p>
+        <EmptyState
+          title="No meeting minutes yet"
+          action={
+            <button onClick={() => setEditing({ minute: null, copy: false })} className={btnPrimary}>
+              + New meeting
+            </button>
+          }
+        >
+          Add your first meeting to capture decisions and action items.
+        </EmptyState>
       )}
-      {!loading && minutes.length > 0 && visible.length === 0 && <p className="text-sm text-slate-500">Nothing matches.</p>}
+      {!loading && minutes.length > 0 && visible.length === 0 && <EmptyState title="Nothing matches">Try a different filter or search.</EmptyState>}
 
       {groups.map((g) => (
         <div key={g.label} className="flex flex-col gap-2">
@@ -230,6 +276,7 @@ export default function MeetingMinutesPanel() {
           })}
         </div>
       ))}
+      </Section>
     </div>
   );
 }
@@ -314,7 +361,7 @@ function MinutesDetail({
       </div>
 
       {sentNote && <p className="text-xs text-green-700">{sentNote}</p>}
-      {showPush && <PushActionItemsModal items={minute.action_items} minuteId={minute.id} onClose={() => setShowPush(false)} />}
+      {showPush && <PushActionItemsModal items={minute.action_items} onClose={() => setShowPush(false)} />}
       {showEmail && (
         <EmailModal
           title="Email minutes"
@@ -333,7 +380,7 @@ function MinutesDetail({
 }
 
 /** Creates one Taskmandu task per action item, on a chosen project's board. */
-function PushActionItemsModal({ items, onClose, minuteId }: { items: ActionItem[]; onClose: () => void; minuteId?: number }) {
+function PushActionItemsModal({ items, onClose }: { items: ActionItem[]; onClose: () => void }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [projectId, setProjectId] = useState('');
@@ -361,15 +408,6 @@ function PushActionItemsModal({ items, onClose, minuteId }: { items: ActionItem[
           dueDate: item.due_date || quickDates()[3].value,
         });
         out.push({ task: item.task, ok: true });
-if (minuteId) {
-  const next = items.map((a, j) =>
-    j === i
-      ? { ...a, pushed_to_board: true, pushed_project_id: projectId }
-      : a
-  );
-
-  await pmApi.minutesUpdate(minuteId, { action_items: next });
-}
       } catch (e) {
         out.push({ task: item.task, ok: false, error: err(e, 'Failed') });
       }
@@ -548,7 +586,7 @@ function MinutesWizard({
           <button
             key={s}
             onClick={() => setStep(i)}
-            className={`rounded-full px-3 py-1 text-xs ${i === step ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            className={`rounded-full px-3 py-1 text-xs ${i === step ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
             {i + 1}. {s}
           </button>
@@ -564,7 +602,7 @@ function MinutesWizard({
                   <button
                     key={t}
                     onClick={() => { setType(t); setTitleTouched(false); }}
-                    className={`rounded-full px-3 py-1 text-xs ${type === t && !titleTouched ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    className={`rounded-full px-3 py-1 text-xs ${type === t && !titleTouched ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                   >
                     {t}
                   </button>
@@ -676,7 +714,7 @@ function MinutesWizard({
                   </select>
                   <input type="date" value={a.due_date ?? ''} onChange={(e) => updateAction(i, { due_date: e.target.value || null })} className="rounded-md border border-slate-300 px-2 py-1 text-sm" />
                   {dates.map((d) => (
-                    <button key={d.label} onClick={() => updateAction(i, { due_date: d.value })} className={`rounded-full px-2.5 py-1 text-xs ${a.due_date === d.value ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <button key={d.label} onClick={() => updateAction(i, { due_date: d.value })} className={`rounded-full px-2.5 py-1 text-xs ${a.due_date === d.value ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                       {d.label}
                     </button>
                   ))}

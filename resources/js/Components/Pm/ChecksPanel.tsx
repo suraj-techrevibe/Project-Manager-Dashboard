@@ -75,7 +75,7 @@ export default function ChecksPanel() {
             key={c.key}
             onClick={() => (c.key === selected ? setTick((n) => n + 1) : setUrlParams({ check: c.key }))}
             className={`rounded-md px-3 py-1.5 text-sm ${
-              c.key === selected ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+              c.key === selected ? 'bg-indigo-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
             {c.label}

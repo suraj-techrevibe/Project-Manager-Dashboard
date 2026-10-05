@@ -39,7 +39,7 @@ export default function ClientUpdate() {
           <button
             onClick={() => generate('formal')}
             className={`rounded-md px-3 py-1.5 text-sm ${
-              tone === 'formal' ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600'
+              tone === 'formal' ? 'bg-indigo-600 text-white' : 'border border-slate-200 text-slate-600'
             }`}
           >
             Formal
@@ -47,7 +47,7 @@ export default function ClientUpdate() {
           <button
             onClick={() => generate('casual')}
             className={`rounded-md px-3 py-1.5 text-sm ${
-              tone === 'casual' ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600'
+              tone === 'casual' ? 'bg-indigo-600 text-white' : 'border border-slate-200 text-slate-600'
             }`}
           >
             Casual

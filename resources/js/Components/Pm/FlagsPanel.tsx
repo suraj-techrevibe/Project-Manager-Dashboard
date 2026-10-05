@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import type { Employee, PmFlag, PmMetrics, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
+import type { PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
 import DigestPanel from './DigestPanel';
 import EmailModal from './EmailModal';
-import SubtaskInbox from './SubtaskInbox';
-import { levelOf, overloadThreshold } from './TeamWorkload';
-import TodayCommandCenter, { type CcAnswer } from './TodayCommandCenter';
+import SinceStrip from './SinceStrip';
+import TeamWorkload, { levelOf, overloadThreshold } from './TeamWorkload';
+import { JumpNav, Notice, PageHeader, Pill, Section, StatTile, btnChip, btnPrimary, btnSecondary, jumpTo } from './ui/kit';
 
 const severityClasses: Record<Severity, string> = {
   danger: 'border-red-300 bg-red-50/60',
@@ -47,29 +47,22 @@ const metricLabels: { key: keyof PmMetrics; label: string; color: string }[] = [
   { key: 'unassigned', label: 'Unassigned', color: 'text-amber-600' },
 ];
 
-// The two tiles that matter most get a big, red, top-of-page treatment;
-// everything else is still visible but a size down.
+// The tiles that matter most get a big, red, top-of-page treatment; the rest sit a size down.
 const CRITICAL_KEYS: (keyof PmMetrics)[] = ['overdue', 'blocked'];
 const CRITICAL_METRICS = metricLabels.filter((m) => CRITICAL_KEYS.includes(m.key));
 const SECONDARY_METRICS = metricLabels.filter((m) => !CRITICAL_KEYS.includes(m.key));
-
-// Section anchors for the "Jump to" bar — click to scroll straight there.
-const JUMP_TARGETS: { id: string; label: string }[] = [
-  { id: 'critical-metrics', label: 'Critical' },
-  { id: 'since-strip', label: 'Since yesterday' },
-  { id: 'unassigned-work', label: 'Unassigned' },
-  { id: 'team-workload', label: 'Team workload' },
-  { id: 'task-list', label: 'Task list' },
-];
-
-function jumpTo(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
+const SECONDARY_TONE: Record<string, 'warn' | 'info' | 'neutral'> = {
+  due_today: 'warn',
+  due_soon: 'info',
+  stuck: 'warn',
+  unassigned: 'warn',
+  unverified: 'neutral',
+};
 
 const UNASSIGNED = '__unassigned';
 const STANDALONE = '__standalone';
 
-const selectCls = 'rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm focus:border-slate-400 focus:outline-none';
+const selectCls = 'rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
 
 const severityRank: Record<Severity, number> = { danger: 0, warning: 1, neutral: 2 };
 
@@ -89,8 +82,6 @@ type QuestionKey = 'overloaded' | 'free' | 'duesoon' | 'overdue' | 'blocking' | 
 
 interface QuestionCtx {
   all: TaskCard[];
-  /** Open sub-tasks with nobody assigned (they aren't task cards, so counted separately). */
-  unassignedSubtasks: number;
   workload: WorkloadRow[];
   overloadAt: number;
 }
@@ -125,7 +116,7 @@ const QUESTIONS: { key: QuestionKey; label: string; run: (x: QuestionCtx) => Que
       if (!workload.length) return { text: 'No workload data yet — press Sync now first.', match: () => false };
       const heavy = workload.filter((w) => ['over', 'heavy'].includes(levelOf(w, overloadAt)));
       if (!heavy.length) {
-        return { text: 'Nobody is over capacity this week. See Team capacity below for the spread.', match: () => true };
+        return { text: 'Nobody is over capacity this week. See Team workload above for the spread.', match: () => true };
       }
       const names = new Set(heavy.map((w) => w.name));
       return {
@@ -222,11 +213,11 @@ const QUESTIONS: { key: QuestionKey; label: string; run: (x: QuestionCtx) => Que
   {
     key: 'unowned',
     label: 'What has no owner?',
-    run: ({ all, unassignedSubtasks }) => {
+    run: ({ all }) => {
       const m = all.filter((c) => hasFlag(c, 'unassigned'));
-      if (!m.length && !unassignedSubtasks) return { text: 'Every open task and sub-task has an owner.', match: () => false };
-      const parts = [m.length > 0 && plural(m.length, 'task'), unassignedSubtasks > 0 && plural(unassignedSubtasks, 'sub-task')].filter(Boolean);
-      return { text: `${parts.join(' and ')} with nobody assigned.`, match: (c) => hasFlag(c, 'unassigned') };
+      return m.length
+        ? { text: `${plural(m.length, 'task')} with nobody assigned.`, match: (c) => hasFlag(c, 'unassigned') }
+        : { text: 'Every open task has an assignee.', match: () => false };
     },
   },
   {
@@ -353,13 +344,9 @@ export default function FlagsPanel({
   active: tabActive = true,
   flags: initialFlags,
   workload: initialWorkload = [],
-  subtasks: initialSubtasks = [],
-  staff: initialStaff = [],
   since: initialSince,
   lastSyncedAt: initialSynced = null,
   onOpenTask,
-  onNavigate,
-  onOpenProject,
 }: {
   /** False while another tab is showing, so shortcut keys don't fire there. */
   active?: boolean;
@@ -367,22 +354,12 @@ export default function FlagsPanel({
   /** Kept optional so older callers that still pass `metrics` keep compiling; counts are derived from `flags` below. */
   metrics?: PmMetrics;
   workload?: WorkloadRow[];
-  subtasks?: SubtaskFlag[];
-  staff?: Employee[];
   since?: SinceSummary;
   lastSyncedAt?: string | null;
   onOpenTask: (focus: TaskFocus) => void;
-  /** Switch to another tab (projects, minutes, brief, reports, scope, git). */
-  onNavigate?: (tab: string) => void;
-  /** Open one project in the Projects tab. */
-  onOpenProject?: (projectId: string) => void;
 }) {
   const [flags, setFlags] = useState(initialFlags);
   const [workload, setWorkload] = useState(initialWorkload);
-  const [subtasks, setSubtasks] = useState(initialSubtasks);
-  const [staff, setStaff] = useState(initialStaff);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(false);
   const [since, setSince] = useState<SinceSummary | undefined>(initialSince);
   const [lastSynced, setLastSynced] = useState<string | null>(initialSynced);
   const [syncing, setSyncing] = useState(false);
@@ -412,20 +389,6 @@ export default function FlagsPanel({
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    if (!tabActive) return;
-    let cancelled = false;
-    setProjectsLoading(true);
-    pmApi.projects().then(({ data }) => {
-      if (!cancelled) setProjects(data.projects ?? []);
-    }).catch(() => {
-      if (!cancelled) setProjects([]);
-    }).finally(() => {
-      if (!cancelled) setProjectsLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [tabActive]);
-
   function flashMsg(msg: string) {
     setFlash(msg);
     setTimeout(() => setFlash((cur) => (cur === msg ? null : cur)), 2500);
@@ -434,8 +397,6 @@ export default function FlagsPanel({
   function apply(d: TodayData) {
     setFlags(d.flags);
     setWorkload(d.workload);
-    setSubtasks(d.subtasks ?? []);
-    setStaff(d.staff ?? []);
     setSince(d.since);
     setLastSynced(d.lastSyncedAt);
   }
@@ -504,66 +465,11 @@ export default function FlagsPanel({
     }));
   }, [flags]);
 
-  const riskProjects = useMemo(() => {
-    const byProject = new Map<string, TaskCard[]>();
-    allCards.forEach((c) => {
-      if (!c.task.project_id || !c.task.project_name) return;
-      byProject.set(c.task.project_id, [...(byProject.get(c.task.project_id) ?? []), c]);
-    });
-    return Array.from(byProject.entries()).map(([id, cards]) => {
-      const overdue = cards.filter((c) => hasFlag(c, 'overdue')).length;
-      const blocked = cards.filter((c) => hasFlag(c, 'blocked')).length;
-      const stuck = cards.filter((c) => hasFlag(c, 'stuck')).length;
-      const score = Math.max(0, 100 - overdue * 18 - blocked * 15 - stuck * 8);
-      return { id, name: cards[0].task.project_name!, score, overdue, blocked, stuck, flags: cards.length };
-    }).sort((a, b) => a.score - b.score);
-  }, [allCards]);
-
-  const agingCards = useMemo(
-    () => allCards
-      .filter((c) => hasFlag(c, 'stuck'))
-      .sort((a, b) => (daysAgo(b.task.last_activity_at) ?? 0) - (daysAgo(a.task.last_activity_at) ?? 0)),
-    [allCards]
-  );
-
-  const waitingCards = useMemo(() => allCards.filter((c) => {
-    const t = c.task;
-    const text = [t.title, t.description, ...(t.tags ?? [])].join(' ').toLowerCase();
-    return /waiting|client|approval|feedback|content needed|awaiting/.test(text);
-  }), [allCards]);
-
-  const timelineProjects = useMemo(
-    () => projects
-      .filter((p) => p.startDate || p.endDate || p.tasks.length)
-      .sort((a, b) => (a.startDate ?? a.createdAt).localeCompare(b.startDate ?? b.createdAt))
-      .slice(0, 8),
-    [projects]
-  );
-
-  const unassignedTasks = useMemo(() => allCards.filter((c) => !c.task.assignee), [allCards]);
-  const unassignedSubtasks = useMemo(() => subtasks.filter((s) => s.issues.includes('unassigned')), [subtasks]);
-  const unassignedTotal = unassignedTasks.length + unassignedSubtasks.length;
-
   // The clicked question's one-line answer + which cards it keeps.
   const active = useMemo(() => {
     const q = QUESTIONS.find((x) => x.key === question);
-    return q ? { label: q.label, ...q.run({ all: allCards, unassignedSubtasks: unassignedSubtasks.length, workload, overloadAt }) } : null;
-  }, [question, allCards, unassignedSubtasks, workload, overloadAt]);
-
-  // One answer per predefined question, for the ordered checklist at the top of the page.
-  const answers: CcAnswer[] = useMemo(
-    () =>
-      QUESTIONS.map((q) => {
-        const r = q.run({ all: allCards, unassignedSubtasks: unassignedSubtasks.length, workload, overloadAt });
-        let count = allCards.filter((c) => r.match(c)).length;
-        if (q.key === 'unowned') count += unassignedSubtasks.length;
-        if (q.key === 'overloaded') count = workload.filter((w) => ['over', 'heavy'].includes(levelOf(w, overloadAt))).length;
-        else if (q.key === 'free') count = workload.filter((w) => w.open === 0 || levelOf(w, overloadAt) === 'light').length;
-        else if (q.key === 'worst') count = tally(allCards.map(projectOf))[0]?.[1] ?? 0;
-        return { key: q.key, label: q.label, text: r.text, count };
-      }),
-    [allCards, unassignedSubtasks, workload, overloadAt]
-  );
+    return q ? { label: q.label, ...q.run({ all: allCards, workload, overloadAt }) } : null;
+  }, [question, allCards, workload, overloadAt]);
 
   const isPinned = (id: number) => pins.includes(id);
 
@@ -597,27 +503,6 @@ export default function FlagsPanel({
           dueTs(a) - dueTs(b)
       );
   }, [allCards, filter, active, search, assignee, project, pinnedOnly, pins]);
-
-  // Sub-tasks are not task cards, so the filters above can't see them — which left "No owner: 1"
-  // opening an empty list. Sub-tasks only carry two issues (no owner / blocked): the No-owner
-  // tile and question show the unowned ones, any other flag or question has none to show, and
-  // with no filter the list shows every flagged sub-task, like it does every flagged task.
-  const listSubtasks = useMemo(() => {
-    if (pinnedOnly) return [];
-    const unowned = filter === 'unassigned' || question === 'unowned';
-    if ((filter || question) && !unowned) return [];
-    const q = search.trim().toLowerCase();
-
-    return subtasks
-      .filter((s) => !unowned || s.issues.includes('unassigned'))
-      .filter((s) => {
-        if (assignee === UNASSIGNED) return !s.assignee;
-        if (assignee) return (s.assignee ?? '').split(',').some((n) => n.trim() === assignee);
-        return true;
-      })
-      .filter((s) => (project === STANDALONE ? false : !project || s.project_name === project))
-      .filter((s) => !q || [s.title, s.parent_title, s.project_name, s.assignee].some((v) => v?.toLowerCase().includes(q)));
-  }, [subtasks, filter, question, pinnedOnly, assignee, project, search]);
 
   const totalTasks = useMemo(() => new Set(flags.map((f) => f.card_id)).size, [flags]);
   const pinnedVisible = cards.filter((c) => isPinned(c.card_id)).length;
@@ -793,23 +678,6 @@ export default function FlagsPanel({
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  async function assignParentTask(card: TaskCard, employeeId: string) {
-    if (!card.task.project_id || !card.task.task_id) return;
-    try {
-      await pmApi.updateProjectTask(card.task.project_id, card.task.task_id, {
-        assignedToId: [employeeId],
-        assignedByName: 'PM',
-        title: card.task.title,
-        dueDate: card.task.due_at ?? new Date().toISOString().slice(0, 10),
-      });
-      const employee = staff.find((e) => e.employeeId === employeeId);
-      flashMsg("Assigned to " + (employee?.name ?? "owner"));
-      await syncNow();
-    } catch (e) {
-      flashMsg(errMsg(e, "Couldn't assign the task."));
-    }
-  }
-
   return (
     <div>
       {emailFor && (
@@ -827,79 +695,187 @@ export default function FlagsPanel({
           }}
         />
       )}
-      {syncError && <div className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{syncError}</div>}
-      {flash && <div className="mb-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{flash}</div>}
-
-      {showDigest && <DigestPanel onClose={() => setShowDigest(false)} />}
-
-      <TodayCommandCenter
-        counts={counts}
-        workload={workload}
-        overloadAt={overloadAt}
-        cards={allCards}
-        riskProjects={riskProjects}
-        waitingCards={waitingCards}
-        agingCards={agingCards}
-        unassignedTasks={unassignedTasks}
-        unassignedSubtasks={unassignedSubtasks}
-        staff={staff}
-        since={since}
-        timelineProjects={timelineProjects}
-        projectsLoading={projectsLoading}
-        lastSynced={lastSynced}
-        stale={stale}
-        syncing={syncing}
-        onSync={syncNow}
-        showDigest={showDigest}
-        onToggleDigest={() => setShowDigest((v) => !v)}
-        onCopyStandup={copyStandup}
-        pinCount={pins.length}
-        maxPins={MAX_PINS}
-        pinnedOnly={pinnedOnly}
-        onTogglePinned={() => setPinnedOnly((v) => !v)}
-        answers={answers}
-        activeKey={question}
-        onAsk={(key) => {
-          setFilter(null);
-          setQuestion(key as QuestionKey);
-          jumpTo('task-list');
-        }}
-        onClearAsk={() => setQuestion(null)}
-        onFilter={(type) => {
-          setQuestion(null);
-          setFilter((cur) => (cur === type ? null : type));
-          jumpTo('task-list');
-        }}
-        onOpenCard={open}
-        onNudgeCard={copyNudge}
-        onOpenTask={onOpenTask}
-        onAssignTask={assignParentTask}
-        onAssignSubtask={async (id, employeeId) => {
-          try {
-            const { data } = await pmApi.assignSubtask(id, employeeId);
-            setSubtasks((list) => list.filter((s) => s.id !== id));
-            flashMsg('Assigned to ' + data.assignee);
-            await syncNow();
-          } catch (e) {
-            flashMsg(errMsg(e, "Couldn't assign the sub-task."));
+      {/* ===== Page header: what this is, freshness, quick actions ===== */}
+      <div className="flex flex-col gap-4">
+        <PageHeader
+          icon="sun"
+          title="Today"
+          description="What needs you right now — overdue, blocked, due soon, and who is free to help."
+          status={
+            <span className={stale ? 'font-medium text-amber-600' : undefined}>
+              {lastSynced ? `Last synced ${ago(lastSynced)}` : 'Not synced from this app yet'}
+              {stale && ' — data may be out of date'}
+            </span>
           }
-        }}
-        onOpenSince={openSinceItem}
-        onShowFree={showFree}
-        onPickPerson={(name) => {
-          setQuestion(null);
-          setFilter(null);
-          setAssignee(name);
-          jumpTo('task-list');
-        }}
-        onNavigate={onNavigate}
-        onOpenProject={onOpenProject}
-      />
+          actions={
+            <>
+              <button onClick={syncNow} disabled={syncing} className={btnPrimary}>
+                {syncing ? 'Syncing…' : 'Sync now'}
+              </button>
+              {pins.length > 0 && (
+                <button onClick={() => setPinnedOnly((p) => !p)} className={btnChip(pinnedOnly)}>
+                  ★ Focus ({pins.length}/{MAX_PINS})
+                </button>
+              )}
+              <button onClick={copyStandup} className={btnSecondary}>
+                Copy stand-up
+              </button>
+              <button onClick={() => setShowDigest((v) => !v)} className={showDigest ? btnPrimary : btnSecondary}>
+                Morning digest
+              </button>
+            </>
+          }
+          links={[
+            { label: 'Projects', tab: 'projects' },
+            { label: 'Meeting minutes', tab: 'minutes' },
+            { label: 'Brief to tickets', tab: 'brief' },
+            { label: 'Reports', tab: 'reports' },
+          ]}
+        />
 
-      {/* ===== Task list ===== */}
-      <div id="task-list" className="mt-8 scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h3 className="mb-1 text-xl font-semibold text-slate-900">All flagged tasks</h3>
-      <p className="mb-4 text-sm text-slate-500">Everything the board flagged, most urgent first. Filter, search, nudge, snooze or verify from here.</p>
+        {syncError && <Notice tone="danger">{syncError}</Notice>}
+        {flash && <Notice tone="brand">{flash}</Notice>}
+
+        {showDigest && <DigestPanel onClose={() => setShowDigest(false)} />}
+
+        <JumpNav
+          items={[
+            { id: 'critical-metrics', label: 'Critical', count: counts.overdue + counts.blocked, tone: counts.overdue + counts.blocked ? 'danger' : 'ok' },
+            { id: 'since-strip', label: 'Since yesterday' },
+            { id: 'ask-question', label: 'Ask a question' },
+            { id: 'team-workload', label: 'Team workload', count: workload.length || undefined },
+            { id: 'task-list', label: 'Task list', count: totalTasks },
+          ]}
+        />
+
+        {/* ===== Critical numbers — big, right at the top ===== */}
+        <Section
+          id="critical-metrics"
+          title="Needs your attention"
+          tone={counts.overdue + counts.blocked > 0 ? 'danger' : 'ok'}
+          subtitle={counts.overdue + counts.blocked > 0 ? 'Click a number to filter the task list' : 'Nothing overdue or blocked — nice'}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            {CRITICAL_METRICS.map((m) => (
+              <StatTile
+                key={m.key}
+                size="lg"
+                label={m.label}
+                value={counts[m.key as FlagType]}
+                tone={counts[m.key as FlagType] > 0 ? 'danger' : 'ok'}
+                active={filter === m.key}
+                onClick={() => {
+                  setQuestion(null);
+                  setFilter((cur) => (cur === m.key ? null : (m.key as FlagType)));
+                  jumpTo('task-list');
+                }}
+              />
+            ))}
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {SECONDARY_METRICS.map((m) => (
+              <StatTile
+                key={m.key}
+                label={m.label}
+                value={counts[m.key as FlagType]}
+                tone={counts[m.key as FlagType] > 0 ? SECONDARY_TONE[m.key] ?? 'neutral' : 'neutral'}
+                active={filter === m.key}
+                onClick={() => {
+                  setQuestion(null);
+                  setFilter((cur) => (cur === m.key ? null : (m.key as FlagType)));
+                  jumpTo('task-list');
+                }}
+              />
+            ))}
+          </div>
+        </Section>
+
+        {/* ===== Since yesterday ===== */}
+        {since && (
+          <Section
+            id="since-strip"
+            title={`Since ${since.label}`}
+            tone="info"
+            subtitle="What changed on the board"
+            badges={
+              since.tracked ? (
+                <>
+                  {since.completed.count > 0 && <Pill tone="ok">{since.completed.count} done</Pill>}
+                  {since.blocked.count > 0 && <Pill tone="danger">{since.blocked.count} blocked</Pill>}
+                </>
+              ) : undefined
+            }
+          >
+            <SinceStrip bare since={since} onOpenItem={openSinceItem} onShowFree={showFree} />
+          </Section>
+        )}
+
+        {/* ===== Question buttons: click one to filter the list and see the answer ===== */}
+        <Section id="ask-question" title="Ask a question" subtitle="One click answers it and filters the list" tone="brand" defaultOpen>
+          <div className="flex flex-wrap gap-1.5">
+            {QUESTIONS.map((q) => (
+              <button
+                key={q.key}
+                onClick={() => {
+                  if (question === q.key) return setQuestion(null);
+                  clearFilters(); // a question replaces other filters, so the answer matches the list
+                  setQuestion(q.key);
+                  jumpTo('task-list');
+                }}
+                className={btnChip(question === q.key)}
+              >
+                {q.label}
+              </button>
+            ))}
+          </div>
+
+          {active && (
+            <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 text-sm text-slate-700">
+              <div>
+                <div className="mb-0.5 text-xs font-medium text-indigo-700">{active.label}</div>
+                {active.text}
+              </div>
+              <button onClick={() => setQuestion(null)} className="text-xs text-slate-400 hover:text-slate-700" aria-label="Clear question">
+                ✕
+              </button>
+            </div>
+          )}
+        </Section>
+
+        {/* ===== Team workload: who has too much, who has nothing ===== */}
+        <Section
+          id="team-workload"
+          title="Team workload"
+          subtitle="Who has too much, who has nothing"
+          tone="info"
+          badges={
+            <>
+              {workload.filter((w) => w.open === 0).length > 0 && <Pill tone="info">{workload.filter((w) => w.open === 0).length} with no tasks</Pill>}
+              {workload.filter((w) => ['over', 'heavy'].includes(levelOf(w, overloadAt))).length > 0 && (
+                <Pill tone="danger">{workload.filter((w) => ['over', 'heavy'].includes(levelOf(w, overloadAt))).length} overloaded</Pill>
+              )}
+            </>
+          }
+        >
+          <TeamWorkload bare workload={workload} selected={assignee} onSelect={setAssignee} forceOpen={workloadKey} />
+        </Section>
+
+        {/* ===== Task list ===== */}
+        <Section
+          id="task-list"
+          title="Task list"
+          count={filtersActive ? `${cards.length} of ${totalTasks}` : totalTasks}
+          tone={counts.overdue > 0 ? 'danger' : 'neutral'}
+          subtitle="Click a task to open it in Projects"
+          actions={
+            filtersActive ? (
+              <button onClick={clearFilters} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">
+                Clear filters
+              </button>
+            ) : undefined
+          }
+        >
       {/* Filters */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <input
@@ -939,7 +915,6 @@ export default function FlagsPanel({
       {filtersActive && (
         <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
           Showing {cards.length} of {totalTasks} flagged task{totalTasks === 1 ? '' : 's'}
-          {listSubtasks.length > 0 && <> + {plural(listSubtasks.length, 'sub-task')}</>}
           {filter && <> · “{filter.replace('_', ' ')}”</>}
           {active && <> · {active.label}</>}
           {pinnedOnly && <> · focus list</>}
@@ -949,47 +924,10 @@ export default function FlagsPanel({
         </div>
       )}
 
-      {cards.length === 0 && listSubtasks.length === 0 ? (
+      {cards.length === 0 ? (
         <p className="text-sm text-slate-500">{filtersActive ? 'Nothing matches those filters.' : 'No flags. Board looks healthy.'}</p>
       ) : (
         <div className="flex flex-col gap-3">
-          {/* Sub-tasks needing a decision — click one to land on it inside Projects → project → task */}
-          {listSubtasks.length > 0 && (
-            <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-violet-700">
-                Sub-tasks needing a decision · {listSubtasks.length}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {listSubtasks.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => onOpenTask({ projectId: s.project_id, taskId: s.task_id, subId: s.subtask_id })}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-left transition hover:bg-violet-50"
-                  >
-                    <span aria-hidden className="text-violet-400">↳</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-slate-900">{s.title || 'Untitled sub-task'}</span>
-                      <span className="block truncate text-xs text-slate-500">
-                        {s.project_name} · sub-task of {s.parent_title}
-                        {s.parent_assignee ? ` (${s.parent_assignee})` : ''}
-                      </span>
-                    </span>
-                    {s.issues.map((i) => (
-                      <span
-                        key={i}
-                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${i === 'unassigned' ? 'bg-violet-100 text-violet-700' : 'bg-orange-100 text-orange-700'}`}
-                      >
-                        {i === 'unassigned' ? 'No owner' : 'Blocked'}
-                      </span>
-                    ))}
-                    {s.parent_overdue && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700">Parent overdue</span>}
-                    <span className="shrink-0 text-xs text-slate-500">Open →</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {cards.map((c, idx) => {
             const t = c.task;
             const due = dueLabel(t.due_at);
@@ -1018,7 +956,7 @@ export default function FlagsPanel({
                   onKeyDown={(e) => e.key === 'Enter' && open(c)}
                   className={`rounded-lg border p-3 ${severityClasses[c.severity]} ${
                     canOpen ? 'cursor-pointer transition hover:shadow-sm' : ''
-                  } ${sel === c.card_id ? 'ring-2 ring-slate-900/40' : ''}`}
+                  } ${sel === c.card_id ? 'ring-2 ring-indigo-500/40' : ''}`}
                 >
                   {/* Row 1: project, title, priority, status */}
                   <div className="flex items-start justify-between gap-3">
@@ -1158,13 +1096,11 @@ export default function FlagsPanel({
           })}
         </div>
       )}
+        </Section>
       </div>
     </div>
   );
 }
-
-
-type RiskProject = { id: string; name: string; score: number; overdue: number; blocked: number; stuck: number; flags: number };
 
 function Detail({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
