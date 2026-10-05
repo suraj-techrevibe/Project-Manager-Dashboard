@@ -1,4 +1,4 @@
-import type { ActionItem, MeetingMinutesFull, MinutesTopic } from '../types/pm';
+import type { ActionItem, MeetingMinutesFull, MeetingWorkItem, MinutesTopic } from '../types/pm';
 import { localISO } from './meetingNotes';
 
 export const MEETING_TYPES = ['Weekly sync', 'Client call', 'Planning', 'Review / Retro', 'Daily standup', 'Kick-off', 'Other'];
@@ -132,5 +132,60 @@ export function minutesWarnings(m: TextInput): string[] {
   if (f.topics.length === 0) w.push('No topics added.');
   if (f.action_items.some((a) => !a.owner?.trim())) w.push('Some action items have no owner.');
   if (f.action_items.some((a) => !a.due_date)) w.push('Some action items have no due date.');
+  return w;
+}
+
+/* ------------------------------------------------------------------ */
+/* Work Item minutes (the structure "From saved meeting" reads)        */
+/* ------------------------------------------------------------------ */
+
+interface WorkItemTextInput {
+  title: string;
+  meeting_date: string;
+  attendees: string[];
+  work_items: MeetingWorkItem[];
+}
+
+const RULE = '─'.repeat(40);
+
+/** The whole meeting in one place: header, attendees, then every Work Item with its Action Items. */
+export function workItemsToText(m: WorkItemTextInput): string {
+  const L: string[] = ['MEETING', RULE, '', 'Title:', m.title.trim() || '(untitled)', '', 'Date:', m.meeting_date ? shortDate(m.meeting_date) : '(no date)'];
+  if (m.attendees.length) L.push('', 'Attendees:', ...m.attendees);
+
+  m.work_items
+    .filter((w) => w.requirement.trim())
+    .forEach((w, i) => {
+      L.push('', '', `WORK ITEM ${i + 1}`, RULE, `Owner: ${w.owner.trim() || '(unassigned)'}`, `Project: ${w.project.trim() || '(not set)'}`, '', 'Requirement:', w.requirement.trim());
+      if (w.discussion.trim()) L.push('', 'Discussion:', w.discussion.trim());
+      const actions = w.action_items.filter((a) => a.task.trim());
+      if (actions.length) {
+        L.push('', 'Action Items:');
+        actions.forEach((a) => L.push(`- ${a.task.trim()}${a.due_date ? ` (due ${shortDate(a.due_date)})` : ''}`));
+      }
+      L.push('', 'Due Date:', w.due_date ? shortDate(w.due_date) : 'Not set');
+    });
+  return L.join('\n');
+}
+
+/** Non-blocking nudges for the Review step: what Brief to tickets will have to ask for later. */
+export function workItemWarnings(items: MeetingWorkItem[], attendees: string[], now: Date = new Date()): string[] {
+  const w: string[] = [];
+  const today = localISO(now);
+  const empty = items.filter((x) => !x.requirement.trim()).length;
+  if (empty) w.push(`${empty} Work Item${empty === 1 ? ' has' : 's have'} no Requirement and will not be saved.`);
+  if (attendees.length === 0) w.push('No attendees added.');
+
+  items
+    .filter((x) => x.requirement.trim())
+    .forEach((x, i) => {
+      const n = `Work Item ${i + 1}`;
+      const hasActions = x.action_items.some((a) => a.task.trim());
+      if (!x.owner.trim()) w.push(`${n} has no owner — Taskmandu needs an assignee.`);
+      if (!x.project.trim()) w.push(`${n} has no project${hasActions ? ', so its Action Items cannot become Subtasks' : ''}.`);
+      if (!x.due_date) w.push(`${n} has no due date.`);
+      else if (x.due_date < today) w.push(`${n} is due in the past — the date will be left blank in Brief to tickets.`);
+      if (x.action_items.some((a) => a.task.trim() && a.due_date && a.due_date < today)) w.push(`${n} has Action Items due in the past — those dates will be left blank in Brief to tickets.`);
+    });
   return w;
 }
