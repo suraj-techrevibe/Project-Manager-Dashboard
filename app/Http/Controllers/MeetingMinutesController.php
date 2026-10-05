@@ -5,13 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\MeetingMinutes;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\TaskmanduClient;
+use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
 
 class MeetingMinutesController extends Controller
 {
-    public function __construct(private ClaudeClient $claude, private TaskmanduClient $taskmandu) {}
+    public function __construct(private ClaudeClient $claude, private TaskmanduClient $taskmandu, private TaskmanduSync $taskmanduSync) {}
 
     public function index(): JsonResponse
     {
