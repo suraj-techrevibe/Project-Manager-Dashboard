@@ -365,13 +365,20 @@ class FlagService
 
     private function flag(PmCard $c, string $type, string $severity, string $detail): array
     {
+        return $this->taskFields($c) + [
+            'type' => $type,
+            'severity' => $severity,
+            'detail' => $detail,
+        ];
+    }
+
+    /** The task fields every card needs, whether or not the task is flagged. */
+    private function taskFields(PmCard $c): array
+    {
         return [
             'card_id' => $c->id,
             'title' => $c->title,
             'assignee' => $c->assignee,
-            'type' => $type,
-            'severity' => $severity,
-            'detail' => $detail,
             'url' => $c->url,
             'project_id' => $c->project_id,
             'project_name' => $c->project_name,
@@ -388,5 +395,25 @@ class FlagService
             'last_nudged_at' => $this->nudged[$c->id] ?? null,
             'description' => $c->description ? Str::limit(trim(strip_tags($c->description)), 160) : null,
         ];
+    }
+
+    /**
+     * Every synced task — flagged or not, open or done, snoozed or not (only
+     * Cancelled ones are left out) — for the Today tab's "All tasks" view.
+     * Same shape as a flag's task fields, minus type/severity/detail.
+     */
+    public function tasks(int $limit = 1000): array
+    {
+        $this->nudged = $this->nudged ?: $this->lastNudges();
+
+        return PmCard::query()
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'Cancelled'))
+            ->orderByRaw('due_at is null')
+            ->orderBy('due_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($c) => $this->taskFields($c))
+            ->values()
+            ->all();
     }
 }

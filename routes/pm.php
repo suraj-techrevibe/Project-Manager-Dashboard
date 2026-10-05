@@ -4,12 +4,25 @@ use App\Http\Controllers\EmailController;
 use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmController;
+use App\Http\Controllers\PmPageController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(function () {
-    Route::get('/', [PmController::class, 'index'])->name('index');
+// Pages: one real URL per tab, so each opens on its own and Back/Forward/bookmarks work.
+// Not throttled — they only render a shell; the data calls below are what the limit is for.
+Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
+    Route::get('/', [PmController::class, 'index'])->name('index'); // Today
+    Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
+    Route::get('minutes', [PmPageController::class, 'minutes'])->name('page.minutes');
+    Route::get('brief', [PmPageController::class, 'brief'])->name('page.brief');
+    Route::get('reports', [PmPageController::class, 'reports'])->name('page.reports');
+    Route::get('scope', [PmPageController::class, 'scope'])->name('page.scope');
+    Route::get('git', [PmPageController::class, 'git'])->name('page.git');
+});
+
+// JSON API used by those pages (what used to live directly under /pm/...).
+Route::middleware(['auth', 'throttle:30,1'])->prefix('pm/api')->name('pm.')->group(function () {
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('today', [PmController::class, 'today'])->name('today');
     Route::post('sync', [PmController::class, 'sync'])->name('sync');

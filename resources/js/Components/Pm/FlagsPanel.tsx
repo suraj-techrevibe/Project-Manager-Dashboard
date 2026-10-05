@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import type { Employee, PmFlag, PmMetrics, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
+import type { Employee, PmFlag, PmMetrics, PmTask, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, TodayData, WorkloadRow } from '../../types/pm';
 import DigestPanel from './DigestPanel';
 import EmailModal from './EmailModal';
 import SubtaskInbox from './SubtaskInbox';
@@ -352,6 +352,7 @@ function dueLabel(date: string | null): { text: string; overdue: boolean } {
 export default function FlagsPanel({
   active: tabActive = true,
   flags: initialFlags,
+  tasks: initialTasks = [],
   workload: initialWorkload = [],
   subtasks: initialSubtasks = [],
   staff: initialStaff = [],
@@ -364,6 +365,8 @@ export default function FlagsPanel({
   /** False while another tab is showing, so shortcut keys don't fire there. */
   active?: boolean;
   flags: PmFlag[];
+  /** Every synced task (flagged or not) for the "All tasks" view. */
+  tasks?: PmTask[];
   /** Kept optional so older callers that still pass `metrics` keep compiling; counts are derived from `flags` below. */
   metrics?: PmMetrics;
   workload?: WorkloadRow[];
@@ -378,6 +381,9 @@ export default function FlagsPanel({
   onOpenProject?: (projectId: string) => void;
 }) {
   const [flags, setFlags] = useState(initialFlags);
+  const [tasks, setTasks] = useState(initialTasks);
+  // Today lists only what the board flagged; "All tasks" lists everything that was created.
+  const [scope, setScope] = useState<'flagged' | 'all'>('flagged');
   const [workload, setWorkload] = useState(initialWorkload);
   const [subtasks, setSubtasks] = useState(initialSubtasks);
   const [staff, setStaff] = useState(initialStaff);
@@ -433,6 +439,7 @@ export default function FlagsPanel({
 
   function apply(d: TodayData) {
     setFlags(d.flags);
+    setTasks(d.tasks ?? []);
     setWorkload(d.workload);
     setSubtasks(d.subtasks ?? []);
     setStaff(d.staff ?? []);
@@ -466,13 +473,13 @@ export default function FlagsPanel({
 
   const people = useMemo(() => {
     const names = new Set(workload.map((w) => w.name));
-    flags.forEach((f) => f.assignee?.split(',').forEach((n) => n.trim() && names.add(n.trim())));
+    [...flags, ...(scope === 'all' ? tasks : [])].forEach((f) => f.assignee?.split(',').forEach((n) => n.trim() && names.add(n.trim())));
     return Array.from(names).sort();
-  }, [workload, flags]);
+  }, [workload, flags, tasks, scope]);
 
   const projectNames = useMemo(
-    () => Array.from(new Set(flags.map((f) => f.project_name).filter((n): n is string => Boolean(n)))).sort(),
-    [flags]
+    () => Array.from(new Set([...flags, ...(scope === 'all' ? tasks : [])].map((f) => f.project_name).filter((n): n is string => Boolean(n)))).sort(),
+    [flags, tasks, scope]
   );
 
   const overloadAt = useMemo(() => overloadThreshold(workload), [workload]);
@@ -503,6 +510,26 @@ export default function FlagsPanel({
       ),
     }));
   }, [flags]);
+
+  // The list's source: only flagged tasks, or every task (flagged ones keep their badges).
+  const baseCards: TaskCard[] = useMemo(() => {
+    if (scope === 'flagged') return allCards;
+
+    const flagged = new Map(allCards.map((c) => [c.card_id, c]));
+    const all: TaskCard[] = tasks.map(
+      (t) =>
+        flagged.get(t.card_id) ?? {
+          card_id: t.card_id,
+          // Not flagged: no badges. The placeholder type/detail only satisfy the shared task shape.
+          task: { ...t, type: 'unverified', severity: 'neutral', detail: '' },
+          flags: [],
+          severity: 'neutral' as Severity,
+        }
+    );
+    // A flagged card is always shown, even if the task list was capped before reaching it.
+    const have = new Set(all.map((c) => c.card_id));
+    return [...all, ...allCards.filter((c) => !have.has(c.card_id))];
+  }, [scope, allCards, tasks]);
 
   const riskProjects = useMemo(() => {
     const byProject = new Map<string, TaskCard[]>();
@@ -570,7 +597,7 @@ export default function FlagsPanel({
   const cards: TaskCard[] = useMemo(() => {
     const dueTs = (c: TaskCard) => (c.task.due_at ? new Date(`${c.task.due_at}T00:00:00`).getTime() : Infinity);
 
-    return allCards
+    return baseCards
       .filter((c) => !filter || c.flags.some((f) => f.type === filter))
       .filter((c) => !active || active.match(c))
       .filter((c) => !pinnedOnly || pins.includes(c.card_id))
@@ -594,9 +621,11 @@ export default function FlagsPanel({
         (a, b) =>
           Number(pins.includes(b.card_id)) - Number(pins.includes(a.card_id)) ||
           severityRank[a.severity] - severityRank[b.severity] ||
+          // Among equally urgent tasks, open work comes before finished work.
+          Number(a.task.status === 'Completed') - Number(b.task.status === 'Completed') ||
           dueTs(a) - dueTs(b)
       );
-  }, [allCards, filter, active, search, assignee, project, pinnedOnly, pins]);
+  }, [baseCards, filter, active, search, assignee, project, pinnedOnly, pins]);
 
   // Sub-tasks are not task cards, so the filters above can't see them — which left "No owner: 1"
   // opening an empty list. Sub-tasks only carry two issues (no owner / blocked): the No-owner
@@ -619,7 +648,7 @@ export default function FlagsPanel({
       .filter((s) => !q || [s.title, s.parent_title, s.project_name, s.assignee].some((v) => v?.toLowerCase().includes(q)));
   }, [subtasks, filter, question, pinnedOnly, assignee, project, search]);
 
-  const totalTasks = useMemo(() => new Set(flags.map((f) => f.card_id)).size, [flags]);
+  const totalTasks = useMemo(() => (scope === 'all' ? baseCards.length : new Set(flags.map((f) => f.card_id)).size), [scope, baseCards, flags]);
   const pinnedVisible = cards.filter((c) => isPinned(c.card_id)).length;
 
   const lastNudge = (c: TaskCard) => nudgedAt[c.card_id] ?? c.task.last_nudged_at;
@@ -898,8 +927,33 @@ export default function FlagsPanel({
 
       {/* ===== Task list ===== */}
       <div id="task-list" className="mt-8 scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h3 className="mb-1 text-xl font-semibold text-slate-900">All flagged tasks</h3>
-      <p className="mb-4 text-sm text-slate-500">Everything the board flagged, most urgent first. Filter, search, nudge, snooze or verify from here.</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="mb-1 text-xl font-semibold text-slate-900">{scope === 'all' ? 'All tasks' : 'All flagged tasks'}</h3>
+          <p className="text-sm text-slate-500">
+            {scope === 'all'
+              ? 'Every task that was created — flagged or not, open or done. Flagged ones first, most urgent first.'
+              : 'Everything the board flagged, most urgent first. Filter, search, nudge, snooze or verify from here.'}
+          </p>
+        </div>
+        <div role="group" aria-label="Which tasks to list" className="flex shrink-0 overflow-hidden rounded-lg border border-slate-200 text-sm">
+          {(
+            [
+              ['flagged', `Flagged only (${new Set(flags.map((f) => f.card_id)).size})`],
+              ['all', `All tasks (${Math.max(tasks.length, new Set(flags.map((f) => f.card_id)).size)})`],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setScope(key)}
+              aria-pressed={scope === key}
+              className={`px-3 py-1.5 ${scope === key ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       {/* Filters */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <input
@@ -938,7 +992,7 @@ export default function FlagsPanel({
 
       {filtersActive && (
         <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-          Showing {cards.length} of {totalTasks} flagged task{totalTasks === 1 ? '' : 's'}
+          Showing {cards.length} of {totalTasks} {scope === 'all' ? '' : 'flagged '}task{totalTasks === 1 ? '' : 's'}
           {listSubtasks.length > 0 && <> + {plural(listSubtasks.length, 'sub-task')}</>}
           {filter && <> · “{filter.replace('_', ' ')}”</>}
           {active && <> · {active.label}</>}
@@ -950,7 +1004,7 @@ export default function FlagsPanel({
       )}
 
       {cards.length === 0 && listSubtasks.length === 0 ? (
-        <p className="text-sm text-slate-500">{filtersActive ? 'Nothing matches those filters.' : 'No flags. Board looks healthy.'}</p>
+        <p className="text-sm text-slate-500">{filtersActive ? 'Nothing matches those filters.' : scope === 'all' ? 'No tasks synced yet — press Sync now.' : 'No flags. Board looks healthy.'}</p>
       ) : (
         <div className="flex flex-col gap-3">
           {/* Sub-tasks needing a decision — click one to land on it inside Projects → project → task */}

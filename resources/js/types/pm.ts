@@ -25,6 +25,9 @@ export interface PmFlag {
   description: string | null;
 }
 
+/** A synced task as listed under "All tasks" — a flag's task fields, whether or not it is flagged. */
+export type PmTask = Omit<PmFlag, 'type' | 'severity' | 'detail'>;
+
 /** Deep link from the Today tab into a project's Tasks tab. */
 export interface TaskFocus {
   projectId: string;
@@ -115,6 +118,7 @@ export interface SinceSummary {
 
 export interface TodayData {
   flags: PmFlag[];
+  tasks?: PmTask[];
   metrics: PmMetrics;
   workload: WorkloadRow[];
   subtasks: SubtaskFlag[];
