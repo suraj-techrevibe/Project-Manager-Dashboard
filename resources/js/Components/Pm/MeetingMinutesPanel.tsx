@@ -571,6 +571,7 @@ function MinutesWizard({
       discussion: f.discussion,
       decisions: f.decisions,
       action_items: f.action_items,
+        work_items: [],
     };
     try {
       const { data } = isEdit ? await pmApi.minutesUpdate(initial!.id, payload) : await pmApi.minutesCreate(payload);

@@ -5,7 +5,7 @@ import FlagsPanel from '@/Components/Pm/FlagsPanel';
 import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import GitPanel from '@/Components/Pm/GitPanel';
-import MeetingMinutesPanel from '@/Components/Pm/MeetingMinutesPanel';
+import MeetingMinutesPanel from '@/Components/Pm/StructuredMeetingMinutesPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
