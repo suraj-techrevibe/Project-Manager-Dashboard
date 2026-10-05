@@ -17,5 +17,6 @@ class MeetingMinutes extends Model
         'decisions' => 'array',
         'topics' => 'array',
         'action_items' => 'array',
+        'work_items' => 'array',
     ];
 }
