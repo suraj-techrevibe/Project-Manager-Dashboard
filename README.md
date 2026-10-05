@@ -41,6 +41,24 @@ GITHUB_TOKEN=ghp_...
    `use Illuminate\Support\Facades\Schedule;` then `Schedule::command('pm:sync')->hourly();`
 8. `npm run dev`, open `/pm`
 
+### Pages
+
+Every tab is its own page, so it opens on its own and Back / Forward / bookmarks work:
+
+| Page | URL |
+| --- | --- |
+| Today | `/pm` |
+| Projects | `/pm/projects` (open one with `?project=<id>&ptab=tasks&task=<id>&sub=<id>`) |
+| Meeting minutes | `/pm/minutes` |
+| Brief to tickets | `/pm/brief` |
+| Reports | `/pm/reports` |
+| Scope check | `/pm/scope` |
+| Git | `/pm/git` |
+
+The JSON API those pages call lives under `/pm/api/...` (that is what the `/pm/...` paths in this README
+mean). Old `/pm?tab=projects&project=<id>` links redirect to the matching page. On Today, the task list
+has a **Flagged only / All tasks** switch — *All tasks* lists every synced task, flagged or not.
+
 **Service account:** create a real Taskmandu user for `TASKMANDU_EMAIL`/`TASKMANDU_PASSWORD` — this
 app logs in as that user, so it can only see/do what that account's role permits (`tasks:view`,
 `projects:view`, `tasks:create`, `employees:view`, per Taskmandu's `requirePermission` checks).
@@ -69,7 +87,7 @@ comments — slightly less accurate than the standalone-task case.
 ## Pushing drafted tickets back to Taskmandu
 
 The "Brief to tickets" tab drafts tickets (Claude, or a no-AI line splitter), lets you edit them, and
-pushes them via `POST /pm/brief/push`. Each ticket carries its own assignee (required by Taskmandu) and
+pushes them via `POST /pm/api/brief/push`. Each ticket carries its own assignee (required by Taskmandu) and
 due date, and the response reports every ticket's own result, so a failure on ticket 4 never hides
 tickets 1-3 and only failed tickets are retried. Tickets can go standalone (`POST /tasks`) or onto a
 project board (`POST /projects/{id}/tasks`).
@@ -140,7 +158,7 @@ Files added:
 ```
 resources/js/
   types/pm.ts              # shared TS types
-  lib/pmApi.ts              # axios calls to /pm/* routes
+  lib/pmApi.ts              # axios calls to /pm/api/* routes
   Components/Pm/
     FlagsPanel.tsx          # Today tab: question buttons, workload, filters, flag list, nudge/snooze/verify
     BriefDrafter.tsx        # Brief to tickets tab
@@ -182,12 +200,12 @@ like `pm_cards`. `ProjectController` is a thin passthrough to Taskmandu's own `/
 (same base URL/auth as everything else, via `TaskmanduClient`), so anything you do here happens on
 the real Taskmandu data immediately:
 
-- **List projects** (with search) — `GET /pm/projects`
+- **List projects** (with search) — `GET /pm/api/projects`
 - **Open a project** — shows its real kanban board, one column per Taskmandu task status
   (`Assigned`, `Pending`, `In Progress`, `Blocked`, `Completed`, `Cancelled`)
-- **Create a project** — `POST /pm/projects` (name required; everything else optional, matches
+- **Create a project** — `POST /pm/api/projects` (name required; everything else optional, matches
   Taskmandu's own defaults: status `Planning`, etc.)
-- **Add / edit / delete a task on the board** — `POST|PATCH|DELETE /pm/projects/{id}/tasks/{taskId}`.
+- **Add / edit / delete a task on the board** — `POST|PATCH|DELETE /pm/api/projects/{id}/tasks/{taskId}`.
   Taskmandu requires `dueDate` on every task even though most other fields are optional — the task
   form enforces that too. Moving a task between columns is just a status change (dropdown on the
   card), there's no drag-and-drop.
@@ -220,7 +238,7 @@ click). Options, roughly by how much you trust your setup:
 
 ## Today tab: freshness, stand-up, workload (v5)
 
-- **Last synced / Sync now** — `POST /pm/sync` pulls from Taskmandu on demand; `pm:sync` also runs hourly
+- **Last synced / Sync now** — `POST /pm/api/sync` pulls from Taskmandu on demand; `pm:sync` also runs hourly
   from the scheduler (needs `php artisan schedule:work` locally or a `schedule:run` cron in production).
 - **Since yesterday** strip — built from `pm_activities` (on Mondays it compares against Friday).
 - **Due today / due in 3 days** flags alongside overdue.

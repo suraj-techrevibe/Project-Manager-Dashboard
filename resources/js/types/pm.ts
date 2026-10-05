@@ -12,7 +12,7 @@ export interface DigestPreview { text:string; channels:{slack:boolean;email:bool
 export interface DraftTicket { title:string; description:string; level:'senior dev'|'intern'|string; estimate_hours:number; }
 export interface PushSubtask { title:string; description?:string; assignee_employee_id:string; due_date:string|null; }
 export interface PushTicket { title:string; description:string; level:string; estimate_hours:number|null; priority:TaskPriority; assignee_employee_id:string; due_date:string|null; project_id?:string|null; project_name?:string|null; project_confirmed?:boolean; subtasks?:PushSubtask[]; }
-export interface PushResult { index:number; ok:boolean; error?:string; task_id?:string|null; card_id?:number; fields_fallback?:boolean; subtasks_created?:number; }
+export interface PushResult { index:number; ok:boolean; error?:string; task_id?:string|null; card_id?:number; fields_fallback?:boolean; capacity_warning?:string|null; subtasks_created?:number; }
 export interface ExistingTitle { title:string; project_name:string|null; status:string; }
 export interface BriefContext { employees:Employee[]; titles:ExistingTitle[]; }
 export interface Employee { employeeId:string; id?:string|null; name:string; designation:string|null; open?:number; hours?:number; week_hours?:number; capacity?:number; }

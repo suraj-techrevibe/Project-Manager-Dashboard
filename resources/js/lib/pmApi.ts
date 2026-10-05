@@ -30,7 +30,7 @@ import { normalizeProject } from './normalizeProject';
 
 // Assumes Laravel's default bootstrap.js already configured axios with
 // withCredentials + X-CSRF-TOKEN (standard Breeze/Jetstream setup).
-const api = axios.create({ baseURL: '/pm' });
+const api = axios.create({ baseURL: '/pm/api' });
 
 // Normalise every project payload once, here, so components never see a
 // missing array (see normalizeProject.ts).

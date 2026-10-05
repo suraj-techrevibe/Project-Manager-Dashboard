@@ -90,15 +90,15 @@ class DigestTest extends TestCase
 
     public function test_digest_endpoints_need_login_and_a_channel(): void
     {
-        $this->get('/pm/digest')->assertRedirect('/login');
+        $this->get('/pm/api/digest')->assertRedirect('/login');
 
         $user = User::factory()->create();
-        $this->actingAs($user)->getJson('/pm/digest')
+        $this->actingAs($user)->getJson('/pm/api/digest')
             ->assertOk()
             ->assertJsonPath('channels.slack', false)
             ->assertJsonStructure(['text', 'channels']);
 
-        $this->actingAs($user)->postJson('/pm/digest/send')->assertStatus(422);
+        $this->actingAs($user)->postJson('/pm/api/digest/send')->assertStatus(422);
     }
 
     public function test_command_refuses_without_a_channel_but_dry_run_prints(): void

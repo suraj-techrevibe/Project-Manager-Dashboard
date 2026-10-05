@@ -400,7 +400,11 @@ function PushActionItemsModal({ items, onClose }: { items: ActionItem[]; onClose
     setPushing(true);
     setError(null);
     const out: { task: string; ok: boolean; error?: string }[] = [];
-    for (const item of items) {
+    // Keep a running copy so every pushed item ends up flagged, not just the last one.
+    let working = items;
+    let markFailed = false;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       try {
         await pmApi.addProjectTask(projectId, {
           title: item.task,
@@ -410,8 +414,21 @@ function PushActionItemsModal({ items, onClose }: { items: ActionItem[]; onClose
         out.push({ task: item.task, ok: true });
       } catch (e) {
         out.push({ task: item.task, ok: false, error: err(e, 'Failed') });
+        continue;
+      }
+
+      // The task now exists in Taskmandu. If recording that on the minutes fails it must not be
+      // reported as a failed push (that would invite pushing the same task twice).
+      if (minuteId) {
+        working = working.map((a, j) => (j === i ? { ...a, pushed_to_board: true, pushed_project_id: projectId } : a));
+        try {
+          await pmApi.minutesUpdate(minuteId, { action_items: working });
+        } catch {
+          markFailed = true;
+        }
       }
     }
+    if (markFailed) setError("The tasks were created, but couldn't be marked as pushed on these minutes.");
     setResults(out);
     setPushing(false);
   }

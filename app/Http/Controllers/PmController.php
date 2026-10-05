@@ -31,8 +31,19 @@ class PmController extends Controller
         private DigestService $digest,
     ) {}
 
-    public function index(): Response
+    /** Pages that used to be tabs inside this one page, now at /pm/{page}. */
+    private const PAGES = ['projects', 'minutes', 'brief', 'reports', 'scope', 'git'];
+
+    public function index(Request $request): Response|RedirectResponse
     {
+        // Old bookmarks like /pm?tab=projects&project=<id> keep working.
+        $tab = $request->query('tab');
+        if (is_string($tab) && in_array($tab, self::PAGES, true)) {
+            $qs = http_build_query($request->except('tab'));
+
+            return redirect('/pm/'.$tab.($qs !== '' ? '?'.$qs : ''));
+        }
+
         return Inertia::render('Pm/Index', $this->todayPayload());
     }
 
@@ -157,6 +168,7 @@ class PmController extends Controller
 
         return [
             'flags' => $flags->values(),
+            'tasks' => $this->flags->tasks(),
             'metrics' => $this->flags->metrics($flags),
             'workload' => $workload,
             'subtasks' => $this->flags->subtasks(),

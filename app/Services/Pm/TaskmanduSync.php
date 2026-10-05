@@ -33,4 +33,11 @@ class TaskmanduSync
     public function createProjectTask(string $projectId,string $title,string $description,string $assigneeEmployeeId,string $assignedByName,string $dueDate,array $extra=[],string $fallbackLine=''):array{[$res,$fallback]=$this->postWithFallback("/projects/{$projectId}/tasks",['title'=>$title,'description'=>$description,'assignedToId'=>[$assigneeEmployeeId],'assignedByName'=>$assignedByName,'dueDate'=>$dueDate,'status'=>'Assigned'],$extra,$fallbackLine);$project=$res['data']??[];$tasks=collect($project['tasks']??[]);$task=$tasks->last(fn($t)=>($t['title']??null)===$title)??$tasks->last()??[];return ['project'=>$project,'task'=>$task,'fallback'=>$fallback];}
     private function postWithFallback(string $path,array $base,array $extra,string $fallbackLine):array{$extra=array_filter($extra,fn($v)=>$v!==null&&$v!==[]&&$v!=='');if(!$extra)return[$this->client->post($path,$base),false];try{return[$this->client->post($path,$base+$extra),false];}catch(RuntimeException $e){if(!preg_match('/\((400|422)\)/',$e->getMessage()))throw $e;$base['description']=trim(($base['description']??'')."\n\n".$fallbackLine);return[$this->client->post($path,$base),true];}}
     public function listEmployees():array{return collect($this->client->paginate('/employees'))->map(fn($e)=>['employeeId'=>$e['employeeId'],'id'=>$e['_id']??null,'name'=>trim($e['firstName'].' '.$e['lastName']),'designation'=>$e['designation']??null])->values()->all();}
+
+    /** Deletes a ticket the PM pushed, by the exact Taskmandu id recorded at push time. */
+    public function deletePushedTask(string $taskId, ?string $projectId = null): void
+    {
+        $path = $projectId ? "/projects/{$projectId}/tasks/{$taskId}" : "/tasks/{$taskId}";
+        $this->client->delete($path);
+    }
 }

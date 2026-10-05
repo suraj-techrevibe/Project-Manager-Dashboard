@@ -3,14 +3,27 @@
 use App\Http\Controllers\EmailController;
 use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
+use App\Http\Controllers\PmPageController;
+use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmDraftController;
 use App\Http\Controllers\PmMeetingTicketController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(function () {
+// Pages: one real URL per tab, so each opens on its own and Back/Forward/bookmarks work.
+Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('/', [PmController::class, 'index'])->name('index');
+    Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
+    Route::get('minutes', [PmPageController::class, 'minutes'])->name('page.minutes');
+    Route::get('brief', [PmPageController::class, 'brief'])->name('page.brief');
+    Route::get('reports', [PmPageController::class, 'reports'])->name('page.reports');
+    Route::get('scope', [PmPageController::class, 'scope'])->name('page.scope');
+    Route::get('git', [PmPageController::class, 'git'])->name('page.git');
+});
+
+// JSON API used by those pages.
+Route::middleware(['auth', 'throttle:30,1'])->prefix('pm/api')->name('pm.')->group(function () {
     Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('today', [PmController::class, 'today'])->name('today');
@@ -26,6 +39,9 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::post('brief', [PmController::class, 'brief'])->name('brief');
     Route::get('brief/context', [PmController::class, 'briefContext'])->name('brief.context');
     Route::post('brief/push', [PmMeetingTicketController::class, 'push'])->name('brief.push');
+    Route::get('brief/pushes', [PmController::class, 'recentPushes'])->name('brief.pushes');
+    Route::post('brief/pushes/{activity}/undo', [PmController::class, 'undoPush'])->name('brief.pushes.undo');
+    Route::get('automation/health', [PmAutomationController::class, 'health'])->name('automation.health');
     Route::get('employees', [PmController::class, 'employees'])->name('employees');
     Route::get('drafts', [PmDraftController::class, 'index'])->name('drafts.index');
     Route::post('drafts', [PmDraftController::class, 'store'])->name('drafts.store');
