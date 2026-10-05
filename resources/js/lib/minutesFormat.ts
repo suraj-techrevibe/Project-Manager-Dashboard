@@ -1,4 +1,4 @@
-import type { ActionItem, MeetingMinutesFull, MeetingWorkItem, MinutesTopic } from '../types/pm';
+import type { ActionItem, MeetingMinutesFull, MeetingWorkItem, MinutesTopic, Project } from '../types/pm';
 import { localISO } from './meetingNotes';
 
 export const MEETING_TYPES = ['Weekly sync', 'Client call', 'Planning', 'Review / Retro', 'Daily standup', 'Kick-off', 'Other'];
@@ -188,4 +188,40 @@ export function workItemWarnings(items: MeetingWorkItem[], attendees: string[], 
       if (x.action_items.some((a) => a.task.trim() && a.due_date && a.due_date < today)) w.push(`${n} has Action Items due in the past — those dates will be left blank in Brief to tickets.`);
     });
   return w;
+}
+
+/* ------------------------------------------------------------------ */
+/* Projects named on Work Items                                        */
+/* ------------------------------------------------------------------ */
+
+/** Case, punctuation and spacing are ignored — the same rule the server applies when it saves as final. */
+export const normProject = (name: string): string =>
+  name.toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
+export type ProjectMatch = { kind: 'empty' } | { kind: 'existing'; project: Project } | { kind: 'new'; name: string };
+
+/** Is what was typed in a Work Item's Project box an existing project, or a new one? */
+export function projectMatch(name: string, projects: Project[]): ProjectMatch {
+  const key = normProject(name);
+  if (!name.trim()) return { kind: 'empty' };
+  const hit = key ? projects.find((p) => normProject(p.name) === key) : undefined;
+  return hit ? { kind: 'existing', project: hit } : { kind: 'new', name: name.trim() };
+}
+
+/** What "Save as final" will do about projects, for the Review step. Only Work Items that will be saved count. */
+export function projectPlan(items: MeetingWorkItem[], projects: Project[]): { toCreate: string[]; existing: string[] } {
+  const toCreate = new Map<string, string>();
+  const existing = new Map<string, string>();
+  items
+    .filter((w) => w.requirement.trim())
+    .forEach((w) => {
+      const m = projectMatch(w.project, projects);
+      // First spelling wins — it is the one the server creates (later Work Items then match it).
+      if (m.kind === 'new') {
+        const k = normProject(m.name) || m.name;
+        if (!toCreate.has(k)) toCreate.set(k, m.name);
+      }
+      if (m.kind === 'existing') existing.set(normProject(m.project.name), m.project.name);
+    });
+  return { toCreate: [...toCreate.values()], existing: [...existing.values()] };
 }

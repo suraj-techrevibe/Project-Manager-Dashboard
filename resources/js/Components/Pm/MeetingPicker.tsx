@@ -148,10 +148,11 @@ export default function MeetingPicker({
             const projectName =
               w.project?.trim() ?? '';
 
-            const project = findProject(
-              projectName,
-              projects
-            );
+            // Saved as final, the server already linked this Work Item to its Taskmandu project.
+            const project =
+              (w.project_id
+                ? projects.find((p) => p._id === w.project_id)
+                : undefined) ?? findProject(projectName, projects);
 
             if (projectName && !project) {
               missingProjects.push(projectName);

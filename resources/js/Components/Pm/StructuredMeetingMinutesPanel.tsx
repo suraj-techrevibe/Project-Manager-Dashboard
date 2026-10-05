@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { localISO } from '../../lib/meetingNotes';
-import { workItemWarnings, workItemsToText } from '../../lib/minutesFormat';
-import type { MeetingMinutesFull, MeetingMinutesSummary, MeetingWorkItem, MeetingWorkItemAction, MinutesStatus, Project } from '../../types/pm';
+import { projectMatch, projectPlan, workItemWarnings, workItemsToText } from '../../lib/minutesFormat';
+import type { CreatedProject, MeetingMinutesFull, MeetingMinutesSummary, MeetingWorkItem, MeetingWorkItemAction, MinutesStatus, Project } from '../../types/pm';
 import { ErrorNote, Field, err, ghostBtn, inputCls, primaryBtn, dangerBtn, formatTimestamp, useEmployees } from './Projects/ui';
 
 type Target = { minute: MeetingMinutesFull | null; copy: boolean };
@@ -19,6 +19,7 @@ export default function StructuredMeetingMinutesPanel() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<MeetingMinutesFull | null>(null);
   const [query, setQuery] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
     setLoading(true); setError(null);
@@ -39,7 +40,9 @@ export default function StructuredMeetingMinutesPanel() {
     try { await pmApi.minutesDelete(id); setMinutes(m => m.filter(x => x.id !== id)); if (openId === id) setOpenId(null); }
     catch (e) { setError(err(e, "Couldn't delete that meeting.")); }
   }
-  function saved(m: MeetingMinutesFull) {
+  function saved(m: MeetingMinutesFull, created: CreatedProject[]) {
+    const names = created.map((c) => `“${c.name}”`).join(', ');
+    setNotice(created.length ? `Saved as final. Created ${created.length === 1 ? 'project' : 'projects'} in Taskmandu: ${names}.` : m.status === 'final' ? 'Saved as final.' : 'Draft saved — no projects were created.');
     setEditing(null); setExpanded(m); setOpenId(m.id);
     setMinutes(ms => {
       const summary: MeetingMinutesSummary = { id: m.id, title: m.title, status: m.status, meeting_date: m.meeting_date, attendees: m.attendees, action_items: m.action_items ?? [], work_items: m.work_items ?? [] };
@@ -51,9 +54,10 @@ export default function StructuredMeetingMinutesPanel() {
   if (editing) return <WorkItemWizard initial={editing.minute} copy={editing.copy} onCancel={() => setEditing(null)} onSaved={saved} />;
 
   return <div className="flex flex-col gap-4">
-    <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-medium text-slate-700">Meeting minutes</h3><p className="text-xs text-slate-400">Use Work Items for anything that should become a Taskmandu task.</p></div><button onClick={() => setEditing({ minute: null, copy: false })} className={primaryBtn}>New meeting</button></div>
+    <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-medium text-slate-700">Meeting minutes</h3><p className="text-xs text-slate-400">Use Work Items for anything that should become a Taskmandu task.</p></div><button onClick={() => { setNotice(null); setEditing({ minute: null, copy: false }); }} className={primaryBtn}>New meeting</button></div>
     <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search meetings…" className={inputCls} />
     <ErrorNote message={error} />
+    {notice && <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice} <button onClick={() => setNotice(null)} className="ml-1 underline">Dismiss</button></p>}
     {loading && <p className="text-sm text-slate-500">Loading…</p>}
     {!loading && visible.length === 0 && <p className="text-sm text-slate-500">No meeting minutes yet.</p>}
     {visible.map(m => <div key={m.id} className="rounded-xl border border-slate-200 bg-white">
@@ -66,21 +70,23 @@ export default function StructuredMeetingMinutesPanel() {
 function MinuteDetail({ minute, onEdit, onDuplicate, onDelete }: { minute: MeetingMinutesFull; onEdit: () => void; onDuplicate: () => void; onDelete: () => void }) {
   return <div className="flex flex-col gap-4">
     {minute.attendees.length > 0 && <div><div className="mb-1 text-xs font-medium text-slate-500">Attendees</div><p className="text-sm text-slate-700">{minute.attendees.join(', ')}</p></div>}
-    <div><div className="mb-2 text-sm font-semibold text-slate-800">WORK ITEMS</div><div className="flex flex-col gap-3">{(minute.work_items ?? []).map((w, i) => <div key={i} className="rounded-lg border border-slate-200 p-3"><div className="font-medium text-slate-900">{i + 1}. {w.owner || 'Unassigned'}</div><div className="text-sm text-slate-600">{w.project || 'Project not specified'}</div><div className="mt-2 text-sm"><b>Requirement:</b> {w.requirement}</div>{w.discussion && <div className="mt-1 whitespace-pre-wrap text-sm text-slate-600"><b>Discussion:</b> {w.discussion}</div>}{w.action_items?.length > 0 && <div className="mt-2"><div className="text-xs font-medium text-slate-500">ACTION ITEMS</div><ul className="list-disc pl-5 text-sm text-slate-700">{w.action_items.map((a, j) => <li key={j}>{a.task}{a.due_date ? ` — due ${a.due_date}` : ''}</li>)}</ul></div>}<div className="mt-2 text-xs text-slate-500">Due date: {w.due_date || 'Not set'}</div></div>)}</div></div>
+    <div><div className="mb-2 text-sm font-semibold text-slate-800">WORK ITEMS</div><div className="flex flex-col gap-3">{(minute.work_items ?? []).map((w, i) => <div key={i} className="rounded-lg border border-slate-200 p-3"><div className="font-medium text-slate-900">{i + 1}. {w.owner || 'Unassigned'}</div><div className="text-sm text-slate-600">{w.project || 'Project not specified'}{w.project_id && <span className="ml-2 text-[11px] text-emerald-700">✓ in Taskmandu</span>}</div><div className="mt-2 text-sm"><b>Requirement:</b> {w.requirement}</div>{w.discussion && <div className="mt-1 whitespace-pre-wrap text-sm text-slate-600"><b>Discussion:</b> {w.discussion}</div>}{w.action_items?.length > 0 && <div className="mt-2"><div className="text-xs font-medium text-slate-500">ACTION ITEMS</div><ul className="list-disc pl-5 text-sm text-slate-700">{w.action_items.map((a, j) => <li key={j}>{a.task}{a.due_date ? ` — due ${a.due_date}` : ''}</li>)}</ul></div>}<div className="mt-2 text-xs text-slate-500">Due date: {w.due_date || 'Not set'}</div></div>)}</div></div>
     <p className="text-xs text-slate-400">Created {formatTimestamp(minute.created_at)}{minute.created_by ? ` by ${minute.created_by}` : ''}</p>
     <div className="flex flex-wrap gap-2"><button onClick={onEdit} className={ghostBtn}>Edit</button><button onClick={onDuplicate} className={ghostBtn}>Duplicate</button><button onClick={onDelete} className={dangerBtn}>Delete</button></div>
   </div>;
 }
 
-function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: MeetingMinutesFull | null; copy: boolean; onCancel: () => void; onSaved: (m: MeetingMinutesFull) => void }) {
-  const isEdit = !!initial && !copy; const { employees } = useEmployees(); const [projects, setProjects] = useState<Project[]>([]);
+function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: MeetingMinutesFull | null; copy: boolean; onCancel: () => void; onSaved: (m: MeetingMinutesFull, created: CreatedProject[]) => void }) {
+  const isEdit = !!initial && !copy; const { employees } = useEmployees(); const [projects, setProjects] = useState<Project[]>([]); const [projectsState, setProjectsState] = useState<'loading' | 'ok' | 'failed'>('loading');
   const [title, setTitle] = useState(copy ? '' : initial?.title ?? ''); const [date, setDate] = useState(copy || !initial ? localISO(new Date()) : initial.meeting_date); const [attendees, setAttendees] = useState<string[]>(copy ? [] : initial?.attendees ?? []);
   const [workItems, setWorkItems] = useState<MeetingWorkItem[]>(initial && !copy && initial.work_items?.length ? initial.work_items.map(normalizeWork) : [blankWork()]);
   const [status, setStatus] = useState<MinutesStatus>(copy ? 'draft' : initial?.status ?? 'draft'); const [error, setError] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [attendeeSearch, setAttendeeSearch] = useState('');
-  useEffect(() => { pmApi.projects().then(({ data }) => setProjects(data.projects)).catch(() => {}); }, []);
+  useEffect(() => { pmApi.projects().then(({ data }) => { setProjects(data.projects); setProjectsState('ok'); }).catch(() => setProjectsState('failed')); }, []);
   const [step, setStep] = useState(0); const [copied, setCopied] = useState(false);
   const text = useMemo(() => workItemsToText({ title, meeting_date: date, attendees, work_items: workItems }), [title, date, attendees, workItems]);
   const warnings = useMemo(() => workItemWarnings(workItems, attendees), [workItems, attendees]);
+  const plan = useMemo(() => projectPlan(workItems, projects), [workItems, projects]);
+  const canCheck = projectsState === 'ok';
   async function copyText() { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } }
   const shown = employees.filter(e => e.name.toLowerCase().includes(attendeeSearch.toLowerCase().trim()));
   const toggleAttendee = (n: string) => setAttendees(a => a.includes(n) ? a.filter(x => x !== n) : [...a, n]);
@@ -94,7 +100,7 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
     try {
       const payload = { title: title.trim(), status: nextStatus, meeting_date: date, attendees, work_items: valid.map(w => ({ ...w, owner: w.owner.trim(), project: w.project.trim(), requirement: w.requirement.trim(), discussion: w.discussion.trim(), action_items: w.action_items.filter(a => a.task.trim()).map(a => ({ task: a.task.trim(), due_date: a.due_date || null })) })) };
       const { data } = isEdit ? await pmApi.minutesUpdate(initial!.id, payload) : await pmApi.minutesCreate(payload);
-      onSaved(data.minute);
+      onSaved(data.minute, data.created_projects ?? []);
     } catch (e) { setError(err(e, "Couldn't save these minutes.")); }
     finally { setSaving(false); }
   }
@@ -107,7 +113,7 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
     </div>}
     {step === 1 && <div className="flex flex-col gap-4"><div className="flex items-center justify-between"><div><h4 className="text-sm font-semibold text-slate-800">WORK ITEMS</h4><p className="text-xs text-slate-500">One Work Item = one Task. Action Items = Subtasks.</p></div><button onClick={() => setWorkItems(ws => [...ws, blankWork()])} className={ghostBtn}>+ Add Work Item</button></div>
       {workItems.map((w,i) => <div key={i} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Work Item {i + 1}</span>{workItems.length > 1 && <button onClick={() => setWorkItems(ws => ws.filter((_,j) => j !== i))} className="text-xs text-red-500">Remove</button>}</div>
-        <div className="grid gap-3 md:grid-cols-2"><Field label="Person / Owner"><select value={w.owner} onChange={e => updateWork(i,{owner:e.target.value})} className={inputCls}><option value="">Select owner…</option>{employees.map(e => <option key={e.employeeId} value={e.name}>{e.name}</option>)}</select></Field><Field label="Business / Project"><input list={`mm-projects-${i}`} value={w.project} onChange={e => updateWork(i,{project:e.target.value})} placeholder="Ad Consult" className={inputCls} /><datalist id={`mm-projects-${i}`}>{projects.map(p => <option key={p._id} value={p.name} />)}</datalist><p className="mt-1 text-[11px] text-slate-400">Existing project is suggested; a new name can be confirmed/created during ticket generation.</p></Field></div>
+        <div className="grid gap-3 md:grid-cols-2"><Field label="Person / Owner"><select value={w.owner} onChange={e => updateWork(i,{owner:e.target.value})} className={inputCls}><option value="">Select owner…</option>{employees.map(e => <option key={e.employeeId} value={e.name}>{e.name}</option>)}</select></Field><Field label="Business / Project"><input list={`mm-projects-${i}`} value={w.project} onChange={e => updateWork(i,{project:e.target.value})} placeholder="Ad Consult" className={inputCls} /><datalist id={`mm-projects-${i}`}>{projects.map(p => <option key={p._id} value={p.name} />)}</datalist><ProjectHint name={w.project} projects={projects} canCheck={canCheck} /></Field></div>
         <Field label="Requirement (becomes Task title)"><input value={w.requirement} onChange={e => updateWork(i,{requirement:e.target.value})} placeholder="Make home page responsive" className={inputCls} /></Field>
         <Field label="Discussion (becomes Task description)"><textarea value={w.discussion} onChange={e => updateWork(i,{discussion:e.target.value})} rows={3} placeholder="Homepage needs to work correctly on mobile and tablet." className={inputCls} /></Field>
         <Field label="ACTION ITEMS (become Subtasks)"><div className="flex flex-col gap-2">{w.action_items.map((a,j) => <div key={j} className="flex flex-wrap gap-2"><input value={a.task} onChange={e => updateAction(i,j,{task:e.target.value})} placeholder="Update responsive layout" className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm" /><input type="date" value={a.due_date ?? ''} onChange={e => updateAction(i,j,{due_date:e.target.value || null})} className="rounded-md border border-slate-300 px-2 py-1 text-sm" /><button onClick={() => updateWork(i,{action_items:w.action_items.filter((_,k)=>k!==j)})} className="text-slate-400 hover:text-red-600">✕</button></div>)}<button onClick={() => updateWork(i,{action_items:[...w.action_items,blankAction()]})} className="self-start text-xs text-slate-500 hover:text-slate-700">+ Add action item</button></div></Field>
@@ -117,9 +123,22 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
     {step === 2 && <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between"><div className="text-xs font-medium text-slate-500">Everything in this meeting, in one place</div><button onClick={copyText} className={ghostBtn}>{copied ? 'Copied ✓' : 'Copy as text'}</button></div>
       <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">{text}</pre>
+      {(plan.toCreate.length > 0 || plan.existing.length > 0) && <div className="rounded-md border border-slate-200 p-3 text-sm" data-testid="project-plan"><div className="mb-1 text-xs font-medium text-slate-500">PROJECTS</div>
+        {plan.toCreate.length > 0 && <p className="text-amber-800">{canCheck ? 'Will be created in Taskmandu when you press Save as final' : 'Checked against Taskmandu when you press Save as final'}: <b>{plan.toCreate.join(', ')}</b></p>}
+        {plan.existing.length > 0 && <p className="text-emerald-800">Existing projects (linked, not recreated): {plan.existing.join(', ')}</p>}
+        <p className="mt-1 text-xs text-slate-400">Save draft never creates anything in Taskmandu.</p></div>}
       {warnings.length > 0 && <ul className="list-inside list-disc text-xs text-amber-700">{warnings.map((x) => <li key={x}>{x}</li>)}</ul>}
     </div>}
     <ErrorNote message={error} />
-    <div className="flex flex-wrap items-center justify-between gap-2"><button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className={`${ghostBtn} disabled:opacity-40`}>Back</button><div className="flex gap-2"><button onClick={() => save('draft')} disabled={saving} className={ghostBtn}>{saving ? 'Saving…' : 'Save draft'}</button>{step === STEPS.length - 1 ? <button onClick={() => save('final')} disabled={saving} className={primaryBtn}>Save as final</button> : <button onClick={() => setStep((s) => s + 1)} className={primaryBtn}>Next</button>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className={`${ghostBtn} disabled:opacity-40`}>Back</button><div className="flex gap-2"><button onClick={() => save('draft')} disabled={saving} className={ghostBtn}>{saving ? 'Saving…' : 'Save draft'}</button>{step === STEPS.length - 1 ? <button onClick={() => save('final')} disabled={saving} title={plan.toCreate.length ? `Creates in Taskmandu: ${plan.toCreate.join(', ')}` : undefined} className={primaryBtn}>{saving ? 'Saving…' : plan.toCreate.length ? `Save as final · creates ${plan.toCreate.length} ${plan.toCreate.length === 1 ? 'project' : 'projects'}` : 'Save as final'}</button> : <button onClick={() => setStep((s) => s + 1)} className={primaryBtn}>Next</button>}</div></div>
   </div>;
+}
+
+function ProjectHint({ name, projects, canCheck }: { name: string; projects: Project[]; canCheck: boolean }) {
+  const m = projectMatch(name, projects);
+  const base = 'mt-1 text-[11px]';
+  if (m.kind === 'empty') return <p className={`${base} text-slate-400`}>Pick an existing project, or type a new name — a new project is created when you Save as final.</p>;
+  if (!canCheck) return <p className={`${base} text-slate-400`}>Can't check the project list right now — it is checked when you Save as final.</p>;
+  if (m.kind === 'existing') return <p className={`${base} text-emerald-700`}>✓ Existing project{m.project.name !== name.trim() ? ` — will be saved as “${m.project.name}”` : ''}</p>;
+  return <p className={`${base} text-amber-700`}>＋ New project “{m.name}” — created in Taskmandu when you press <b>Save as final</b> (not when you save a draft).</p>;
 }
