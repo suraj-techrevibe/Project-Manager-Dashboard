@@ -77,24 +77,20 @@ export const pmApi = {
 
   snoozeSubtask: (id: number) => api.post<{ id: number }>(`/subtasks/${id}/snooze`),
 
-  draftBrief: (brief: string) =>
-    api.post<{ tickets: DraftTicket[]; questions: string[]; truncated?: number }>('/brief', { brief }),
   briefDrafts: () => api.get<{ drafts: BriefDraftSummary[] }>('/brief/drafts'),
   briefDraft: (id: number) => api.get<{ draft: BriefDraft }>(`/brief/drafts/${id}`),
   saveBriefDraft: (data: BriefDraftInput) => api.post<{ draft: BriefDraft }>('/brief/drafts', data),
   updateBriefDraft: (id: number, data: BriefDraftInput) => api.patch<{ draft: BriefDraft }>(`/brief/drafts/${id}`, data),
   deleteBriefDraft: (id: number) => api.delete<{ deleted: true }>(`/brief/drafts/${id}`),
-  recentPushes: () => api.get<{ pushes: Array<{ id: number; title: string; project_name: string | null; occurred_at: string }> }>('/recent-pushes'),
 
   employees: () => api.get<{ employees: Employee[] }>('/employees'),
 
   briefContext: () => api.get<BriefContext>('/brief/context'),
 
   /** Per-ticket assignee/due date; pass projectId to push onto that project's board. */
-  pushTickets: (tickets: PushTicket[], projectId?: string) =>
+  pushTickets: (tickets: PushTicket[]) =>
     api.post<{ results: PushResult[]; created: number; failed: number }>('/brief/push', {
       tickets,
-      project_id: projectId || null,
     }),
 
   reports: () => api.get<{ reports: Report[] }>('/reports'),
