@@ -88,7 +88,20 @@ function MinuteDetail({ minute, onEdit, onDuplicate, onDelete }: { minute: Meeti
     <div><div className="mb-2 text-sm font-semibold text-slate-800">WORK ITEMS</div><div className="flex flex-col gap-3">{(minute.work_items ?? []).map((w, i) => <div key={i} className="rounded-lg border border-slate-200 p-3"><div className="font-medium text-slate-900">{i + 1}. {w.owner || 'Unassigned'}</div><div className="text-sm text-slate-600">{w.project || 'Project not specified'}{w.project_id && <span className="ml-2 text-[11px] text-emerald-700">✓ in Taskmandu</span>}</div><div className="mt-2 text-sm"><b>Requirement:</b> {w.requirement}</div>{w.discussion && <div className="mt-1 whitespace-pre-wrap text-sm text-slate-600"><b>Discussion:</b> {w.discussion}</div>}{w.action_items?.length > 0 && <div className="mt-2"><div className="text-xs font-medium text-slate-500">ACTION ITEMS</div><ul className="list-disc pl-5 text-sm text-slate-700">{w.action_items.map((a, j) => <li key={j}>{a.task}{a.due_date ? ` — due ${a.due_date}` : ''}</li>)}</ul></div>}<div className="mt-2 text-xs text-slate-500">Due date: {w.due_date || 'Not set'}</div></div>)}</div></div>
     <p className="text-xs text-slate-400">Created {formatTimestamp(minute.created_at)}{minute.created_by ? ` by ${minute.created_by}` : ''}</p>
     {pushError && <ErrorNote message={pushError} />}
-    <div className="flex flex-wrap gap-2"><button onClick={onEdit} className={ghostBtn}>Edit</button><button onClick={onDuplicate} className={ghostBtn}>Duplicate</button><button onClick={pushToTaskmandu} disabled={pushing || minute.status !== 'final'} className={primaryBtn}>{pushing ? 'Pushing…' : 'Push to Taskmandu'}</button><button onClick={onDelete} className={dangerBtn}>Delete</button></div>
+    <div className="flex flex-wrap gap-2"><button onClick={onEdit} className={ghostBtn}>Edit</button>
+    <button onClick={onDuplicate} className={ghostBtn}>Duplicate</button>
+   <button
+  onClick={pushToTaskmandu}
+  disabled={pushing || minute.status !== 'final'}
+  className={primaryBtn}
+>
+  {pushing
+    ? 'Pushing…'
+    : `Push ${minute.work_items?.length ?? 0} ${
+        (minute.work_items?.length ?? 0) === 1 ? 'Ticket' : 'Tickets'
+      } to Taskmandu`}
+</button>
+        <button onClick={onDelete} className={dangerBtn}>Delete</button></div>
   </div>;
 }
 
@@ -146,7 +159,42 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
       {warnings.length > 0 && <ul className="list-inside list-disc text-xs text-amber-700">{warnings.map((x) => <li key={x}>{x}</li>)}</ul>}
     </div>}
     <ErrorNote message={error} />
-    <div className="flex flex-wrap items-center justify-between gap-2"><button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className={`${ghostBtn} disabled:opacity-40`}>Back</button><div className="flex gap-2"><button onClick={() => save('draft')} disabled={saving} className={ghostBtn}>{saving ? 'Saving…' : 'Save draft'}</button>{step === STEPS.length - 1 ? <button onClick={() => save('final')} disabled={saving} className={primaryBtn}>{saving ? 'Saving…' : `Save as final · creates ${plan.toCreate.length} ${plan.toCreate.length === 1 ? 'project' : 'projects'}` : 'Save as final'}</button> : <button onClick={() => setStep((s) => s + 1)} className={primaryBtn}>Next</button>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+  <button
+    onClick={() => setStep((s) => Math.max(0, s - 1))}
+    disabled={step === 0}
+    className={`${ghostBtn} disabled:opacity-40`}
+  >
+    Back
+  </button>
+
+  <div className="flex gap-2">
+    <button
+      onClick={() => save('draft')}
+      disabled={saving}
+      className={ghostBtn}
+    >
+      {saving ? 'Saving…' : 'Save draft'}
+    </button>
+
+    {step === STEPS.length - 1 ? (
+      <button
+        onClick={() => save('final')}
+        disabled={saving}
+        className={primaryBtn}
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    ) : (
+      <button
+        onClick={() => setStep((s) => s + 1)}
+        className={primaryBtn}
+      >
+        Next
+      </button>
+    )}
+  </div>
+</div>
   </div>;
 }
 
