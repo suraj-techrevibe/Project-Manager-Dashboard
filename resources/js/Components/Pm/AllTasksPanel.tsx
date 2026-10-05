@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { TaskFocus } from '../../types/pm';
+import type { TaskFocus } from '../../types/pm';
 import { btnSecondary } from './ui/kit';
 
 export interface AllTask {
