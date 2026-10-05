@@ -68,11 +68,27 @@ export default function StructuredMeetingMinutesPanel() {
 }
 
 function MinuteDetail({ minute, onEdit, onDuplicate, onDelete }: { minute: MeetingMinutesFull; onEdit: () => void; onDuplicate: () => void; onDelete: () => void }) {
+  const [pushing, setPushing] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  async function pushToTaskmandu() {
+    setPushing(true); setPushError(null);
+    try {
+      await pmApi.minutesPush(minute.id);
+      window.location.reload();
+    } catch (e) {
+      setPushError(err(e, "Couldn't push these minutes to Taskmandu."));
+    } finally {
+      setPushing(false);
+    }
+  }
+
   return <div className="flex flex-col gap-4">
     {minute.attendees.length > 0 && <div><div className="mb-1 text-xs font-medium text-slate-500">Attendees</div><p className="text-sm text-slate-700">{minute.attendees.join(', ')}</p></div>}
     <div><div className="mb-2 text-sm font-semibold text-slate-800">WORK ITEMS</div><div className="flex flex-col gap-3">{(minute.work_items ?? []).map((w, i) => <div key={i} className="rounded-lg border border-slate-200 p-3"><div className="font-medium text-slate-900">{i + 1}. {w.owner || 'Unassigned'}</div><div className="text-sm text-slate-600">{w.project || 'Project not specified'}{w.project_id && <span className="ml-2 text-[11px] text-emerald-700">✓ in Taskmandu</span>}</div><div className="mt-2 text-sm"><b>Requirement:</b> {w.requirement}</div>{w.discussion && <div className="mt-1 whitespace-pre-wrap text-sm text-slate-600"><b>Discussion:</b> {w.discussion}</div>}{w.action_items?.length > 0 && <div className="mt-2"><div className="text-xs font-medium text-slate-500">ACTION ITEMS</div><ul className="list-disc pl-5 text-sm text-slate-700">{w.action_items.map((a, j) => <li key={j}>{a.task}{a.due_date ? ` — due ${a.due_date}` : ''}</li>)}</ul></div>}<div className="mt-2 text-xs text-slate-500">Due date: {w.due_date || 'Not set'}</div></div>)}</div></div>
     <p className="text-xs text-slate-400">Created {formatTimestamp(minute.created_at)}{minute.created_by ? ` by ${minute.created_by}` : ''}</p>
-    <div className="flex flex-wrap gap-2"><button onClick={onEdit} className={ghostBtn}>Edit</button><button onClick={onDuplicate} className={ghostBtn}>Duplicate</button><button onClick={onDelete} className={dangerBtn}>Delete</button></div>
+    {pushError && <ErrorNote message={pushError} />}
+    <div className="flex flex-wrap gap-2"><button onClick={onEdit} className={ghostBtn}>Edit</button><button onClick={onDuplicate} className={ghostBtn}>Duplicate</button><button onClick={pushToTaskmandu} disabled={pushing || minute.status !== 'final'} className={primaryBtn}>{pushing ? 'Pushing…' : 'Push to Taskmandu'}</button><button onClick={onDelete} className={dangerBtn}>Delete</button></div>
   </div>;
 }
 
@@ -124,13 +140,13 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
       <div className="flex items-center justify-between"><div className="text-xs font-medium text-slate-500">Everything in this meeting, in one place</div><button onClick={copyText} className={ghostBtn}>{copied ? 'Copied ✓' : 'Copy as text'}</button></div>
       <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">{text}</pre>
       {(plan.toCreate.length > 0 || plan.existing.length > 0) && <div className="rounded-md border border-slate-200 p-3 text-sm" data-testid="project-plan"><div className="mb-1 text-xs font-medium text-slate-500">PROJECTS</div>
-        {plan.toCreate.length > 0 && <p className="text-amber-800">{canCheck ? 'Will be created in Taskmandu when you press Save as final' : 'Checked against Taskmandu when you press Save as final'}: <b>{plan.toCreate.join(', ')}</b></p>}
+        {plan.toCreate.length > 0 && <p className="text-amber-800">{canCheck ? 'Will be created in Taskmandu when you press Save' : 'Checked against Taskmandu when you press Save as final'}: <b>{plan.toCreate.join(', ')}</b></p>}
         {plan.existing.length > 0 && <p className="text-emerald-800">Existing projects (linked, not recreated): {plan.existing.join(', ')}</p>}
         <p className="mt-1 text-xs text-slate-400">Save draft never creates anything in Taskmandu.</p></div>}
       {warnings.length > 0 && <ul className="list-inside list-disc text-xs text-amber-700">{warnings.map((x) => <li key={x}>{x}</li>)}</ul>}
     </div>}
     <ErrorNote message={error} />
-    <div className="flex flex-wrap items-center justify-between gap-2"><button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className={`${ghostBtn} disabled:opacity-40`}>Back</button><div className="flex gap-2"><button onClick={() => save('draft')} disabled={saving} className={ghostBtn}>{saving ? 'Saving…' : 'Save draft'}</button>{step === STEPS.length - 1 ? <button onClick={() => save('final')} disabled={saving} title={plan.toCreate.length ? `Creates in Taskmandu: ${plan.toCreate.join(', ')}` : undefined} className={primaryBtn}>{saving ? 'Saving…' : plan.toCreate.length ? `Save as final · creates ${plan.toCreate.length} ${plan.toCreate.length === 1 ? 'project' : 'projects'}` : 'Save as final'}</button> : <button onClick={() => setStep((s) => s + 1)} className={primaryBtn}>Next</button>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className={`${ghostBtn} disabled:opacity-40`}>Back</button><div className="flex gap-2"><button onClick={() => save('draft')} disabled={saving} className={ghostBtn}>{saving ? 'Saving…' : 'Save draft'}</button>{step === STEPS.length - 1 ? <button onClick={() => save('draft')} disabled={saving} title={plan.toCreate.length ? `Creates in Taskmandu: ${plan.toCreate.join(', ')}` : undefined} className={primaryBtn}>{saving ? 'Saving…' : plan.toCreate.length ? `Save as final · creates ${plan.toCreate.length} ${plan.toCreate.length === 1 ? 'project' : 'projects'}` : 'Save as final'}</button> : <button onClick={() => setStep((s) => s + 1)} className={primaryBtn}>Next</button>}</div></div>
   </div>;
 }
 
