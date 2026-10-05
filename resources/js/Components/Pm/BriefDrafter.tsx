@@ -1,23 +1,34 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import {
-  BRIEF_MAX_CHARS,
-  MAX_TICKETS,
-  autoAssign,
-  blankTicket,
-  findExisting,
-  
-  sameTitle,
-  splitBrief,
-  type EditableTicket,
-} from '../../lib/briefHeuristics';
-import { localISO, parseMeetingNotes } from '../../lib/meetingNotes';
 import { TASK_PRIORITIES } from '../../types/pm';
-import type { BriefContext, Project, PushTicket } from '../../types/pm';
-import MeetingPicker from './MeetingPicker';
-const inputCls = 'rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-slate-400 focus:outline-none';
+import type { BriefDraft, Employee, Project, TaskPriority } from '../../types/pm';
 
-/** Pulls the most useful message out of a failed request. */
+const inputCls =
+  'rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-slate-400 focus:outline-none';
+
+type Ticket = BriefDraft['tickets'][number] & {
+  projectId?: string;
+  projectTitle?: string;
+};
+
+const newUid = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+function blankTicket(): Ticket {
+  return {
+    uid: newUid(),
+    projectId: '',
+    projectTitle: '',
+    title: '',
+    description: '',
+    level: 'intern',
+    estimate_hours: 2,
+    priority: 'Medium',
+    assigneeId: '',
+    dueDate: '',
+    state: 'draft',
+  };
+}
+
 function errorText(e: any, fallback: string): string {
   const d = e?.response?.data;
   if (d?.error) return d.error;
@@ -25,149 +36,81 @@ function errorText(e: any, fallback: string): string {
     const first = Object.values(d.errors)[0] as string[] | undefined;
     if (first?.[0]) return first[0];
   }
-  if (d?.message && e?.response?.status !== 500) return d.message;
+  if (d?.message) return d.message;
   return fallback;
 }
 
 export default function BriefDrafter() {
-  const [brief, setBrief] = useState('');
   const [briefTitle, setBriefTitle] = useState('Untitled brief');
+  const [brief, setBrief] = useState('');
   const [draftId, setDraftId] = useState<number | null>(null);
-  const [savedDrafts, setSavedDrafts] = useState<Array<{ id: number; title: string; project_id: string | null; status: string; updated_at: string }>>([]);
-  const [tickets, setTickets] = useState<EditableTicket[]>([]);
-
-  const [loading, setLoading] = useState(false);
-  const [draftError, setDraftError] = useState<string | null>(null);
+  const [savedDrafts, setSavedDrafts] = useState<BriefDraft[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [ctx, setCtx] = useState<BriefContext | null>(null);
-  const [ctxError, setCtxError] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState('');
-
-  const [pushing, setPushing] = useState(false);
-  const [pushError, setPushError] = useState<string | null>(null);
-  const [pushSummary, setPushSummary] = useState<string | null>(null);
-  const [attempted, setAttempted] = useState(false);
-  const [recentPushes, setRecentPushes] = useState<Array<{ id: number; title: string; project_name: string | null; occurred_at: string }>>([]);
-  const [undoing, setUndoing] = useState<number | null>(null);
-
-  function loadContext() {
-    pmApi
-      .briefContext()
-      .then(({ data }) => {
-        setCtx(data);
-        setCtxError(null);
-      })
-      .catch((e) => setCtxError(errorText(e, "Couldn't load employees — Taskmandu may be unreachable.")));
-  }
-
   useEffect(() => {
-    loadContext();
-    loadSavedDrafts();
-    pmApi.recentPushes().then(({ data }) => setRecentPushes(data.pushes)).catch(() => {});
-    pmApi
-      .projects()
-      .then(({ data }) => setProjects(data.projects))
-      .catch(() => {});
+    void loadInitial();
   }, []);
 
-  const employees = ctx?.employees ?? [];
-  const pending = tickets.filter((t) => t.state !== 'pushed');
-  const pushedCount = tickets.length - pending.length;
-
-  // Tickets this batch has already given each person, so the dropdown shows the real picture.
-  const batchLoad = useMemo(() => {
-    const m: Record<string, { n: number; h: number }> = {};
-    pending.forEach((t) => {
-      if (!t.assigneeId) return;
-      const cur = m[t.assigneeId] ?? { n: 0, h: 0 };
-      m[t.assigneeId] = { n: cur.n + 1, h: cur.h + (Number(t.estimate_hours) || 0) };
-    });
-    return m;
-  }, [pending]);
-
-  const employeeLabel = (e: (typeof employees)[number]) => {
-    const b = batchLoad[e.employeeId];
-    return `${e.name}${e.designation ? ` (${e.designation})` : ''} — ${e.open ?? 0} open${
-      e.week_hours ? ` · ${e.week_hours}h this week` : ''
-    }${b ? ` (+${b.n} here${b.h ? `, ${b.h}h` : ''})` : ''}`;
-  };
-
-  // Warn when this batch pushes someone past their weekly capacity.
-  const overCapacity = useMemo(() => {
-    const out: Record<string, string> = {};
-    pending.forEach((t) => {
-      const e = employees.find((x) => x.employeeId === t.assigneeId);
-      const b = e ? batchLoad[e.employeeId] : undefined;
-      if (!e || !b) return;
-      const cap = e.capacity ?? 40;
-      const total = Math.round(((e.week_hours ?? 0) + b.h) * 10) / 10;
-      if (total > cap) {
-        out[t.uid] = `${e.name} would be at ${total}h of ${cap}h this week with this batch — consider someone lighter.`;
-      }
-    });
-    return out;
-  }, [pending, employees, batchLoad]);
-
-  // Duplicate warnings: against existing cards, and against other tickets in this batch.
-  const duplicates = useMemo(() => {
-    const out: Record<string, string> = {};
-    tickets.forEach((t, i) => {
-      if (t.state === 'pushed' || !t.title.trim()) return;
-      const existing = findExisting(t.title, ctx?.titles ?? []);
-      if (existing) {
-        out[t.uid] = `A similar task already exists${existing.project_name ? ` in ${existing.project_name}` : ''}: “${existing.title}”`;
-        return;
-      }
-      const j = tickets.findIndex((o, k) => k < i && o.state !== 'pushed' && sameTitle(o.title, t.title));
-      if (j >= 0) out[t.uid] = `Same as ticket #${j + 1} in this batch`;
-    });
-    return out;
-  }, [tickets, ctx]);
-
-  async function loadSavedDrafts() {
+  async function loadInitial() {
+    setLoading(true);
     try {
-      const { data } = await pmApi.briefDrafts();
-      setSavedDrafts(data.drafts);
-    } catch {}
+      const [draftsRes, projectsRes, contextRes] = await Promise.all([
+        pmApi.briefDrafts(),
+        pmApi.projects(),
+        pmApi.briefContext(),
+      ]);
+      setSavedDrafts(draftsRes.data.drafts as BriefDraft[]);
+      setProjects(projectsRes.data.projects);
+      setEmployees(contextRes.data.employees);
+      setError(null);
+    } catch (e) {
+      setError(errorText(e, "Couldn't load Brief data."));
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function saveDraft() {
-    if (!briefTitle.trim()) return setDraftError('Give this brief a title.');
-    if (!brief.trim() && !tickets.length) return setDraftError('Add some notes or tickets before saving.');
-    setDraftError(null);
-    try {
-      const payload = {
-        title: briefTitle.trim(),
-        brief,
-        project_id: projectId || null,
-        tickets,
-      };
-      const { data } = draftId
-        ? await pmApi.updateBriefDraft(draftId, payload)
-        : await pmApi.saveBriefDraft(payload);
-      setDraftId(data.draft.id);
-      setBriefTitle(data.draft.title);
-      setNotice('Draft saved. Nothing has been pushed to Taskmandu.');
-      await loadSavedDrafts();
-    } catch (e) {
-      setDraftError(errorText(e, "Couldn't save this draft."));
-    }
+  async function loadSavedDrafts() {
+    const { data } = await pmApi.briefDrafts();
+    setSavedDrafts(data.drafts as BriefDraft[]);
+  }
+
+  function resetBrief() {
+    setDraftId(null);
+    setBriefTitle('Untitled brief');
+    setBrief('');
+    setTickets([]);
+    setError(null);
+    setNotice(null);
   }
 
   async function openDraft(id: number) {
     try {
       const { data } = await pmApi.briefDraft(id);
+      const loaded = (data.draft.tickets ?? []).map((t) => {
+        const projectId = t.projectId ?? '';
+        const project = projects.find((p) => p._id === projectId);
+        return {
+          ...t,
+          projectId,
+          projectTitle: t.projectTitle ?? project?.name ?? '',
+        };
+      });
       setDraftId(data.draft.id);
       setBriefTitle(data.draft.title);
       setBrief(data.draft.brief ?? '');
-      setProjectId(data.draft.project_id ?? '');
-      setTickets(data.draft.tickets ?? []);
-      setDraftError(null);
-      setNotice('Draft loaded. Edit anything, then save again.');
+      setTickets(loaded);
+      setError(null);
+      setNotice('Draft loaded. Nothing has been sent to Taskmandu.');
     } catch (e) {
-      setDraftError(errorText(e, "Couldn't load that draft."));
+      setError(errorText(e, "Couldn't load that draft."));
     }
   }
 
@@ -175,198 +118,189 @@ export default function BriefDrafter() {
     if (!window.confirm('Delete this saved brief draft?')) return;
     try {
       await pmApi.deleteBriefDraft(id);
-      if (draftId === id) {
-        setDraftId(null);
-        setBriefTitle('Untitled brief');
-        setBrief('');
-        setTickets([]);
-      }
+      if (draftId === id) resetBrief();
       await loadSavedDrafts();
       setNotice('Draft deleted.');
     } catch (e) {
-      setDraftError(errorText(e, "Couldn't delete that draft."));
+      setError(errorText(e, "Couldn't delete that draft."));
     }
   }
 
-  /* ---------------- drafting ---------------- */
+  function normaliseTickets(source: Ticket[]) {
+    return source.map((t) => ({
+      uid: t.uid,
+      projectId: t.projectId ?? '',
+      projectTitle: t.projectTitle ?? '',
+      title: t.title,
+      description: t.description,
+      level: t.level,
+      estimate_hours: t.estimate_hours,
+      priority: t.priority,
+      assigneeId: t.assigneeId,
+      dueDate: t.dueDate,
+      state: t.state,
+      ...(t.error ? { error: t.error } : {}),
+    }));
+  }
 
-  function checkBrief(): string | null {
-    const text = brief.trim();
-    if (!text) return 'Paste a brief first';
-    if (text.length > BRIEF_MAX_CHARS) {
-      return `The brief is ${text.length.toLocaleString()} characters — the limit is ${BRIEF_MAX_CHARS.toLocaleString()}. Trim it or split it into two briefs.`;
+  async function saveDraft(sourceTickets = tickets) {
+    if (!briefTitle.trim()) {
+      setError('Give this brief a title.');
+      return false;
     }
-    return null;
+    if (!brief.trim() && sourceTickets.length === 0) {
+      setError('Add notes or at least one ticket before saving.');
+      return false;
+    }
+
+    const missingProject = sourceTickets.find((t) => t.state !== 'pushed' && !t.projectId);
+    if (missingProject) {
+      setError('Every ticket needs a project before the draft can be saved.');
+      return false;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = {
+        title: briefTitle.trim(),
+        brief,
+        project_id: null,
+        tickets: normaliseTickets(sourceTickets),
+      };
+      const { data } = draftId
+        ? await pmApi.updateBriefDraft(draftId, payload)
+        : await pmApi.saveBriefDraft(payload);
+
+      setDraftId(data.draft.id);
+      setBriefTitle(data.draft.title);
+      await loadSavedDrafts();
+      setNotice('Draft saved.');
+      return true;
+    } catch (e) {
+      setError(errorText(e, "Couldn't save this draft."));
+      return false;
+    } finally {
+      setSaving(false);
+    }
   }
 
-  // New drafts replace unpushed tickets but never the ones already in Taskmandu.
-  function loadDrafts(fresh: EditableTicket[]) {
-    setTickets((prev) => [...prev.filter((t) => t.state === 'pushed'), ...fresh].slice(0, MAX_TICKETS));
-    setAttempted(false);
-    setPushError(null);
-    setPushSummary(null);
+  function addTicket() {
+    if (tickets.length >= 30) {
+      setError('A brief can contain at most 30 tickets.');
+      return;
+    }
+    setTickets((prev) => [...prev, blankTicket()]);
+    setError(null);
   }
 
-  function splitLocally() {
-    if (!brief.trim()) return setDraftError('Paste a brief first');
-    const { tickets: fresh, dropped } = splitBrief(brief);
-    if (!fresh.length) return setDraftError('Nothing to split — put one task per line (bullets or numbers work best).');
-
-    setDraftError(null);
-    loadDrafts(fresh);
-    setNotice(
-      `Split without AI: level and hours are guesses from keywords, so review them.${
-        dropped ? ` ${dropped} extra line(s) beyond ${MAX_TICKETS} were dropped.` : ''
-      }`
+  function updateTicket(uid: string, patch: Partial<Ticket>) {
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.uid === uid
+          ? {
+              ...t,
+              ...patch,
+              state: t.state === 'failed' ? 'draft' : t.state,
+            }
+          : t,
+      ),
     );
   }
 
-  function fromMeetingNotes() {
-    if (!brief.trim()) return setDraftError('Paste your meeting notes first');
-    const res = parseMeetingNotes(brief, employees);
-    if (!res.tickets.length) {
-      return setDraftError('No action items found. Mark them with TODO, @name or "by Friday", or put them under an "Action items:" heading.');
-    }
-
-    const assigned = res.tickets.filter((t) => t.assigneeId).length;
-    const dated = res.tickets.filter((t) => t.dueDate).length;
-    const bits = [
-      `Found ${res.tickets.length} action item${res.tickets.length === 1 ? '' : 's'} (${assigned} with an assignee, ${dated} with a due date); ${res.ignored} other line${res.ignored === 1 ? '' : 's'} ignored.`,
-    ];
-    if (res.unmatched.length) {
-      bits.push(
-        employees.length
-          ? `No single match for ${res.unmatched.join(', ')}, so pick those yourself.`
-          : `Couldn't load employees, so ${res.unmatched.join(', ')} weren't matched.`
-      );
-    }
-    if (res.dropped) bits.push(`${res.dropped} more beyond ${MAX_TICKETS} were dropped.`);
-    bits.push(...res.warnings);
-    bits.push('Hours and level are keyword guesses, so review them.');
-
-    setDraftError(null);
-    loadDrafts(res.tickets);
-    setNotice(bits.join(' '));
+  function removeTicket(uid: string) {
+    setTickets((prev) => prev.filter((t) => t.uid !== uid));
   }
 
-  /* ---------------- editing ---------------- */
-
-  const update = (uid: string, patch: Partial<EditableTicket>) =>
-    setTickets((prev) => prev.map((t) => (t.uid === uid ? { ...t, ...patch, state: t.state === 'failed' ? 'draft' : t.state } : t)));
-
-  const remove = (uid: string) => setTickets((prev) => prev.filter((t) => t.uid !== uid));
-
-  const add = () => setTickets((prev) => (prev.length >= MAX_TICKETS ? prev : [...prev, blankTicket()]));
-
-  const assignAll = (assigneeId: string) => {
-    if (assigneeId) setTickets((prev) => prev.map((t) => (t.state === 'pushed' ? t : { ...t, assigneeId })));
-  };
-
-  const dueAll = (dueDate: string) => setTickets((prev) => prev.map((t) => (t.state === 'pushed' ? t : { ...t, dueDate })));
-
-  function runAutoAssign() {
-    const picks = autoAssign(tickets, employees);
-    setTickets((prev) => prev.map((t) => (picks[t.uid] ? { ...t, assigneeId: picks[t.uid] } : t)));
+  function selectProject(uid: string, projectId: string) {
+    const project = projects.find((p) => p._id === projectId);
+    updateTicket(uid, {
+      projectId,
+      projectTitle: project?.name ?? '',
+    });
   }
 
-  /* ---------------- pushing ---------------- */
-
-  async function pushList(list: EditableTicket[]) {
-    setAttempted(true);
-    setPushSummary(null);
-
-    if (list.some((t) => !t.title.trim())) return setPushError('Every ticket needs a title.');
-    const missing = list.filter((t) => !t.assigneeId).length;
-    if (missing) {
-      return setPushError(`${missing} ticket${missing === 1 ? ' has' : 's have'} no assignee — Taskmandu requires one per task.`);
+  async function pushTickets() {
+    const pending = tickets.filter((t) => t.state !== 'pushed');
+    if (!pending.length) {
+      setError('There are no unpushed tickets.');
+      return;
     }
 
-    const payload: PushTicket[] = list.map((t) => ({
-      title: t.title.trim(),
-      description: t.description.trim(),
-      level: t.level,
-      estimate_hours: t.estimate_hours === '' ? null : Number(t.estimate_hours),
-      priority: t.priority,
-      assignee_employee_id: t.assigneeId,
-      due_date: t.dueDate || null,
-    }));
+    const missingProject = pending.find((t) => !t.projectId);
+    if (missingProject) {
+      setError('Every ticket must have a project before it can be pushed.');
+      return;
+    }
 
-    setPushError(null);
+    const missingTitle = pending.find((t) => !t.title.trim());
+    if (missingTitle) {
+      setError('Every ticket needs a title.');
+      return;
+    }
+
+    const missingAssignee = pending.find((t) => !t.assigneeId);
+    if (missingAssignee) {
+      setError('Every ticket needs an assignee — Taskmandu requires one per task.');
+      return;
+    }
+
+    if (!window.confirm(`Push ${pending.length} ticket${pending.length === 1 ? '' : 's'} to Taskmandu?`)) {
+      return;
+    }
+
     setPushing(true);
+    setError(null);
+    setNotice(null);
+
     try {
-      const { data } = await pmApi.pushTickets(payload, projectId || undefined);
-      const byUid = new Map(data.results.map((r) => [list[r.index].uid, r]));
+      const payload = pending.map((t) => ({
+        project_id: t.projectId!,
+        title: t.title.trim(),
+        description: t.description.trim(),
+        level: t.level,
+        estimate_hours: t.estimate_hours === '' ? null : Number(t.estimate_hours),
+        priority: t.priority,
+        assignee_employee_id: t.assigneeId,
+        due_date: t.dueDate || null,
+      }));
 
-      setTickets((prev) =>
-        prev.map((t) => {
-          const r = byUid.get(t.uid);
-          if (!r) return t;
-          return r.ok ? { ...t, state: 'pushed', error: undefined } : { ...t, state: 'failed', error: r.error ?? 'Failed' };
-        })
+      const { data } = await pmApi.pushTickets(payload);
+      const resultByUid = new Map(
+        data.results.map((r) => [pending[r.index].uid, r]),
       );
 
-      const fellBack = data.results.some((r) => r.ok && r.fields_fallback);
-      const capacityWarnings = data.results.filter((r) => r.ok && r.capacity_warning).map((r) => r.capacity_warning);
-      const warningText = capacityWarnings.length ? ' Workload warning: ' + capacityWarnings.join(' ') : '';
-      setPushSummary(
-        `${data.created} pushed${data.failed ? `, ${data.failed} failed — fix them or press Retry on each` : ''}.${fellBack ? ' Taskmandu wouldn’t accept priority/hours/tags on create, so those went into the description.' : ''}${warningText}`
+      const next = tickets.map((t) => {
+        const result = resultByUid.get(t.uid);
+        if (!result) return t;
+        return result.ok
+          ? { ...t, state: 'pushed' as const, error: undefined }
+          : { ...t, state: 'failed' as const, error: result.error ?? 'Push failed' };
+      });
+
+      setTickets(next);
+      await saveDraft(next);
+
+      const failed = data.failed;
+      setNotice(
+        failed
+          ? `${data.created} pushed, ${failed} failed. Fix the failed tickets and push again.`
+          : `${data.created} ticket${data.created === 1 ? '' : 's'} pushed to Taskmandu.`,
       );
-      loadContext(); // refresh workload counts + duplicate list
-      await loadSavedDrafts();
-    } catch (e: any) {
-      setPushError(
-        e?.response
-          ? errorText(e, "Couldn't push to Taskmandu")
-          : "Lost the connection mid-push. Some tickets may already exist in Taskmandu — check there before retrying so nothing is created twice."
-      );
+    } catch (e) {
+      setError(errorText(e, "Couldn't push the tickets."));
     } finally {
       setPushing(false);
     }
   }
 
-  async function undoPush(id: number) {
-    if (!window.confirm('Undo this PM-created ticket in Taskmandu? This will delete it from Taskmandu.')) return;
-    setUndoing(id);
-    try {
-      await pmApi.undoPush(id);
-      setRecentPushes((prev) => prev.filter((p) => p.id !== id));
-      setNotice('Ticket removed from Taskmandu and the PM card was rolled back.');
-      loadContext();
-    } catch (e) {
-      setPushError(errorText(e, "Couldn't undo the ticket."));
-    } finally {
-      setUndoing(null);
-    }
+  if (loading) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading Briefs…</div>;
   }
-
-      {recentPushes.length > 0 && (
-        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2.5">
-          <div className="mb-2 flex items-center justify-between">
-            <div>
-              <div className="text-xs font-semibold text-slate-700">Recently pushed by PM</div>
-              <div className="text-[11px] text-slate-400">Undo is available for these PM-created tickets.</div>
-            </div>
-          </div>
-          <div className="space-y-1">
-            {recentPushes.slice(0, 8).map((p) => (
-              <div key={p.id} className="flex items-center gap-2 rounded bg-white px-2 py-1.5 text-xs">
-                <span className="min-w-0 flex-1 truncate">{p.title}{p.project_name ? ` · ${p.project_name}` : ''}</span>
-                <span className="shrink-0 text-slate-400">{new Date(p.occurred_at).toLocaleString()}</span>
-                <button onClick={() => undoPush(p.id)} disabled={undoing === p.id} className="shrink-0 rounded border border-red-200 px-2 py-0.5 font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
-                  {undoing === p.id ? 'Undoing…' : 'Undo'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-  const over = brief.length > BRIEF_MAX_CHARS;
-  const today = localISO(new Date());
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           value={briefTitle}
           onChange={(e) => setBriefTitle(e.target.value)}
@@ -375,247 +309,209 @@ export default function BriefDrafter() {
           className={`${inputCls} min-w-[16rem] flex-1 font-medium`}
         />
         {draftId && <span className="text-xs text-slate-400">Draft #{draftId}</span>}
-        <button onClick={saveDraft} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
-          Save draft
+        <button
+          onClick={() => void saveDraft()}
+          disabled={saving}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : draftId ? 'Save changes' : 'Save draft'}
+        </button>
+        <button
+          onClick={resetBrief}
+          className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+        >
+          New brief
         </button>
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">Draft: write & save</span>
-        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Ready: review before push</span>
-        <span className="rounded-full bg-green-50 px-2 py-1 text-green-700">Pushed: in Taskmandu</span>
-      </div>
-
       {savedDrafts.length > 0 && (
-        <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-          <div className="mb-1 text-xs font-semibold text-slate-600">Saved drafts</div>
-          <div className="flex flex-wrap gap-1.5">
+        <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-2">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-xs font-semibold text-slate-600">Saved briefs</div>
+            <div className="text-[11px] text-slate-400">{savedDrafts.length} saved</div>
+          </div>
+          <div className="space-y-1">
             {savedDrafts.map((d) => (
-              <div key={d.id} className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
-                <button onClick={() => openDraft(d.id)} className="text-xs text-slate-700 hover:underline">{d.title}</button>
-                <button onClick={() => deleteDraft(d.id)} className="text-xs text-slate-400 hover:text-red-600" title="Delete draft">✕</button>
+              <div key={d.id} className="flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1.5">
+                <button
+                  onClick={() => void openDraft(d.id)}
+                  className="min-w-0 flex-1 truncate text-left text-xs font-medium text-slate-700 hover:underline"
+                >
+                  {d.title}
+                </button>
+                <span className="shrink-0 text-[11px] text-slate-400">
+                  {new Date(d.updated_at).toLocaleString()}
+                </span>
+                <button
+                  onClick={() => void deleteDraft(d.id)}
+                  className="shrink-0 text-xs text-slate-400 hover:text-red-600"
+                  title="Delete draft"
+                >
+                  Delete
+                </button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <textarea
-        value={brief}
-        onChange={(e) => {
-          setBrief(e.target.value);
-          setDraftError(null);
-        }}
-        placeholder="Paste a raw client brief, one task per line for the no-AI splitter, or meeting notes (TODO @name by Friday)..."
-        className="min-h-[110px] w-full resize-y rounded-md border border-slate-200 p-2 text-sm"
-      />
-      <div className="mt-1 flex items-center justify-between text-xs">
-        <span className={over ? 'font-medium text-red-600' : 'text-slate-400'}>
-          {brief.length.toLocaleString()} / {BRIEF_MAX_CHARS.toLocaleString()} characters
-        </span>
-        {draftError && <span className="text-red-600">{draftError}</span>}
+      <div className="mb-3">
+        <label className="mb-1 block text-xs font-medium text-slate-600">Brief / notes</label>
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          placeholder="Write what you remember or what needs to be done. This is saved locally in PM until you push tickets."
+          className="min-h-[110px] w-full resize-y rounded-md border border-slate-200 p-2 text-sm"
+        />
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-slate-400">Write your notes, then add the actual tickets below. Nothing is sent to Taskmandu until you confirm.</span>
+      {error && <div className="mb-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+      {notice && <div className="mb-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">{notice}</div>}
+
+      <div className="mb-2 flex items-center justify-between border-t border-slate-100 pt-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-800">Tickets</div>
+          <div className="text-xs text-slate-400">Every ticket belongs to a Taskmandu project.</div>
+        </div>
         <button
-          onClick={splitLocally}
-          disabled={loading}
+          onClick={addTicket}
+          disabled={tickets.length >= 30}
           className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          title="Turns each line into a ticket. No AI."
         >
-          Turn lines into tickets
+          + Add ticket
         </button>
       </div>
 
-      {notice && <div className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">{notice}</div>}
-      {ctxError && <div className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-700">{ctxError}</div>}
-
-      {tickets.length > 0 && (
-        <div className="mt-3 border-t border-slate-100 pt-3">
-          {/* Bulk shortcuts */}
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <select value="" onChange={(e) => assignAll(e.target.value)} className={inputCls}>
-              <option value="">Assign all to…</option>
-              {employees.map((e) => (
-                <option key={e.employeeId} value={e.employeeId}>
-                  {employeeLabel(e)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              min={today}
-              onChange={(e) => dueAll(e.target.value)}
-              className={inputCls}
-              title="Set the due date on every unpushed ticket"
-            />
-            <button
-              onClick={runAutoAssign}
-              disabled={!employees.length}
-              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              title="Senior-dev tickets go to senior designations, interns to junior ones — always the person with the fewest hours due this week in that group."
-            >
-              Auto-assign to least busy
-            </button>
-            <span className="ml-auto text-xs text-slate-400">
-              {tickets.length} / {MAX_TICKETS} tickets
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {tickets.map((t, i) =>
-              t.state === 'pushed' ? (
-                <div key={t.uid} className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-sm text-green-800">
-                  <span>✓</span>
-                  <span className="truncate">{t.title}</span>
-                  <span className="ml-auto whitespace-nowrap text-xs text-green-600">in Taskmandu</span>
-                </div>
-              ) : (
-                <div
-                  key={t.uid}
-                  className={`rounded-md border p-2 ${
-                    t.state === 'failed' ? 'border-red-300 bg-red-50/50' : 'border-slate-200 bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">#{i + 1}</span>
-                    <input
-                      value={t.title}
-                      onChange={(e) => update(t.uid, { title: e.target.value })}
-                      maxLength={200}
-                      placeholder="Ticket title"
-                      className={`${inputCls} min-w-0 flex-1`}
-                    />
-                    <button
-                      onClick={() => remove(t.uid)}
-                      className="rounded px-1.5 text-slate-400 hover:bg-white hover:text-red-600"
-                      title="Remove this ticket"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <textarea
-                    value={t.description}
-                    onChange={(e) => update(t.uid, { description: e.target.value })}
-                    maxLength={3000}
-                    rows={2}
-                    placeholder="Description"
-                    className={`${inputCls} mt-1.5 w-full resize-y text-xs`}
-                  />
-
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <select value={t.level} onChange={(e) => update(t.uid, { level: e.target.value })} className={`${inputCls} text-xs`}>
-                      <option value="senior dev">senior dev</option>
-                      <option value="intern">intern</option>
-                    </select>
-                    <label className="flex items-center gap-1 text-xs text-slate-500">
-                      <input
-                        type="number"
-                        min={0}
-                        max={1000}
-                        step={0.5}
-                        value={t.estimate_hours}
-                        onChange={(e) => update(t.uid, { estimate_hours: e.target.value === '' ? '' : Number(e.target.value) })}
-                        className={`${inputCls} w-16 text-xs`}
-                      />
-                      h
-                    </label>
-                    <select
-                      value={t.priority}
-                      onChange={(e) => update(t.uid, { priority: e.target.value as EditableTicket['priority'] })}
-                      className={`${inputCls} text-xs`}
-                    >
-                      {TASK_PRIORITIES.map((p) => (
-                        <option key={p}>{p}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={t.assigneeId}
-                      onChange={(e) => update(t.uid, { assigneeId: e.target.value })}
-                      className={`${inputCls} min-w-[11rem] text-xs ${attempted && !t.assigneeId ? 'border-red-400 bg-red-50' : ''}`}
-                    >
-                      <option value="">Assign to…</option>
-                      {employees.map((e) => (
-                        <option key={e.employeeId} value={e.employeeId}>
-                          {employeeLabel(e)}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="date"
-                      min={today}
-                      value={t.dueDate}
-                      onChange={(e) => update(t.uid, { dueDate: e.target.value })}
-                      className={`${inputCls} text-xs`}
-                      title="Due date (defaults to +1 week if left blank)"
-                    />
-                  </div>
-
-                  {duplicates[t.uid] && <div className="mt-1.5 text-xs text-amber-700">⚠ {duplicates[t.uid]}</div>}
-                  {overCapacity[t.uid] && <div className="mt-1.5 text-xs text-red-600">⚠ {overCapacity[t.uid]}</div>}
-                  {t.state === 'failed' && (
-                    <div className="mt-1.5 flex items-center gap-2 text-xs text-red-600">
-                      <span className="min-w-0 flex-1">Not pushed: {t.error}</span>
-                      <button
-                        onClick={() => pushList([t])}
-                        disabled={pushing}
-                        className="rounded-md border border-red-300 bg-white px-2 py-0.5 font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            )}
-          </div>
-
-          <button
-            onClick={add}
-            disabled={tickets.length >= MAX_TICKETS}
-            className="mt-2 rounded-md border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+      <div className="space-y-2">
+        {tickets.map((t, index) => (
+          <div
+            key={t.uid}
+            className={`rounded-lg border p-3 ${t.state === 'pushed' ? 'border-green-200 bg-green-50/40' : 'border-slate-200 bg-white'}`}
           >
-            + Add ticket
-          </button>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-400">#{index + 1}</span>
+              {t.state === 'pushed' && <span className="text-xs font-medium text-green-700">Pushed</span>}
+              {t.state === 'failed' && <span className="text-xs font-medium text-red-600">Failed</span>}
+              <button
+                onClick={() => removeTicket(t.uid)}
+                className="ml-auto text-xs text-slate-400 hover:text-red-600"
+              >
+                Delete
+              </button>
+            </div>
 
-          {/* Push */}
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputCls} title="Where the tasks should land">
-              <option value="">Standalone tasks (no project)</option>
-              {projects.map((p) => (
-                <option key={p._id} value={p._id}>
-                  Project board: {p.name}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => {
-                if (!window.confirm(`Push ${pending.length} ticket${pending.length === 1 ? '' : 's'} to Taskmandu now?`)) return;
-                void pushList(pending);
-              }}
-              disabled={pushing || pending.length === 0}
-              className="ml-auto rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            >
-              {pushing
-                ? 'Pushing…'
-                : pending.length === 0
-                  ? 'All pushed ✓'
-                  : pushedCount
-                    ? `Push ${pending.length} remaining`
-                    : `Push ${pending.length} to Taskmandu`}
-            </button>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Project *</label>
+                <select
+                  value={t.projectId ?? ''}
+                  onChange={(e) => selectProject(t.uid, e.target.value)}
+                  disabled={t.state === 'pushed'}
+                  className={`${inputCls} w-full`}
+                >
+                  <option value="">Select existing project…</option>
+                  {projects.map((p) => (
+                    <option key={p._id} value={p._id}>{p.name}</option>
+                  ))}
+                </select>
+                {t.projectTitle && <div className="mt-1 text-[11px] text-slate-400">{t.projectTitle}</div>}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Task title *</label>
+                <input
+                  value={t.title}
+                  onChange={(e) => updateTicket(t.uid, { title: e.target.value })}
+                  disabled={t.state === 'pushed'}
+                  className={`${inputCls} w-full`}
+                  placeholder="What needs to be done?"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs font-medium text-slate-600">Description</label>
+                <textarea
+                  value={t.description}
+                  onChange={(e) => updateTicket(t.uid, { description: e.target.value })}
+                  disabled={t.state === 'pushed'}
+                  className="min-h-[70px] w-full rounded-md border border-slate-200 p-2 text-sm focus:border-slate-400 focus:outline-none disabled:bg-slate-50"
+                  placeholder="Optional task details"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Assignee *</label>
+                <select
+                  value={t.assigneeId}
+                  onChange={(e) => updateTicket(t.uid, { assigneeId: e.target.value })}
+                  disabled={t.state === 'pushed'}
+                  className={`${inputCls} w-full`}
+                >
+                  <option value="">Select employee…</option>
+                  {employees.map((e) => (
+                    <option key={e.employeeId} value={e.employeeId}>{e.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Priority</label>
+                <select
+                  value={t.priority}
+                  onChange={(e) => updateTicket(t.uid, { priority: e.target.value as TaskPriority })}
+                  disabled={t.state === 'pushed'}
+                  className={`${inputCls} w-full`}
+                >
+                  {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Estimate (hours)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={t.estimate_hours}
+                  onChange={(e) => updateTicket(t.uid, { estimate_hours: e.target.value === '' ? '' : Number(e.target.value) })}
+                  disabled={t.state === 'pushed'}
+                  className={`${inputCls} w-full`}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Due date</label>
+                <input
+                  type="date"
+                  value={t.dueDate}
+                  onChange={(e) => updateTicket(t.uid, { dueDate: e.target.value })}
+                  disabled={t.state === 'pushed'}
+                  className={`${inputCls} w-full`}
+                />
+              </div>
+            </div>
+
+            {t.error && <div className="mt-2 text-xs text-red-600">{t.error}</div>}
           </div>
-          {pushError && <div className="mt-1.5 text-xs text-red-600">{pushError}</div>}
-          {pushSummary && <div className="mt-1.5 text-xs text-slate-600">{pushSummary}</div>}
-          <p className="mt-1.5 text-xs text-slate-400">
-            {projectId
-              ? 'Tasks go onto that project’s board and show up in the Projects tab.'
-              : 'Standalone tasks don’t appear in the Projects tab — pick a project above to put them on its board.'}
-          </p>
-        </div>
-      )}
+        ))}
+
+        {tickets.length === 0 && (
+          <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+            No tickets yet. Add a ticket, choose its project, then save the brief.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+        <span className="text-xs text-slate-400">{tickets.length} / 30 tickets</span>
+        <button
+          onClick={() => void pushTickets()}
+          disabled={pushing || !tickets.some((t) => t.state !== 'pushed')}
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        >
+          {pushing ? 'Pushing…' : 'Push tickets to Taskmandu'}
+        </button>
+      </div>
     </div>
   );
 }
