@@ -46,8 +46,13 @@ export default function ProjectsPanel() {
     try {
       const { data } = await pmApi.projects();
       setProjects(data.projects);
-      const h = await pmApi.projectHealth();
-      setHealth(Object.fromEntries(h.data.health.map((x: any) => [x.project_id, x])));
+      // Health badges are optional — if that endpoint fails the projects still load.
+      try {
+        const h = await pmApi.projectHealth();
+        setHealth(Object.fromEntries(h.data.health.map((x: any) => [x.project_id, x])));
+      } catch {
+        setHealth({});
+      }
     } catch (e) {
       setError(err(e, "Couldn't load projects from Taskmandu."));
     } finally {

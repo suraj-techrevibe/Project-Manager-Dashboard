@@ -154,6 +154,8 @@ export interface PushResult {
   card_id?: number;
   /** true when Taskmandu rejected priority/hours/tags on create and they went into the description instead */
   fields_fallback?: boolean;
+  /** Set when this assignee would go over their weekly capacity with the new ticket. */
+  capacity_warning?: string | null;
 }
 
 export interface ExistingTitle {

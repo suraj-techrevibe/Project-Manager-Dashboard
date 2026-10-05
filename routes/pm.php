@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\EmailController;
 use App\Http\Controllers\MeetingMinutesController;
+use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
@@ -23,6 +24,9 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm')->name('pm.')->group(f
     Route::post('brief', [PmController::class, 'brief'])->name('brief');
     Route::get('brief/context', [PmController::class, 'briefContext'])->name('brief.context');
     Route::post('brief/push', [PmController::class, 'push'])->name('brief.push');
+    Route::get('brief/pushes', [PmController::class, 'recentPushes'])->name('brief.pushes');
+    Route::post('brief/pushes/{activity}/undo', [PmController::class, 'undoPush'])->name('brief.pushes.undo');
+    Route::get('automation/health', [PmAutomationController::class, 'health'])->name('automation.health');
     Route::get('employees', [PmController::class, 'employees'])->name('employees');
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::post('reports', [ReportController::class, 'store'])->name('reports.store');

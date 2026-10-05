@@ -91,6 +91,55 @@ class PmController extends Controller
         return response()->json($result);
     }
 
+    /** Tickets pushed from the Brief tab that can still be undone (newest first). */
+    public function recentPushes(): JsonResponse
+    {
+        $items = PmActivity::query()->where('type', 'pushed')->latest('occurred_at')->limit(30)->get()
+            ->filter(fn ($a) => empty($a->meta['undone_at']) && ! empty($a->meta['task_id']))
+            ->map(fn ($a) => [
+                'id' => $a->id,
+                'title' => $a->title,
+                'task_id' => $a->meta['task_id'],
+                'project_id' => $a->meta['project_id'] ?? null,
+                'project_name' => $a->meta['project'] ?? null,
+                'occurred_at' => $a->occurred_at?->toIso8601String(),
+            ])->values()->all();
+
+        return response()->json(['pushes' => $items]);
+    }
+
+    /** Undo one PM-created ticket by deleting exactly the Taskmandu id recorded at push time. */
+    public function undoPush(PmActivity $activity): JsonResponse
+    {
+        if ($activity->type !== 'pushed' || empty($activity->meta['task_id'])) {
+            return response()->json(['error' => 'That activity is not an undoable PM ticket push.'], 422);
+        }
+        if (! empty($activity->meta['undone_at'])) {
+            return response()->json(['error' => 'This ticket has already been undone.'], 422);
+        }
+
+        try {
+            $this->taskmandu->deletePushedTask((string) $activity->meta['task_id'], $activity->meta['project_id'] ?? null);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        if ($cardId = $activity->card_id) {
+            PmCard::query()->whereKey($cardId)->delete();
+        }
+        $activity->update(['meta' => array_merge($activity->meta ?? [], [
+            'undone_at' => now()->toIso8601String(),
+            'undone_by' => request()->user()?->name,
+        ])]);
+        PmActivity::record('push_undone', null, [
+            'original_push_id' => $activity->id,
+            'task_id' => $activity->meta['task_id'],
+            'project_id' => $activity->meta['project_id'] ?? null,
+        ], $activity->title);
+
+        return response()->json(['ok' => true]);
+    }
+
     /** Records that the PM actually sent a nudge (e.g. copied the template message). */
     public function nudged(PmCard $card): JsonResponse
     {
@@ -399,7 +448,14 @@ class PmController extends Controller
             ? PmCard::updateOrCreate(['external_id' => $externalId], $attrs)
             : PmCard::create($attrs);
 
-        PmActivity::record('pushed', $card);
+        // The Taskmandu id is what lets "Undo" delete exactly this ticket later.
+        PmActivity::record('pushed', $card, [
+            'task_id' => $taskId,
+            'project_id' => $project['id'],
+            'external_id' => $externalId,
+            'source' => 'brief',
+            'actor' => $assignedBy ?: null,
+        ]);
 
         return [
             'ok' => true,

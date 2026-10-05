@@ -86,6 +86,16 @@ class TaskmanduSync
         return $map;
     }
 
+    /** Deletes a ticket the PM pushed, by the exact Taskmandu id recorded at push time. */
+    public function deletePushedTask(string $taskId, ?string $projectId = null): void
+    {
+        $path = $projectId
+            ? "/projects/{$projectId}/tasks/{$taskId}"
+            : "/tasks/{$taskId}";
+
+        $this->client->delete($path);
+    }
+
     private function names(array $employees, array $ids): ?string
     {
         $names = collect($ids)->map(fn ($id) => $employees[$id] ?? $id)->filter();

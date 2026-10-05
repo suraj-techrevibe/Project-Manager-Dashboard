@@ -81,6 +81,13 @@ export const pmApi = {
 
   briefContext: () => api.get<BriefContext>('/brief/context'),
 
+  recentPushes: () =>
+    api.get<{ pushes: Array<{ id: number; title: string; task_id: string; project_id: string | null; project_name: string | null; occurred_at: string }> }>('/brief/pushes'),
+
+  undoPush: (activityId: number) => api.post(`/brief/pushes/${activityId}/undo`),
+
+  projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
+
   /** Per-ticket assignee/due date; pass projectId to push onto that project's board. */
   pushTickets: (tickets: PushTicket[], projectId?: string) =>
     api.post<{ results: PushResult[]; created: number; failed: number }>('/brief/push', {
