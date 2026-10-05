@@ -39,14 +39,15 @@ class MeetingMinutesController extends Controller
     public function store(Request $r): JsonResponse
     {
         $data = $this->validated($r);
+        $assignedBy = $r->user()?->name;
 
         try {
-            $created = $this->resolveProjects($data);
+            $created = $this->resolveProjects($data, $assignedBy);
         } catch (RuntimeException $e) {
             return $this->projectFailure($e);
         }
 
-        $data['created_by'] = $r->user()?->name;
+        $data['created_by'] = $assignedBy;
         $minute = MeetingMinutes::create($data);
 
         return response()->json(['minute' => $this->full($minute), 'created_projects' => $created], 201);
@@ -55,9 +56,10 @@ class MeetingMinutesController extends Controller
     public function update(Request $r, MeetingMinutes $minute): JsonResponse
     {
         $data = $this->validated($r);
+        $assignedBy = $minute->created_by ?: $r->user()?->name;
 
         try {
-            $created = $this->resolveProjects($data);
+            $created = $this->resolveProjects($data, $assignedBy);
         } catch (RuntimeException $e) {
             return $this->projectFailure($e);
         }
@@ -109,7 +111,7 @@ class MeetingMinutesController extends Controller
      *
      * @return array<int, array{name: string, id: string}> the projects this save created
      */
-    private function resolveProjects(array &$data): array
+    private function resolveProjects(array &$data, ?string $assignedBy = null): array
     {
         if (! isset($data['work_items'])) {
             return [];
@@ -181,6 +183,38 @@ class MeetingMinutesController extends Controller
         }
 
         $data['work_items'] = $items;
+
+        // Final meeting minutes also become normal Project -> Tasks. Drafts never call
+        // this code, and existing matching task titles are updated rather than duplicated.
+        $creator = trim((string) ($assignedBy ?? ''));
+        foreach ($data['work_items'] as $i => $item) {
+            $projectId = $item['project_id'] ?? null;
+            $requirement = trim((string) ($item['requirement'] ?? ''));
+            if (!$projectId || $requirement === '') {
+                continue;
+            }
+
+            $actionItems = array_map(
+                fn ($a) => [
+                    'task' => (string) ($a['task'] ?? ''),
+                    'owner' => (string) ($a['owner'] ?? $item['owner'] ?? ''),
+                    'due_date' => $a['due_date'] ?? null,
+                ],
+                $item['action_items'] ?? []
+            );
+
+            $task = $this->taskmanduSync->syncMeetingWorkItem(
+                (string) $projectId,
+                $requirement,
+                trim((string) ($item['discussion'] ?? '')),
+                trim((string) ($item['owner'] ?? '')) ?: null,
+                $item['due_date'] ?? null,
+                $actionItems,
+                $creator
+            );
+
+            $data['work_items'][$i]['task_id'] = $task['task_id'];
+        }
 
         return $created;
     }
