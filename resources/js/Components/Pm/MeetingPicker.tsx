@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { MAX_TICKETS, blankTicket, type EditableTicket } from '../../lib/briefHeuristics';
 import { localISO, matchEmployee } from '../../lib/meetingNotes';
-import { shortDate } from '../../lib/minutesFormat';
+import { minutesToText, topicsFor, shortDate } from '../../lib/minutesFormat';
 import type { Employee, MeetingMinutesSummary } from '../../types/pm';
 
-export default function MeetingPicker({ employees, disabled, onLoad, onError }: { employees: Employee[]; disabled?: boolean; onLoad: (tickets: EditableTicket[], notice: string, meeting: { id: number; title: string; meeting_date: string }) => void; onError: (message: string) => void }) {
+export default function MeetingPicker({ employees, disabled, onLoad, onError }: { employees: Employee[]; disabled?: boolean; onLoad: (tickets: EditableTicket[], notice: string, meeting: { id: number; title: string; meeting_date: string; minutes: string }) => void; onError: (message: string) => void }) {
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<MeetingMinutesSummary[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,13 +41,20 @@ export default function MeetingPicker({ employees, disabled, onLoad, onError }: 
         if (dueDate && dueDate < now) { dueDate = ''; past++; }
         return blankTicket({ title: a.task.trim(), description: `From meeting: ${m.title} (${shortDate(m.meeting_date)})${owner && (!hit || hit === 'ambiguous') ? `\nOwner in the minutes: ${owner}` : ''}`, assigneeId: hit && hit !== 'ambiguous' ? hit.employeeId : '', dueDate });
       });
+      const minutes = minutesToText({
+        title: m.title,
+        meeting_date: m.meeting_date,
+        attendees: m.attendees ?? [],
+        topics: topicsFor(m),
+        action_items: m.action_items,
+      });
       const bits = [`Loaded ${tickets.length} action item${tickets.length === 1 ? '' : 's'} from "${m.title}".`];
       if (unmatched.length) bits.push(`No team match for ${Array.from(new Set(unmatched)).join(', ')}, so pick those yourself.`);
       if (past) bits.push(`${past} due date${past === 1 ? ' was' : 's were'} in the past, so I left ${past === 1 ? 'it' : 'them'} blank.`);
       if (items.length > MAX_TICKETS) bits.push(`${items.length - MAX_TICKETS} more beyond ${MAX_TICKETS} were dropped.`);
       bits.push('Hours and level are defaults, so review them.');
       setOpen(false);
-      onLoad(tickets, bits.join(' '), { id: m.id, title: m.title, meeting_date: m.meeting_date });
+      onLoad(tickets, bits.join(' '), { id: m.id, title: m.title, meeting_date: m.meeting_date, minutes });
     } catch { onError("Couldn't load that meeting."); }
     finally { setBusy(false); }
   }
