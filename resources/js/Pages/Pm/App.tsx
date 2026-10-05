@@ -2,6 +2,7 @@ import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import FlagsPanel from '@/Components/Pm/FlagsPanel';
+import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import GitPanel from '@/Components/Pm/GitPanel';
 import MeetingMinutesPanel from '@/Components/Pm/MeetingMinutesPanel';
@@ -40,6 +41,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [today, setToday] = useState<TodayData | null>(props.flags ? (props as TodayData) : null);
   const [todayError, setTodayError] = useState<string | null>(null);
   const [todayLoading, setTodayLoading] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
   useEffect(() => {
     setVisited((v) => (v.has(page) ? v : new Set(v).add(page)));
@@ -69,6 +71,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const attention = (today?.metrics?.overdue ?? 0) + (today?.metrics?.blocked ?? 0);
   const current = PM_PAGES.find((p) => p.key === page)!;
   const mounted = (key: PmPage) => visited.has(key) || page === key;
+  const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
 
   return (
     <AuthenticatedLayout header={<h2 className="text-lg font-semibold text-slate-800">PM agent</h2>}>
@@ -115,16 +118,28 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('today') && (
           <Pane show={page === 'today'}>
             {today ? (
-              <div className="flex flex-col gap-4">
-                <FlagsPanel
-                  active={page === 'today'}
-                  flags={today.flags}
-                  metrics={today.metrics}
-                  workload={today.workload}
-                  since={today.since}
-                  lastSyncedAt={today.lastSyncedAt}
-                  onOpenTask={openTask}
-                />
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowAllTasks((v) => !v)}
+                    className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+                  >
+                    {showAllTasks ? 'Back to flags' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
+                  </button>
+                </div>
+                {showAllTasks ? (
+                  <AllTasksPanel tasks={allTasks} onOpenTask={openTask} onBack={() => setShowAllTasks(false)} />
+                ) : (
+                  <FlagsPanel
+                    active={page === 'today'}
+                    flags={today.flags}
+                    metrics={today.metrics}
+                    workload={today.workload}
+                    since={today.since}
+                    lastSyncedAt={today.lastSyncedAt}
+                    onOpenTask={openTask}
+                  />
+                )}
               </div>
             ) : (
               <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
