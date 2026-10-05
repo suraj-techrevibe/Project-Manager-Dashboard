@@ -1,35 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import {
-  BRIEF_MAX_CHARS,
-  MAX_TICKETS,
-  autoAssign,
-  blankTicket,
-  findExisting,
-  keywordQuestions,
-  questionsEmail,
-  sameTitle,
-  splitBrief,
-  type EditableTicket,
-} from '../../lib/briefHeuristics';
+import { BRIEF_MAX_CHARS, MAX_TICKETS, autoAssign, blankTicket, findExisting, keywordQuestions, questionsEmail, sameTitle, splitBrief, type EditableTicket } from '../../lib/briefHeuristics';
 import { localISO, parseMeetingNotes } from '../../lib/meetingNotes';
 import { TASK_PRIORITIES } from '../../types/pm';
 import type { BriefContext, Project, PushTicket } from '../../types/pm';
 import MeetingPicker from './MeetingPicker';
-import { EmptyState, JumpNav, PageHeader, Section, btnPrimary, btnSecondary } from './ui/kit';
+import { EmptyState, PageHeader, Section, btnPrimary, btnSecondary } from './ui/kit';
 
 const inputCls = 'rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
 
-/** Pulls the most useful message out of a failed request. */
-function errorText(e: any, fallback: string): string {
+function errorText(e: any, fallback: string) {
   const d = e?.response?.data;
   if (d?.error) return d.error;
-  if (d?.errors) {
-    const first = Object.values(d.errors)[0] as string[] | undefined;
-    if (first?.[0]) return first[0];
-  }
-  if (d?.message && e?.response?.status !== 500) return d.message;
-  return fallback;
+  if (d?.errors) { const first = Object.values(d.errors)[0] as string[] | undefined; if (first?.[0]) return first[0]; }
+  return d?.message || fallback;
 }
 
 export default function BriefDrafter() {
@@ -37,595 +21,122 @@ export default function BriefDrafter() {
   const [tickets, setTickets] = useState<EditableTicket[]>([]);
   const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [skipped, setSkipped] = useState<Record<string, boolean>>({});
-  const [copied, setCopied] = useState(false);
-
-  const [loading, setLoading] = useState(false);
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
   const [ctx, setCtx] = useState<BriefContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState('');
-
+  const [loading, setLoading] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pushSummary, setPushSummary] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  const [meeting, setMeeting] = useState<{ id: number; title: string; meeting_date: string; minutes: string } | null>(null);
 
-  function loadContext() {
-    pmApi
-      .briefContext()
-      .then(({ data }) => {
-        setCtx(data);
-        setCtxError(null);
-      })
-      .catch((e) => setCtxError(errorText(e, "Couldn't load employees — Taskmandu may be unreachable.")));
-  }
-
-  useEffect(() => {
-    loadContext();
-    pmApi
-      .projects()
-      .then(({ data }) => setProjects(data.projects))
-      .catch(() => {});
-  }, []);
+  const loadContext = () => pmApi.briefContext().then(({ data }) => { setCtx(data); setCtxError(null); }).catch((e) => setCtxError(errorText(e, "Couldn't load employees — Taskmandu may be unreachable.")));
+  useEffect(() => { loadContext(); pmApi.projects().then(({ data }) => setProjects(data.projects)).catch(() => {}); }, []);
 
   const employees = ctx?.employees ?? [];
   const pending = tickets.filter((t) => t.state !== 'pushed');
-  const pushedCount = tickets.length - pending.length;
-
-  // Tickets this batch has already given each person, so the dropdown shows the real picture.
-  const batchLoad = useMemo(() => {
-    const m: Record<string, { n: number; h: number }> = {};
-    pending.forEach((t) => {
-      if (!t.assigneeId) return;
-      const cur = m[t.assigneeId] ?? { n: 0, h: 0 };
-      m[t.assigneeId] = { n: cur.n + 1, h: cur.h + (Number(t.estimate_hours) || 0) };
-    });
-    return m;
-  }, [pending]);
-
-  const employeeLabel = (e: (typeof employees)[number]) => {
-    const b = batchLoad[e.employeeId];
-    return `${e.name}${e.designation ? ` (${e.designation})` : ''} — ${e.open ?? 0} open${
-      e.week_hours ? ` · ${e.week_hours}h this week` : ''
-    }${b ? ` (+${b.n} here${b.h ? `, ${b.h}h` : ''})` : ''}`;
-  };
-
-  // Warn when this batch pushes someone past their weekly capacity.
-  const overCapacity = useMemo(() => {
-    const out: Record<string, string> = {};
-    pending.forEach((t) => {
-      const e = employees.find((x) => x.employeeId === t.assigneeId);
-      const b = e ? batchLoad[e.employeeId] : undefined;
-      if (!e || !b) return;
-      const cap = e.capacity ?? 40;
-      const total = Math.round(((e.week_hours ?? 0) + b.h) * 10) / 10;
-      if (total > cap) {
-        out[t.uid] = `${e.name} would be at ${total}h of ${cap}h this week with this batch — consider someone lighter.`;
-      }
-    });
-    return out;
-  }, [pending, employees, batchLoad]);
-
-  // Duplicate warnings: against existing cards, and against other tickets in this batch.
+  const today = localISO(new Date());
+  const questions = useMemo(() => Array.from(new Set([...aiQuestions, ...keywordQuestions(`${brief}\n${tickets.map((t) => `${t.title} ${t.description}`).join('\n')}`)])), [brief, tickets, aiQuestions]);
   const duplicates = useMemo(() => {
     const out: Record<string, string> = {};
     tickets.forEach((t, i) => {
       if (t.state === 'pushed' || !t.title.trim()) return;
       const existing = findExisting(t.title, ctx?.titles ?? []);
-      if (existing) {
-        out[t.uid] = `A similar task already exists${existing.project_name ? ` in ${existing.project_name}` : ''}: “${existing.title}”`;
-        return;
-      }
-      const j = tickets.findIndex((o, k) => k < i && o.state !== 'pushed' && sameTitle(o.title, t.title));
-      if (j >= 0) out[t.uid] = `Same as ticket #${j + 1} in this batch`;
+      if (existing) out[t.uid] = `Similar task already exists${existing.project_name ? ` in ${existing.project_name}` : ''}: “${existing.title}”`;
+      const prior = tickets.findIndex((x, j) => j < i && x.state !== 'pushed' && sameTitle(x.title, t.title));
+      if (prior >= 0) out[t.uid] = `Same as ticket #${prior + 1} in this batch`;
     });
     return out;
   }, [tickets, ctx]);
 
-  const questions = useMemo(() => {
-    const text = `${brief}\n${tickets.map((t) => `${t.title} ${t.description}`).join('\n')}`;
-    return Array.from(new Set([...aiQuestions, ...keywordQuestions(text)]));
-  }, [brief, tickets, aiQuestions]);
-
-  const askClient = questions.filter((q) => !skipped[q]);
-
-  /* ---------------- drafting ---------------- */
-
-  function checkBrief(): string | null {
-    const text = brief.trim();
-    if (!text) return 'Paste a brief first';
-    if (text.length > BRIEF_MAX_CHARS) {
-      return `The brief is ${text.length.toLocaleString()} characters — the limit is ${BRIEF_MAX_CHARS.toLocaleString()}. Trim it or split it into two briefs.`;
-    }
-    return null;
-  }
-
-  // New drafts replace unpushed tickets but never the ones already in Taskmandu.
   function loadDrafts(fresh: EditableTicket[]) {
     setTickets((prev) => [...prev.filter((t) => t.state === 'pushed'), ...fresh].slice(0, MAX_TICKETS));
-    setAttempted(false);
-    setPushError(null);
-    setPushSummary(null);
+    setAttempted(false); setPushError(null); setPushSummary(null);
   }
+  function update(uid: string, patch: Partial<EditableTicket>) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, ...patch, state: t.state === 'failed' ? 'draft' : t.state } : t)); }
+  function updateSubtask(uid: string, index: number, patch: Partial<EditableTicket['subtasks'][number]>) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, subtasks: t.subtasks.map((s, i) => i === index ? { ...s, ...patch } : s) } : t)); }
+  function addSubtask(uid: string) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, subtasks: [...t.subtasks, { uid: `${uid}-sub-${Date.now()}`, title: '', description: '', assigneeId: t.assigneeId, dueDate: '' }] } : t)); }
+  function removeSubtask(uid: string, index: number) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, subtasks: t.subtasks.filter((_, i) => i !== index) } : t)); }
 
   async function draft() {
-    const problem = checkBrief();
-    if (problem) return setDraftError(problem);
-
-    setDraftError(null);
-    setNotice(null);
-    setLoading(true);
-    try {
-      const { data } = await pmApi.draftBrief(brief.trim());
-      loadDrafts(
-        data.tickets.map((t) =>
-          blankTicket({
-            title: t.title,
-            description: t.description ?? '',
-            level: t.level === 'senior dev' ? 'senior dev' : 'intern',
-            estimate_hours: Number.isFinite(Number(t.estimate_hours)) ? Number(t.estimate_hours) : 2,
-          })
-        )
-      );
-      setAiQuestions(data.questions ?? []);
-      if (!data.tickets.length) setDraftError('The AI returned no tickets — add more detail to the brief and try again.');
-      else if (data.truncated) setNotice(`The AI drafted ${data.truncated} more than the ${MAX_TICKETS}-ticket limit; the extras were dropped.`);
-    } catch (e) {
-      setDraftError(errorText(e, "Couldn't draft tickets. Check your connection and try again."));
-    } finally {
-      setLoading(false);
-    }
+    const text = brief.trim();
+    if (!text) return setDraftError('Paste a brief first');
+    if (text.length > BRIEF_MAX_CHARS) return setDraftError(`The brief is over ${BRIEF_MAX_CHARS.toLocaleString()} characters.`);
+    setLoading(true); setDraftError(null); setNotice(null);
+    try { const { data } = await pmApi.draftBrief(text); loadDrafts(data.tickets.map((t) => blankTicket({ title: t.title, description: t.description ?? '', level: t.level === 'senior dev' ? 'senior dev' : 'intern', estimate_hours: Number(t.estimate_hours) || 2 }))); setAiQuestions(data.questions ?? []); }
+    catch (e) { setDraftError(errorText(e, "Couldn't draft tickets.")); } finally { setLoading(false); }
   }
-
-  function splitLocally() {
-    if (!brief.trim()) return setDraftError('Paste a brief first');
-    const { tickets: fresh, dropped } = splitBrief(brief);
-    if (!fresh.length) return setDraftError('Nothing to split — put one task per line (bullets or numbers work best).');
-
-    setDraftError(null);
-    setAiQuestions([]);
-    loadDrafts(fresh);
-    setNotice(
-      `Split without AI: level and hours are guesses from keywords, so review them.${
-        dropped ? ` ${dropped} extra line(s) beyond ${MAX_TICKETS} were dropped.` : ''
-      }`
-    );
-  }
-
-  function fromMeetingNotes() {
-    if (!brief.trim()) return setDraftError('Paste your meeting notes first');
-    const res = parseMeetingNotes(brief, employees);
-    if (!res.tickets.length) {
-      return setDraftError('No action items found. Mark them with TODO, @name or "by Friday", or put them under an "Action items:" heading.');
-    }
-
-    const assigned = res.tickets.filter((t) => t.assigneeId).length;
-    const dated = res.tickets.filter((t) => t.dueDate).length;
-    const bits = [
-      `Found ${res.tickets.length} action item${res.tickets.length === 1 ? '' : 's'} (${assigned} with an assignee, ${dated} with a due date); ${res.ignored} other line${res.ignored === 1 ? '' : 's'} ignored.`,
-    ];
-    if (res.unmatched.length) {
-      bits.push(
-        employees.length
-          ? `No single match for ${res.unmatched.join(', ')}, so pick those yourself.`
-          : `Couldn't load employees, so ${res.unmatched.join(', ')} weren't matched.`
-      );
-    }
-    if (res.dropped) bits.push(`${res.dropped} more beyond ${MAX_TICKETS} were dropped.`);
-    bits.push(...res.warnings);
-    bits.push('Hours and level are keyword guesses, so review them.');
-
-    setDraftError(null);
-    setAiQuestions([]);
-    loadDrafts(res.tickets);
-    setNotice(bits.join(' '));
-  }
-
-  /* ---------------- editing ---------------- */
-
-  const update = (uid: string, patch: Partial<EditableTicket>) =>
-    setTickets((prev) => prev.map((t) => (t.uid === uid ? { ...t, ...patch, state: t.state === 'failed' ? 'draft' : t.state } : t)));
-
-  const remove = (uid: string) => setTickets((prev) => prev.filter((t) => t.uid !== uid));
-
-  const add = () => setTickets((prev) => (prev.length >= MAX_TICKETS ? prev : [...prev, blankTicket()]));
-
-  const assignAll = (assigneeId: string) => {
-    if (assigneeId) setTickets((prev) => prev.map((t) => (t.state === 'pushed' ? t : { ...t, assigneeId })));
-  };
-
-  const dueAll = (dueDate: string) => setTickets((prev) => prev.map((t) => (t.state === 'pushed' ? t : { ...t, dueDate })));
-
-  function runAutoAssign() {
-    const picks = autoAssign(tickets, employees);
-    setTickets((prev) => prev.map((t) => (picks[t.uid] ? { ...t, assigneeId: picks[t.uid] } : t)));
-  }
-
-  /* ---------------- pushing ---------------- */
+  function splitLocally() { if (!brief.trim()) return setDraftError('Paste a brief first'); const r = splitBrief(brief); if (!r.tickets.length) return setDraftError('Nothing to split — put one task per line.'); loadDrafts(r.tickets); setAiQuestions([]); setNotice(`Split without AI.${r.dropped ? ` ${r.dropped} extra line(s) were dropped.` : ''}`); }
+  function fromMeetingNotes() { if (!brief.trim()) return setDraftError('Paste meeting notes first'); const r = parseMeetingNotes(brief, employees); if (!r.tickets.length) return setDraftError('No action items found.'); loadDrafts(r.tickets); setAiQuestions([]); setNotice(`Found ${r.tickets.length} action item${r.tickets.length === 1 ? '' : 's'}.`); }
+  function assignAll(id: string) { if (id) setTickets((p) => p.map((t) => t.state === 'pushed' ? t : { ...t, assigneeId: id, subtasks: t.subtasks.map((s) => ({ ...s, assigneeId: s.assigneeId || id })) })); }
+  function runAutoAssign() { const picks = autoAssign(tickets, employees); setTickets((p) => p.map((t) => picks[t.uid] ? { ...t, assigneeId: picks[t.uid], subtasks: t.subtasks.map((s) => ({ ...s, assigneeId: s.assigneeId || picks[t.uid] })) } : t)); }
+  function remove(uid: string) { setTickets((p) => p.filter((t) => t.uid !== uid)); }
+  function addTicket() { setTickets((p) => p.length >= MAX_TICKETS ? p : [...p, blankTicket()]); }
 
   async function pushList(list: EditableTicket[]) {
-    setAttempted(true);
-    setPushSummary(null);
-
+    setAttempted(true); setPushError(null); setPushSummary(null);
     if (list.some((t) => !t.title.trim())) return setPushError('Every ticket needs a title.');
-    const missing = list.filter((t) => !t.assigneeId).length;
-    if (missing) {
-      return setPushError(`${missing} ticket${missing === 1 ? ' has' : 's have'} no assignee — Taskmandu requires one per task.`);
-    }
-
+    if (list.some((t) => !t.assigneeId)) return setPushError('Every Task needs an owner. Select an owner before pushing.');
+    const unconfirmed = list.filter((t) => t.projectNeedsConfirmation && !t.projectConfirmed);
+    if (unconfirmed.length) return setPushError(`Confirm or change the project for: ${unconfirmed.map((t) => t.projectName).join(', ')}.`);
     const payload: PushTicket[] = list.map((t) => ({
-      title: t.title.trim(),
-      description: t.description.trim(),
-      level: t.level,
-      estimate_hours: t.estimate_hours === '' ? null : Number(t.estimate_hours),
-      priority: t.priority,
-      assignee_employee_id: t.assigneeId,
-      due_date: t.dueDate || null,
+      title: t.title.trim(), description: t.description.trim(), level: t.level,
+      estimate_hours: t.estimate_hours === '' ? null : Number(t.estimate_hours), priority: t.priority,
+      assignee_employee_id: t.assigneeId, due_date: t.dueDate || null,
+      project_id: t.projectId || null, project_name: t.projectName || null, project_confirmed: t.projectConfirmed,
+      subtasks: t.subtasks.filter((s) => s.title.trim()).map((s) => ({ title: s.title.trim(), description: s.description?.trim() || '', assignee_employee_id: s.assigneeId || t.assigneeId, due_date: s.dueDate || null })),
     }));
-
-    setPushError(null);
     setPushing(true);
     try {
-      const { data } = await pmApi.pushTickets(payload, projectId || undefined);
+      const { data } = await pmApi.pushTickets(payload);
       const byUid = new Map(data.results.map((r) => [list[r.index].uid, r]));
-
-      setTickets((prev) =>
-        prev.map((t) => {
-          const r = byUid.get(t.uid);
-          if (!r) return t;
-          return r.ok ? { ...t, state: 'pushed', error: undefined } : { ...t, state: 'failed', error: r.error ?? 'Failed' };
-        })
-      );
-
-      const fellBack = data.results.some((r) => r.ok && r.fields_fallback);
-      setPushSummary(
-        `${data.created} pushed${data.failed ? `, ${data.failed} failed — fix them or press Retry on each` : ''}.${
-          fellBack ? ' Taskmandu wouldn’t accept priority/hours/tags on create, so those went into the description.' : ''
-        }`
-      );
-      loadContext(); // refresh workload counts + duplicate list
-    } catch (e: any) {
-      setPushError(
-        e?.response
-          ? errorText(e, "Couldn't push to Taskmandu")
-          : "Lost the connection mid-push. Some tickets may already exist in Taskmandu — check there before retrying so nothing is created twice."
-      );
-    } finally {
-      setPushing(false);
-    }
+      setTickets((prev) => prev.map((t) => { const r = byUid.get(t.uid); if (!r) return t; return r.ok ? { ...t, state: 'pushed', error: undefined } : { ...t, state: 'failed', error: r.error ?? 'Failed' }; }));
+      const subCount = data.results.reduce((n, r) => n + (r.subtasks_created ?? 0), 0);
+      setPushSummary(`${data.created} Task${data.created === 1 ? '' : 's'} pushed${subCount ? ` with ${subCount} Subtask${subCount === 1 ? '' : 's'}` : ''}${data.failed ? `; ${data.failed} failed.` : '.'}`);
+      loadContext();
+    } catch (e) { setPushError(errorText(e, "Couldn't push to Taskmandu. Check Taskmandu before retrying.")); } finally { setPushing(false); }
   }
 
-  async function copyQuestions() {
-    const text = questionsEmail(askClient);
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  }
+  async function copyQuestions() { const text = questionsEmail(questions.filter((q) => !skipped[q])); try { await navigator.clipboard.writeText(text); } catch {} setCopied(true); setTimeout(() => setCopied(false), 1500); }
 
-  const over = brief.length > BRIEF_MAX_CHARS;
-  const today = localISO(new Date());
-
-  return (
-    <div className="flex flex-col gap-4">
-      <PageHeader
-        icon="list"
-        title="Brief to tickets"
-        description="Turn a client brief or meeting notes into assigned, estimated tasks — then push them to Taskmandu."
-        status={
-          tickets.length > 0
-            ? `${tickets.length} ticket${tickets.length === 1 ? '' : 's'} drafted · ${pushedCount} pushed · ${pending.length} waiting`
-            : undefined
-        }
-        links={[
-          { label: 'Meeting minutes', tab: 'minutes' },
-          { label: 'Projects', tab: 'projects' },
-          { label: 'Scope check', tab: 'scope' },
-        ]}
-      />
-
-      <JumpNav
-        items={[
-          { id: 'brief-input', label: '1 · Brief' },
-          ...(tickets.length > 0
-            ? [
-                { id: 'brief-tickets', label: '2 · Review tickets', count: tickets.length },
-                { id: 'brief-push', label: '3 · Push', count: pending.length, tone: pending.length ? ('warn' as const) : ('ok' as const) },
-              ]
-            : []),
-        ]}
-      />
-
-      <Section id="brief-input" title="1 · Brief" subtitle="Paste a brief or notes, then split or draft" tone="brand">
-      <textarea
-        value={brief}
-        onChange={(e) => {
-          setBrief(e.target.value);
-          setDraftError(null);
-        }}
-        placeholder="Paste a raw client brief, one task per line for the no-AI splitter, or meeting notes (TODO @name by Friday)..."
-        className="min-h-[140px] w-full resize-y rounded-lg border border-slate-300 p-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-      />
-      <div className="mt-1 flex items-center justify-between text-xs">
-        <span className={over ? 'font-medium text-red-600' : 'text-slate-400'}>
-          {brief.length.toLocaleString()} / {BRIEF_MAX_CHARS.toLocaleString()} characters
-        </span>
-        {draftError && <span className="text-red-600">{draftError}</span>}
+  return <div className="flex flex-col gap-4">
+    <PageHeader icon="list" title="Brief to tickets" description="Turn a client brief or saved Meeting Work Items into deterministic Tasks and Subtasks." status={tickets.length ? `${tickets.length} tickets · ${tickets.filter((t) => t.state === 'pushed').length} pushed · ${pending.length} waiting` : undefined} />
+    <Section title="1 · Brief" subtitle="Paste a brief or use a saved meeting">
+      <textarea value={brief} onChange={(e) => { setBrief(e.target.value); setDraftError(null); }} className="min-h-40 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Paste brief or meeting minutes…" />
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button className={btnSecondary} onClick={splitLocally} disabled={loading}>Split without AI</button>
+        <button className={btnSecondary} onClick={fromMeetingNotes} disabled={loading}>Parse meeting notes</button>
+        <MeetingPicker employees={employees} projects={projects} disabled={loading || pushing} onLoad={(fresh, msg, source) => { loadDrafts(fresh); setMeeting(source); setNotice(msg); setDraftError(null); }} onError={setDraftError} />
+        <button className={btnPrimary} onClick={draft} disabled={loading || brief.length > BRIEF_MAX_CHARS}>{loading ? 'Drafting…' : 'Draft with AI'}</button>
       </div>
+      {draftError && <p className="mt-2 text-sm text-red-600">{draftError}</p>}
+      {notice && <p className="mt-2 text-sm text-slate-600">{notice}</p>}
+      {ctxError && <p className="mt-2 text-sm text-amber-700">{ctxError}</p>}
+    </Section>
 
-      <div className="mt-2 flex flex-wrap justify-end gap-2">
-        <button
-          onClick={splitLocally}
-          disabled={loading}
-          className={btnSecondary}
-          title="Turns bullets, numbered lines and plain lines into tickets. No AI, no API key."
-        >
-          Split without AI
-        </button>
+    {tickets.length ? <Section title="2 · Review" count={tickets.length} subtitle="One Meeting Work Item = one parent Task. Action Items = real Subtasks.">
+      <div className="mb-3 flex flex-wrap gap-2"><select className={inputCls} defaultValue="" onChange={(e) => assignAll(e.target.value)}><option value="">Assign all…</option>{employees.map((e) => <option key={e.employeeId} value={e.employeeId}>{e.name}</option>)}</select><button className={btnSecondary} onClick={runAutoAssign}>Auto assign</button><button className={btnSecondary} onClick={addTicket}>Add Task</button></div>
+      <div className="space-y-3">{tickets.map((t, i) => <article key={t.uid} className="rounded-xl border border-slate-200 p-3">
+        <div className="flex gap-2"><span className="pt-2 text-xs text-slate-400">#{i + 1}</span><input className={`${inputCls} flex-1`} value={t.title} onChange={(e) => update(t.uid, { title: e.target.value })} placeholder="Task title / Requirement" /><button className="text-red-600" onClick={() => remove(t.uid)}>Remove</button></div>
+        <textarea className={`${inputCls} mt-2 w-full`} value={t.description} onChange={(e) => update(t.uid, { description: e.target.value })} placeholder="Discussion / description" />
+        <div className="mt-2 grid gap-2 md:grid-cols-4"><select className={inputCls} value={t.assigneeId} onChange={(e) => update(t.uid, { assigneeId: e.target.value })}><option value="">Owner…</option>{employees.map((e) => <option key={e.employeeId} value={e.employeeId}>{e.name}</option>)}</select><select className={inputCls} value={t.projectId} onChange={(e) => { const p = projects.find((x) => x._id === e.target.value); update(t.uid, { projectId: e.target.value, projectName: p?.name ?? '', projectConfirmed: Boolean(p), projectNeedsConfirmation: false }); }}><option value="">Standalone</option>{projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select><select className={inputCls} value={t.priority} onChange={(e) => update(t.uid, { priority: e.target.value as EditableTicket['priority'] })}>{TASK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select><input className={inputCls} type="date" min={today} value={t.dueDate} onChange={(e) => update(t.uid, { dueDate: e.target.value })} /></div>
+        {t.projectNeedsConfirmation && !t.projectConfirmed && <p className="mt-2 text-xs text-amber-700">New project “{t.projectName}” requires confirmation before push.</p>}
+        {duplicates[t.uid] && <p className="mt-2 text-xs text-amber-700">⚠ {duplicates[t.uid]}</p>}
+        <div className="mt-3 rounded-lg bg-slate-50 p-3"><div className="mb-2 flex justify-between"><strong className="text-sm">Subtasks ({t.subtasks.length})</strong><button className="text-sm text-indigo-600" onClick={() => addSubtask(t.uid)}>+ Add Subtask</button></div>{t.subtasks.map((s, si) => <div key={s.uid} className="mb-2 grid gap-2 md:grid-cols-[1fr_180px_140px_auto]"><input className={inputCls} value={s.title} onChange={(e) => updateSubtask(t.uid, si, { title: e.target.value })} placeholder="Action Item" /><select className={inputCls} value={s.assigneeId || t.assigneeId} onChange={(e) => updateSubtask(t.uid, si, { assigneeId: e.target.value })}><option value="">Owner…</option>{employees.map((e) => <option key={e.employeeId} value={e.employeeId}>{e.name}</option>)}</select><input className={inputCls} type="date" min={today} value={s.dueDate} onChange={(e) => updateSubtask(t.uid, si, { dueDate: e.target.value })} /><button className="text-red-600" onClick={() => removeSubtask(t.uid, si)}>Remove</button></div>)}</div>
+        {t.state === 'failed' && <div className="mt-2 flex justify-between text-xs text-red-600"><span>{t.error}</span><button onClick={() => pushList([t])} disabled={pushing}>Retry</button></div>}
+      </article>)}</div>
+    </Section> : <EmptyState title="No tickets yet">Load a saved meeting or paste a brief above.</EmptyState>}
 
-                <MeetingPicker
-          employees={employees}
-          disabled={loading}
-          onError={setDraftError}
-          onLoad={(fresh, msg) => {
-            setDraftError(null);
-            setAiQuestions([]);
-            loadDrafts(fresh);
-            setNotice(msg);
-          }}
-        />
-        <button
-          onClick={draft}
-          disabled={loading || over}
-          className={btnPrimary}
-        >
-          {loading ? 'Drafting…' : 'Draft with AI'}
-        </button>
-      </div>
+    {tickets.length > 0 && <Section title="3 · Push to Taskmandu" subtitle={meeting ? `Source meeting: ${meeting.title} · ${meeting.meeting_date}` : 'Review every owner and project before pushing.'}>
+      {pushError && <p className="mb-2 text-sm text-red-600">{pushError}</p>}{pushSummary && <p className="mb-2 text-sm text-green-700">{pushSummary}</p>}
+      <button className={btnPrimary} disabled={pushing || pending.length === 0} onClick={() => pushList(pending)}>{pushing ? 'Pushing…' : `Push ${pending.length} to Taskmandu`}</button>
+      {attempted && !pending.length && <p className="mt-2 text-xs text-slate-500">All Tasks in this batch have been pushed.</p>}
+    </Section>}
 
-      {notice && <div className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">{notice}</div>}
-      {ctxError && <div className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-700">{ctxError}</div>}
-      </Section>
-
-      {tickets.length > 0 ? (
-        <>
-        <Section id="brief-tickets" title="2 · Review tickets" count={tickets.length} subtitle="Edit, assign and estimate before pushing" tone="info">
-        <div>
-          {/* Bulk shortcuts */}
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <select value="" onChange={(e) => assignAll(e.target.value)} className={inputCls}>
-              <option value="">Assign all to…</option>
-              {employees.map((e) => (
-                <option key={e.employeeId} value={e.employeeId}>
-                  {employeeLabel(e)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              min={today}
-              onChange={(e) => dueAll(e.target.value)}
-              className={inputCls}
-              title="Set the due date on every unpushed ticket"
-            />
-            <button
-              onClick={runAutoAssign}
-              disabled={!employees.length}
-              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              title="Senior-dev tickets go to senior designations, interns to junior ones — always the person with the fewest hours due this week in that group."
-            >
-              Auto-assign to least busy
-            </button>
-            <span className="ml-auto text-xs text-slate-400">
-              {tickets.length} / {MAX_TICKETS} tickets
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {tickets.map((t, i) =>
-              t.state === 'pushed' ? (
-                <div key={t.uid} className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-sm text-green-800">
-                  <span>✓</span>
-                  <span className="truncate">{t.title}</span>
-                  <span className="ml-auto whitespace-nowrap text-xs text-green-600">in Taskmandu</span>
-                </div>
-              ) : (
-                <div
-                  key={t.uid}
-                  className={`rounded-md border p-2 ${
-                    t.state === 'failed' ? 'border-red-300 bg-red-50/50' : 'border-slate-200 bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">#{i + 1}</span>
-                    <input
-                      value={t.title}
-                      onChange={(e) => update(t.uid, { title: e.target.value })}
-                      maxLength={200}
-                      placeholder="Ticket title"
-                      className={`${inputCls} min-w-0 flex-1`}
-                    />
-                    <button
-                      onClick={() => remove(t.uid)}
-                      className="rounded px-1.5 text-slate-400 hover:bg-white hover:text-red-600"
-                      title="Remove this ticket"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <textarea
-                    value={t.description}
-                    onChange={(e) => update(t.uid, { description: e.target.value })}
-                    maxLength={3000}
-                    rows={2}
-                    placeholder="Description"
-                    className={`${inputCls} mt-1.5 w-full resize-y text-xs`}
-                  />
-
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <select value={t.level} onChange={(e) => update(t.uid, { level: e.target.value })} className={`${inputCls} text-xs`}>
-                      <option value="senior dev">senior dev</option>
-                      <option value="intern">intern</option>
-                    </select>
-                    <label className="flex items-center gap-1 text-xs text-slate-500">
-                      <input
-                        type="number"
-                        min={0}
-                        max={1000}
-                        step={0.5}
-                        value={t.estimate_hours}
-                        onChange={(e) => update(t.uid, { estimate_hours: e.target.value === '' ? '' : Number(e.target.value) })}
-                        className={`${inputCls} w-16 text-xs`}
-                      />
-                      h
-                    </label>
-                    <select
-                      value={t.priority}
-                      onChange={(e) => update(t.uid, { priority: e.target.value as EditableTicket['priority'] })}
-                      className={`${inputCls} text-xs`}
-                    >
-                      {TASK_PRIORITIES.map((p) => (
-                        <option key={p}>{p}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={t.assigneeId}
-                      onChange={(e) => update(t.uid, { assigneeId: e.target.value })}
-                      className={`${inputCls} min-w-[11rem] text-xs ${attempted && !t.assigneeId ? 'border-red-400 bg-red-50' : ''}`}
-                    >
-                      <option value="">Assign to…</option>
-                      {employees.map((e) => (
-                        <option key={e.employeeId} value={e.employeeId}>
-                          {employeeLabel(e)}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="date"
-                      min={today}
-                      value={t.dueDate}
-                      onChange={(e) => update(t.uid, { dueDate: e.target.value })}
-                      className={`${inputCls} text-xs`}
-                      title="Due date (defaults to +1 week if left blank)"
-                    />
-                  </div>
-
-                  {duplicates[t.uid] && <div className="mt-1.5 text-xs text-amber-700">⚠ {duplicates[t.uid]}</div>}
-                  {overCapacity[t.uid] && <div className="mt-1.5 text-xs text-red-600">⚠ {overCapacity[t.uid]}</div>}
-                  {t.state === 'failed' && (
-                    <div className="mt-1.5 flex items-center gap-2 text-xs text-red-600">
-                      <span className="min-w-0 flex-1">Not pushed: {t.error}</span>
-                      <button
-                        onClick={() => pushList([t])}
-                        disabled={pushing}
-                        className="rounded-md border border-red-300 bg-white px-2 py-0.5 font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            )}
-          </div>
-
-          <button
-            onClick={add}
-            disabled={tickets.length >= MAX_TICKETS}
-            className="mt-2 rounded-md border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-          >
-            + Add ticket
-          </button>
-
-          {/* Client questions */}
-          {questions.length > 0 && (
-            <div className="mt-3 rounded-md bg-amber-50 p-2.5 text-xs text-amber-800">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="font-medium">Ask the client first</span>
-                <button
-                  onClick={copyQuestions}
-                  disabled={!askClient.length}
-                  className="rounded-md bg-white px-2 py-1 font-medium text-amber-800 shadow-sm hover:bg-amber-100 disabled:opacity-50"
-                >
-                  {copied ? 'Copied ✓' : 'Copy as email'}
-                </button>
-              </div>
-              <ul className="flex flex-col gap-1">
-                {questions.map((q) => (
-                  <li key={q}>
-                    <label className="flex cursor-pointer items-start gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={!skipped[q]}
-                        onChange={() => setSkipped((s) => ({ ...s, [q]: !s[q] }))}
-                        className="mt-0.5"
-                      />
-                      <span>{q}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-        </div>
-        </Section>
-
-        <Section
-          id="brief-push"
-          title="3 · Push to Taskmandu"
-          count={pending.length ? `${pending.length} waiting` : 'all pushed'}
-          tone={pending.length ? 'warn' : 'ok'}
-        >
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputCls} title="Where the tasks should land">
-              <option value="">Standalone tasks (no project)</option>
-              {projects.map((p) => (
-                <option key={p._id} value={p._id}>
-                  Project board: {p.name}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => pushList(pending)}
-              disabled={pushing || pending.length === 0}
-              className={`${btnPrimary} ml-auto`}
-            >
-              {pushing
-                ? 'Pushing…'
-                : pending.length === 0
-                  ? 'All pushed ✓'
-                  : pushedCount
-                    ? `Push ${pending.length} remaining`
-                    : `Push ${pending.length} to Taskmandu`}
-            </button>
-          </div>
-          {pushError && <div className="mt-1.5 text-xs text-red-600">{pushError}</div>}
-          {pushSummary && <div className="mt-1.5 text-xs text-slate-600">{pushSummary}</div>}
-          <p className="mt-1.5 text-xs text-slate-400">
-            {projectId
-              ? 'Tasks go onto that project’s board and show up in the Projects tab.'
-              : 'Standalone tasks don’t appear in the Projects tab — pick a project above to put them on its board.'}
-          </p>
-        </div>
-        </Section>
-        </>
-      ) : (
-        <EmptyState title="No tickets yet">Paste a brief above and use "Split without AI" or "Draft with AI" — your tickets will appear here for review.</EmptyState>
-      )}
-    </div>
-  );
+    {questions.length > 0 && <Section title="Client questions" subtitle="Questions raised by the brief."><button className={btnSecondary} onClick={copyQuestions}>{copied ? 'Copied' : 'Copy questions'}</button><ul className="mt-2 space-y-1 text-sm">{questions.map((q) => <li key={q}><label><input type="checkbox" checked={!skipped[q]} onChange={() => setSkipped((s) => ({ ...s, [q]: !s[q] }))} /> {q}</label></li>)}</ul></Section>}
+  </div>;
 }
