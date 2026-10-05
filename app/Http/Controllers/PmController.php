@@ -285,6 +285,75 @@ class PmController extends Controller
             'tickets.*.error' => 'nullable|string|max:1000',
         ]);
     }
+    private function pushTicket(array $t, ?string $projectId, array $employees, string $assignedBy): array
+    {
+        $due = $t['due_date'] ?? now()->addWeek()->toDateString();
+        $assigneeId = $t['assignee_employee_id'];
+        $assignee = $employees[$assigneeId] ?? $assigneeId;
+        $priority = $t['priority'] ?? 'Medium';
+        $hours = isset($t['estimate_hours']) ? (float) $t['estimate_hours'] : null;
+        $level = $t['level'] ?? null;
+        $description = trim($t['description'] ?? '');
+        $tags = $level ? [$level] : [];
+        $frontend = rtrim((string) config('services.taskmandu.frontend_url'), '/');
+
+        // Level/estimate/priority go in as real fields (tags, estimatedHours, priority).
+        // The line below is only used if Taskmandu rejects those fields on create.
+        $extra = ['priority' => $priority, 'estimatedHours' => $hours, 'tags' => $tags];
+        $fallbackLine = 'Level: '.($level ?: '-').' | Est: '.($hours ?? '?').'h | Priority: '.$priority;
+
+        if ($projectId) {
+            $res = $this->taskmandu->createProjectTask($projectId, $t['title'], $description, $assigneeId, $assignedBy, $due, $extra, $fallbackLine);
+            $task = $res['task'];
+            $taskId = $task['_id'] ?? null;
+            $externalId = $taskId ? "project:{$projectId}:task:{$taskId}" : null;
+            $project = ['id' => $projectId, 'name' => $res['project']['name'] ?? null];
+            $url = $frontend ? "{$frontend}/projects/{$projectId}" : null;
+        } else {
+            $res = $this->taskmandu->createTask($t['title'], $description, $assigneeId, $due, $extra, $fallbackLine);
+            $task = $res['data'];
+            $taskId = $task['_id'] ?? null;
+            $externalId = $taskId ? "task:{$taskId}" : null;
+            $project = ['id' => null, 'name' => null];
+            $url = ($frontend && $taskId) ? "{$frontend}/tasks/{$taskId}" : null;
+        }
+
+        // Save the full card now so Today shows assignee, hours and priority straight
+        // away instead of "Unassigned" until the next pm:sync (which will overwrite
+        // this with Taskmandu's own copy via the same external_id).
+        $attrs = [
+            'title' => $t['title'],
+            'description' => $task['description'] ?? ($res['fallback'] ? trim($description."\n\n".$fallbackLine) : $description),
+            'assignee' => $assignee,
+            'status' => $task['status'] ?? 'Assigned',
+            'priority' => $task['priority'] ?? ($res['fallback'] ? null : $priority),
+            'due_at' => $due,
+            'estimated_hours' => $task['estimatedHours'] ?? $hours,
+            'tags' => $task['tags'] ?? $tags,
+            'subtasks_count' => 0,
+            'comments_count' => 0,
+            'assigned_by' => $assignedBy ?: null,
+            'project_id' => $project['id'],
+            'project_name' => $project['name'],
+            'task_id' => $taskId,
+            'url' => $url,
+            'last_activity_at' => now(),
+        ];
+
+        $card = $externalId
+            ? PmCard::updateOrCreate(['external_id' => $externalId], $attrs)
+            : PmCard::create($attrs);
+
+        PmActivity::record('pushed', $card);
+
+        return [
+            'ok' => true,
+            'task_id' => $taskId,
+            'card_id' => $card->id,
+            'fields_fallback' => $res['fallback'],
+        ];
+    }
+
 
     public function scope(Request $r): JsonResponse
     {
@@ -366,7 +435,8 @@ class PmController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
     }
-}    public function push(Request $r): JsonResponse
+
+    public function push(Request $r): JsonResponse
     {
         $data = $r->validate([
             'tickets' => 'required|array|min:1|max:30',
@@ -412,5 +482,4 @@ class PmController extends Controller
             'failed' => count($results) - $ok,
         ]);
     }
-
-
+}
