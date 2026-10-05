@@ -90,6 +90,7 @@ interface TextInput {
   attendees: string[];
   topics: MinutesTopic[];
   action_items: ActionItem[];
+  work_items?: MeetingWorkItem[];
 }
 
 /** The standard layout, as plain text that pastes cleanly into email or Slack. */
@@ -114,7 +115,21 @@ export function minutesToText(m: TextInput): string {
     L.push('', 'DECISIONS');
     f.decisions.forEach((d) => L.push(`• ${d}`));
   }
-  if (f.action_items.length) {
+  if (m.work_items?.length) {
+    L.push('', 'WORK ITEMS');
+    m.work_items.forEach((w, i) => {
+      L.push('', `WORK ITEM ${i + 1}`);
+      L.push(`Owner: ${w.owner || 'Unassigned'}`);
+      L.push(`Project: ${w.project || '—'}`);
+      L.push(`Requirement: ${w.requirement || '—'}`);
+      if (w.discussion?.trim()) L.push('Discussion:', ...w.discussion.trim().split('\n').map((line) => `  ${line.trim()}`));
+      if (w.action_items?.length) {
+        L.push('Action Items:');
+        w.action_items.forEach((a, ai) => L.push(`- ${a.task.trim() || '—'}${a.due_date ? ` (due ${shortDate(a.due_date)})` : ''}`));
+      }
+      L.push(`Due Date: ${w.due_date ? shortDate(w.due_date) : '—'}`);
+    });
+  } else if (f.action_items.length) {
     L.push('', 'ACTION ITEMS');
     f.action_items.forEach((a, i) => {
       const parts = [a.task.trim(), a.owner?.trim() || 'Unassigned', a.due_date ? `Due ${shortDate(a.due_date)}` : 'No due date'];
