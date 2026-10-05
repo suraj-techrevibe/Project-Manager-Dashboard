@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import FlagsPanel from '@/Components/Pm/FlagsPanel';
 import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
@@ -13,6 +13,9 @@ import { Icon } from '@/Components/Pm/ui/kit';
 import { pmApi } from '@/lib/pmApi';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { TaskFocus, TodayData } from '@/types/pm';
+
+/** Tabs whose data is loaded on mount; they are re-mounted every time you come back so they never show stale data. Their place (open project / meeting) lives in the URL, so nothing is lost. */
+const REFETCH_ON_OPEN: PmPage[] = ['projects', 'minutes', 'reports'];
 
 const LOOK: Record<PmPage, { icon: string; short: string }> = {
   today: { icon: 'sun', short: 'Today' },
@@ -43,10 +46,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [todayLoading, setTodayLoading] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
 
-  useEffect(() => {
-    setVisited((v) => (v.has(page) ? v : new Set(v).add(page)));
-    window.scrollTo({ top: 0 });
-  }, [page]);
+  const seen = useRef<Set<PmPage>>(new Set());
+  const [gen, setGen] = useState<Partial<Record<PmPage, number>>>({});
 
   const loadToday = useCallback(async () => {
     setTodayLoading(true);
@@ -61,9 +62,22 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     }
   }, []);
 
+  // Every panel stays mounted once opened, so a panel only loads its data when it first mounts.
+  // Without this, tasks pushed from Brief, minutes saved, or edits in Projects would not show
+  // up in the other tabs until a full page reload. Refresh whenever a tab is (re)opened.
   useEffect(() => {
-    if (page === 'today' && !today && !todayLoading && !todayError) void loadToday();
-  }, [page, today, todayLoading, todayError, loadToday]);
+    setVisited((v) => (v.has(page) ? v : new Set(v).add(page)));
+    window.scrollTo({ top: 0 });
+
+    if (seen.current.has(page)) {
+      if (REFETCH_ON_OPEN.includes(page)) setGen((g) => ({ ...g, [page]: (g[page] ?? 0) + 1 }));
+      if (page === 'today') void loadToday();
+    } else if (page === 'today' && !props.flags) {
+      void loadToday(); // /pm/projects etc. load without Today's payload
+    }
+    seen.current.add(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   // Clicking a task on Today opens Projects -> that project -> Tasks -> the task itself.
   const openTask = (f: TaskFocus) => visitPm('projects', { project: f.projectId, ptab: 'tasks', task: f.taskId, sub: f.subId });
@@ -157,10 +171,10 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
             )}
           </Pane>
         )}
-        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel /></Pane>}
-        {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel /></Pane>}
+        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} /></Pane>}
+        {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
-        {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel /></Pane>}
+        {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
       </div>

@@ -340,10 +340,12 @@ function dueLabel(date: string | null): { text: string; overdue: boolean } {
   return { text: `${pretty} (in ${diff}d)`, overdue: false };
 }
 
+const NO_ROWS: WorkloadRow[] = [];
+
 export default function FlagsPanel({
   active: tabActive = true,
   flags: initialFlags,
-  workload: initialWorkload = [],
+  workload: initialWorkload = NO_ROWS,
   since: initialSince,
   lastSyncedAt: initialSynced = null,
   onOpenTask,
@@ -382,6 +384,14 @@ export default function FlagsPanel({
   const [showDigest, setShowDigest] = useState(false);
 
   const [question, setQuestion] = useState<QuestionKey | null>(null);
+
+  // The parent re-fetches Today whenever the tab is reopened; take the new data in (filters and pins stay).
+  useEffect(() => {
+    setFlags(initialFlags);
+    setWorkload(initialWorkload);
+    setSince(initialSince);
+    setLastSynced(initialSynced);
+  }, [initialFlags, initialWorkload, initialSince, initialSynced]);
 
   // Keeps the "Last synced 12 min ago" label honest while the page stays open.
   useEffect(() => {
@@ -1014,7 +1024,7 @@ export default function FlagsPanel({
                     <Detail label="Assignee" value={t.assignee ?? 'Unassigned'} warn={!t.assignee} />
                     <Detail label="Due" value={due.text} warn={due.overdue} />
                     <Detail label="Estimate" value={t.estimated_hours ? `${t.estimated_hours}h` : '—'} />
-                    <Detail label="Assigned by" value={t.assigned_by ?? '—'} />
+                    <Detail label="Assigned to" value={t.assigned_by ?? '—'} />
                   </dl>
 
                   {/* Row 4: counts, tags, activity */}
