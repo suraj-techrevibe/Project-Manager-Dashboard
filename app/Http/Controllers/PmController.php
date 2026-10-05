@@ -213,286 +213,77 @@ class PmController extends Controller
         return back();
     }
 
-    /** Saved Brief drafts stay local to PM until tickets are pushed. */
+    /** Saved Brief drafts are local PM CRUD records until tickets are pushed. */
     public function briefDrafts(): JsonResponse
     {
         $drafts = PmDraft::query()->latest('updated_at')->limit(50)
             ->get(['id','title','project_id','status','created_by','created_at','updated_at'])
             ->map(fn (PmDraft $draft) => [
-                'id'=>$draft->id,'title'=>$draft->title,'project_id'=>$draft->project_id,
-                'status'=>$draft->status,'created_by'=>$draft->created_by,
-                'created_at'=>$draft->created_at?->toIso8601String(),
-                'updated_at'=>$draft->updated_at?->toIso8601String(),
+                'id' => $draft->id,
+                'title' => $draft->title,
+                'project_id' => $draft->project_id,
+                'status' => $draft->status,
+                'created_by' => $draft->created_by,
+                'created_at' => $draft->created_at?->toIso8601String(),
+                'updated_at' => $draft->updated_at?->toIso8601String(),
             ])->values();
-        return response()->json(['drafts'=>$drafts]);
+
+        return response()->json(['drafts' => $drafts]);
     }
 
     public function briefDraftShow(PmDraft $draft): JsonResponse
     {
-        return response()->json(['draft'=>$draft]);
+        return response()->json(['draft' => $draft]);
     }
 
     public function briefDraftStore(Request $r): JsonResponse
     {
-        $data=$this->validateBriefDraft($r);
-        $draft=PmDraft::create($data+[
-            'status'=>'draft',
-            'created_by'=>(string)($r->user()?->name ?? $r->user()?->id ?? ''),
+        $data = $this->validateBriefDraft($r);
+        $draft = PmDraft::create($data + [
+            'status' => 'draft',
+            'created_by' => (string) ($r->user()?->name ?? $r->user()?->id ?? ''),
         ]);
-        return response()->json(['draft'=>$draft],201);
+
+        return response()->json(['draft' => $draft], 201);
     }
 
     public function briefDraftUpdate(Request $r, PmDraft $draft): JsonResponse
     {
-        $data=$this->validateBriefDraft($r);
-        $draft->update($data+['status'=>$draft->status==='pushed'?'partial':'draft']);
-        return response()->json(['draft'=>$draft->fresh()]);
+        $data = $this->validateBriefDraft($r);
+        $draft->update($data + [
+            'status' => $draft->status === 'pushed' ? 'partial' : 'draft',
+        ]);
+
+        return response()->json(['draft' => $draft->fresh()]);
     }
 
     public function briefDraftDestroy(PmDraft $draft): JsonResponse
     {
         $draft->delete();
-        return response()->json(['deleted'=>true]);
+
+        return response()->json(['deleted' => true]);
     }
 
     private function validateBriefDraft(Request $r): array
     {
         return $r->validate([
-            'title'=>'required|string|max:200','brief'=>'nullable|string|max:8000',
-            'project_id'=>['nullable','regex:/^[0-9a-fA-F]{24}$/'],
-            'tickets'=>'required|array|max:30',
-            'tickets.*.uid'=>'required|string|max:100','tickets.*.title'=>'nullable|string|max:200',
-            'tickets.*.description'=>'nullable|string|max:3000','tickets.*.level'=>'nullable|string|max:20',
-            'tickets.*.estimate_hours'=>'nullable|numeric|min:0|max:1000',
-            'tickets.*.priority'=>['nullable',Rule::in(['Low','Medium','High','Critical'])],
-            'tickets.*.assigneeId'=>'nullable|string|max:100','tickets.*.dueDate'=>'nullable|date_format:Y-m-d',
-            'tickets.*.state'=>['required',Rule::in(['draft','pushed','failed'])],
-            'tickets.*.error'=>'nullable|string|max:1000',
-        ]);
-    }
-
-    /** Recent tickets pushed to Taskmandu, for the Brief activity panel. */
-    public function recentPushes(): JsonResponse
-    {
-        $pushes=PmActivity::query()->where('type','pushed')->orderByDesc('occurred_at')->limit(8)
-            ->get(['id','title','meta','occurred_at'])
-            ->map(fn(PmActivity $a)=>[
-                'id'=>$a->id,'title'=>$a->title,'project_name'=>data_get($a->meta,'project'),
-                'occurred_at'=>$a->occurred_at?->toIso8601String(),
-            ])->values();
-        return response()->json(['pushes'=>$pushes]);
-    }
-
-    public function brief(Request $r): JsonResponse
-    {
-        $data = $r->validate(
-            ['brief' => 'required|string|max:8000'],
-            [
-                'brief.required' => 'Paste a brief first.',
-                'brief.max' => 'The brief is over the 8,000 character limit — trim it or split it into two briefs.',
-            ]
-        );
-
-        try {
-            $out = $this->claude->json(
-                'You are a PM at a small dev agency (Laravel, Inertia, React). Split the client brief into small tickets. level is "senior dev" for architecture, integrations, payments or anything risky, and "intern" for UI, copy and simple CRUD. estimate_hours is a number. Also list questions that need answers before work starts. Shape: {"tickets":[{"title":"","description":"","level":"senior dev","estimate_hours":2}],"questions":[""]}',
-                $data['brief']
-            );
-        } catch (RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        $all = collect($out['tickets'] ?? [])
-            ->filter(fn ($t) => is_array($t) && filled($t['title'] ?? null))
-            ->map(fn ($t) => [
-                'title' => mb_substr((string) $t['title'], 0, 200),
-                'description' => mb_substr((string) ($t['description'] ?? ''), 0, 3000),
-                'level' => str_contains(strtolower((string) ($t['level'] ?? '')), 'senior') ? 'senior dev' : 'intern',
-                'estimate_hours' => is_numeric($t['estimate_hours'] ?? null) ? (float) $t['estimate_hours'] : 2,
-            ])
-            ->values();
-
-        return response()->json([
-            // push() accepts at most 30 tickets, so never hand back more than that.
-            'tickets' => $all->take(30)->all(),
-            'truncated' => max(0, $all->count() - 30),
-            'questions' => array_values(array_filter(array_map('strval', $out['questions'] ?? []))),
-        ]);
-    }
-
-    public function employees(): JsonResponse
-    {
-        try {
-            return response()->json(['employees' => $this->employeesWithLoad()]);
-        } catch (RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-    }
-
-    /**
-     * Everything the "Brief to tickets" tab needs up front: employees with their
-     * open-task counts, and existing card titles for the duplicate warning.
-     */
-    public function briefContext(): JsonResponse
-    {
-        try {
-            $employees = $this->employeesWithLoad();
-        } catch (RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-
-        $titles = PmCard::query()
-            ->where('status', '!=', 'Cancelled')
-            ->latest('id')
-            ->limit(1500)
-            ->get(['title', 'project_name', 'status'])
-            ->map(fn ($c) => ['title' => $c->title, 'project_name' => $c->project_name, 'status' => $c->status])
-            ->all();
-
-        return response()->json(['employees' => $employees, 'titles' => $titles]);
-    }
-
-    /**
-     * Pushes drafted tickets to Taskmandu one by one and reports every ticket's
-     * own result. A failure never aborts the batch and never hides what already
-     * succeeded, so the client can retry only the failed ones.
-     */
-    public function push(Request $r): JsonResponse
-    {
-        // Older clients sent one assignee / due date for the whole batch.
-        if (is_array($r->input('tickets')) && ($r->filled('assignee_employee_id') || $r->filled('due_date'))) {
-            $r->merge(['tickets' => collect($r->input('tickets'))->map(fn ($t) => is_array($t) ? $t + [
-                'assignee_employee_id' => $r->input('assignee_employee_id'),
-                'due_date' => $r->input('due_date'),
-            ] : $t)->all()]);
-        }
-
-        $data = $r->validate([
-            // null/absent = standalone tasks; a 24-char id = that project's board.
+            'title' => 'required|string|max:200',
+            'brief' => 'nullable|string|max:8000',
             'project_id' => ['nullable', 'regex:/^[0-9a-fA-F]{24}$/'],
-            'tickets' => 'required|array|min:1|max:30',
-            'tickets.*.title' => 'required|string|max:200',
+            'tickets' => 'required|array|max:30',
+            'tickets.*.uid' => 'required|string|max:100',
+            'tickets.*.projectId' => ['required', 'regex:/^[0-9a-fA-F]{24}$/'],
+            'tickets.*.projectTitle' => 'required|string|max:200',
+            'tickets.*.title' => 'nullable|string|max:200',
             'tickets.*.description' => 'nullable|string|max:3000',
             'tickets.*.level' => 'nullable|string|max:20',
             'tickets.*.estimate_hours' => 'nullable|numeric|min:0|max:1000',
-            'tickets.*.priority' => ['nullable', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
-            // Taskmandu requires at least one assignee per task.
-            'tickets.*.assignee_employee_id' => 'required|string|max:100',
-            'tickets.*.due_date' => 'nullable|date_format:Y-m-d',
-        ], [
-            'tickets.max' => 'You can push at most 30 tickets at a time.',
-            'tickets.*.title.required' => 'Every ticket needs a title.',
-            'tickets.*.title.max' => 'A ticket title is over 200 characters.',
-            'tickets.*.description.max' => 'A ticket description is over 3,000 characters.',
-            'tickets.*.assignee_employee_id.required' => 'Every ticket needs an assignee — Taskmandu requires one per task.',
+            'tickets.*.priority' => ['nullable', Rule::in(['Low','Medium','High','Critical'])],
+            'tickets.*.assigneeId' => 'nullable|string|max:100',
+            'tickets.*.dueDate' => 'nullable|date_format:Y-m-d',
+            'tickets.*.state' => ['required', Rule::in(['draft','pushed','failed'])],
+            'tickets.*.error' => 'nullable|string|max:1000',
         ]);
-
-        try {
-            $employees = $this->taskmandu->employeeMap();
-        } catch (RuntimeException $e) {
-            $employees = []; // names are cosmetic here; the push itself will surface a real connection problem
-        }
-
-        $results = [];
-        foreach ($data['tickets'] as $i => $t) {
-            try {
-                $results[] = ['index' => $i] + $this->pushTicket($t, $data['project_id'] ?? null, $employees, (string) $r->user()?->name);
-            } catch (RuntimeException $e) {
-                $results[] = ['index' => $i, 'ok' => false, 'error' => $e->getMessage()];
-            }
-        }
-
-        $ok = collect($results)->where('ok', true)->count();
-
-        return response()->json([
-            'results' => $results,
-            'created' => $ok,
-            'failed' => count($results) - $ok,
-        ]);
-    }
-
-    private function pushTicket(array $t, ?string $projectId, array $employees, string $assignedBy): array
-    {
-        $due = $t['due_date'] ?? now()->addWeek()->toDateString();
-        $assigneeId = $t['assignee_employee_id'];
-        $assignee = $employees[$assigneeId] ?? $assigneeId;
-        $priority = $t['priority'] ?? 'Medium';
-        $hours = isset($t['estimate_hours']) ? (float) $t['estimate_hours'] : null;
-        $level = $t['level'] ?? null;
-        $description = trim($t['description'] ?? '');
-        $tags = $level ? [$level] : [];
-        $frontend = rtrim((string) config('services.taskmandu.frontend_url'), '/');
-
-        // Level/estimate/priority go in as real fields (tags, estimatedHours, priority).
-        // The line below is only used if Taskmandu rejects those fields on create.
-        $extra = ['priority' => $priority, 'estimatedHours' => $hours, 'tags' => $tags];
-        $fallbackLine = 'Level: '.($level ?: '-').' | Est: '.($hours ?? '?').'h | Priority: '.$priority;
-
-        if ($projectId) {
-            $res = $this->taskmandu->createProjectTask($projectId, $t['title'], $description, $assigneeId, $assignedBy, $due, $extra, $fallbackLine);
-            $task = $res['task'];
-            $taskId = $task['_id'] ?? null;
-            $externalId = $taskId ? "project:{$projectId}:task:{$taskId}" : null;
-            $project = ['id' => $projectId, 'name' => $res['project']['name'] ?? null];
-            $url = $frontend ? "{$frontend}/projects/{$projectId}" : null;
-        } else {
-            $res = $this->taskmandu->createTask($t['title'], $description, $assigneeId, $due, $extra, $fallbackLine);
-            $task = $res['data'];
-            $taskId = $task['_id'] ?? null;
-            $externalId = $taskId ? "task:{$taskId}" : null;
-            $project = ['id' => null, 'name' => null];
-            $url = ($frontend && $taskId) ? "{$frontend}/tasks/{$taskId}" : null;
-        }
-
-        // Save the full card now so Today shows assignee, hours and priority straight
-        // away instead of "Unassigned" until the next pm:sync (which will overwrite
-        // this with Taskmandu's own copy via the same external_id).
-        $attrs = [
-            'title' => $t['title'],
-            'description' => $task['description'] ?? ($res['fallback'] ? trim($description."\n\n".$fallbackLine) : $description),
-            'assignee' => $assignee,
-            'status' => $task['status'] ?? 'Assigned',
-            'priority' => $task['priority'] ?? ($res['fallback'] ? null : $priority),
-            'due_at' => $due,
-            'estimated_hours' => $task['estimatedHours'] ?? $hours,
-            'tags' => $task['tags'] ?? $tags,
-            'subtasks_count' => 0,
-            'comments_count' => 0,
-            'assigned_by' => $assignedBy ?: null,
-            'project_id' => $project['id'],
-            'project_name' => $project['name'],
-            'task_id' => $taskId,
-            'url' => $url,
-            'last_activity_at' => now(),
-        ];
-
-        $card = $externalId
-            ? PmCard::updateOrCreate(['external_id' => $externalId], $attrs)
-            : PmCard::create($attrs);
-
-        PmActivity::record('pushed', $card);
-
-        return [
-            'ok' => true,
-            'task_id' => $taskId,
-            'card_id' => $card->id,
-            'fields_fallback' => $res['fallback'],
-        ];
-    }
-
-    private function employeesWithLoad(): array
-    {
-        $load = collect($this->flags->workload())->keyBy('name');
-
-        return array_map(
-            fn ($e) => $e + [
-                'open' => $load->get($e['name'])['open'] ?? 0,
-                'hours' => $load->get($e['name'])['hours'] ?? 0,
-                'week_hours' => $load->get($e['name'])['week_hours'] ?? 0,
-                'capacity' => (float) config('pm.weekly_capacity_hours', 40),
-            ],
-            $this->taskmandu->listEmployees()
-        );
     }
 
     public function scope(Request $r): JsonResponse
@@ -575,4 +366,51 @@ class PmController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
     }
-}
+}    public function push(Request $r): JsonResponse
+    {
+        $data = $r->validate([
+            'tickets' => 'required|array|min:1|max:30',
+            'tickets.*.project_id' => ['required', 'regex:/^[0-9a-fA-F]{24}$/'],
+            'tickets.*.title' => 'required|string|max:200',
+            'tickets.*.description' => 'nullable|string|max:3000',
+            'tickets.*.level' => 'nullable|string|max:20',
+            'tickets.*.estimate_hours' => 'nullable|numeric|min:0|max:1000',
+            'tickets.*.priority' => ['nullable', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
+            'tickets.*.assignee_employee_id' => 'required|string|max:100',
+            'tickets.*.due_date' => 'nullable|date_format:Y-m-d',
+        ], [
+            'tickets.*.project_id.required' => 'Every ticket needs a project.',
+            'tickets.*.title.required' => 'Every ticket needs a title.',
+            'tickets.*.assignee_employee_id.required' => 'Every ticket needs an assignee — Taskmandu requires one per task.',
+        ]);
+
+        try {
+            $employees = $this->taskmandu->employeeMap();
+        } catch (RuntimeException $e) {
+            $employees = [];
+        }
+
+        $results = [];
+        foreach ($data['tickets'] as $i => $t) {
+            try {
+                $results[] = ['index' => $i] + $this->pushTicket(
+                    $t,
+                    $t['project_id'],
+                    $employees,
+                    (string) $r->user()?->name
+                );
+            } catch (RuntimeException $e) {
+                $results[] = ['index' => $i, 'ok' => false, 'error' => $e->getMessage()];
+            }
+        }
+
+        $ok = collect($results)->where('ok', true)->count();
+
+        return response()->json([
+            'results' => $results,
+            'created' => $ok,
+            'failed' => count($results) - $ok,
+        ]);
+    }
+
+
