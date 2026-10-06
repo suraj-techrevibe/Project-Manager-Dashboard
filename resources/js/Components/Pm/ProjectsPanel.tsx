@@ -37,6 +37,7 @@ export default function ProjectsPanel() {
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
   // Quick filter driven by the overview tiles.
   const [risk, setRisk] = useState<'all' | 'overdue' | 'blocked'>('all');
+  const [health, setHealth] = useState<Record<string, any>>({});
 
   // Which project is open lives in the URL (?project=<id>), not in React state.
   const openId = useUrlParam('project');
