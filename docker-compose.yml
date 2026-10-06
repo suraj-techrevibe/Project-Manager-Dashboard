@@ -1,0 +1,62 @@
+x-app-env: &app-env
+  env_file:
+    - .env
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+    <<: *app-env
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - storage:/var/www/html/storage
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - pm
+
+  # Runs the app's scheduled commands (SyncBoard, RunPmAutomation, SendDigest, GenerateReport)
+  # every minute, the same way `php artisan schedule:run` would via real cron.
+  scheduler:
+    build:
+      context: .
+      target: app
+    <<: *app-env
+    command: ["sh", "-c", "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"]
+    volumes:
+      - storage:/var/www/html/storage
+    depends_on:
+      - app
+    networks:
+      - pm
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-pm_dashboard}
+      MYSQL_USER: ${DB_USERNAME:-pm_dashboard}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "${FORWARD_DB_PORT:-3306}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-secret}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - pm
+
+networks:
+  pm:
+    driver: bridge
+
+volumes:
+  db_data:
+  storage:
