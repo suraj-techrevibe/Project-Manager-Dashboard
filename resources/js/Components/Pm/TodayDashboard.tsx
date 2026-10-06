@@ -864,12 +864,12 @@ export default function TodayDashboard({
                 <div key={row.name}>
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-slate-800">{row.name}</span>
-                    <span className={level === 'over' || level === 'heavy' ? 'font-semibold text-red-600' : level === 'medium' ? 'font-semibold text-amber-600' : 'text-slate-500'}>
+                    <span className={level === 'over' || level === 'heavy' ? 'font-semibold text-red-600' : level === 'balanced' ? 'font-semibold text-amber-600' : 'text-slate-500'}>
                       {hours.toFixed(1)}h / {capacity}h
                     </span>
                   </div>
                   <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className={`h-full rounded-full ${level === 'over' || level === 'heavy' ? 'bg-red-500' : level === 'medium' ? 'bg-amber-400' : 'bg-slate-400'}`} style={{ width: `${pct}%` }} />
+                    <div className={`h-full rounded-full ${level === 'over' || level === 'heavy' ? 'bg-red-500' : level === 'balanced' ? 'bg-amber-400' : 'bg-slate-400'}`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );
