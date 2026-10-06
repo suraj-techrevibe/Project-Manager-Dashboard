@@ -29,6 +29,7 @@ RUN apk add --no-cache \
         icu-dev \
         libzip-dev \
         oniguruma-dev \
+        sqlite-dev \
     && docker-php-ext-install \
         bcmath \
         intl \
@@ -37,7 +38,7 @@ RUN apk add --no-cache \
         pdo_sqlite \
         zip \
         opcache \
-    && apk del --no-cache icu-dev libzip-dev oniguruma-dev
+    && apk del --no-cache icu-dev libzip-dev oniguruma-dev sqlite-dev
 
 WORKDIR /var/www/html
 

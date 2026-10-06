@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { localISO } from '../../lib/meetingNotes';
-import { workItemHasContent, workItemTitle, workItemWarnings, workItemsToText } from '../../lib/minutesFormat';
+import { splitProjectNames, workItemHasContent, workItemTitle, workItemWarnings, workItemsToText } from '../../lib/minutesFormat';
 import { type OwnerResult, parseMeetingText } from '../../lib/parseMeetingText';
 import type { MeetingMinutesFull, MeetingMinutesSummary, MeetingWorkItem, MeetingWorkItemAction, MinutesStatus, Project } from '../../types/pm';
 import { ErrorNote, Field, err, ghostBtn, inputCls, primaryBtn, dangerBtn, formatTimestamp, useEmployees } from './Projects/ui';
@@ -116,6 +116,27 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
     setWorkItems(ws => ws.filter((_, j) => j !== i));
     setOwnerHints(h => Object.fromEntries(Object.entries(h).filter(([k]) => +k !== i).map(([k, v]) => [+k > i ? +k - 1 : +k, v])));
   };
+  /** Typed naturally during the meeting as "Techmandu, Remit, Adxpress" — split into one Work Item per
+   *  business now, each a full copy (same owner/requirement/discussion/due date), so each can push its own ticket. */
+  const splitWork = (i: number) => {
+    const names = splitProjectNames(workItems[i].project);
+    if (names.length < 2) return;
+    setWorkItems(ws => {
+      const clones = names.map((name) => ({ ...ws[i], project: name, project_id: null, action_items: ws[i].action_items.map((a) => ({ ...a })) }));
+      return [...ws.slice(0, i), ...clones, ...ws.slice(i + 1)];
+    });
+    setOwnerHints(h => {
+      const shift = names.length - 1;
+      const out: Record<number, OwnerResult> = {};
+      for (const [kStr, v] of Object.entries(h)) {
+        const k = +kStr;
+        if (k < i) out[k] = v;
+        else if (k === i) names.forEach((_, j) => { out[i + j] = v; });
+        else out[k + shift] = v;
+      }
+      return out;
+    });
+  };
   const text = useMemo(() => workItemsToText({ title, meeting_date: date, attendees, work_items: workItems }), [title, date, attendees, workItems]);
   const warnings = useMemo(() => workItemWarnings(workItems, attendees), [workItems, attendees]);
   async function copyText() { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } }
@@ -186,7 +207,11 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
     {!pasting && step === 1 && <div className="flex flex-col gap-4"><div className="flex items-center justify-between"><div><h4 className="text-sm font-semibold text-slate-800">WORK ITEMS</h4><p className="text-xs text-slate-500">One Work Item = one Task. Action Items = Subtasks.</p></div><button onClick={() => setWorkItems(ws => [...ws, blankWork()])} className={ghostBtn}>+ Add Work Item</button></div>
       {showWarn && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{emptyFields > 0 ? <><b>{emptyFields} empty field{emptyFields === 1 ? '' : 's'}</b> marked in red.</> : <>No empty fields.</>} This is only a warning — you can still save, and push, with blanks.{pasteNotes.map(n => <div key={n} className="mt-1 text-amber-700">• {n}</div>)}</div>}
       {workItems.map((w,i) => <div key={i} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Work Item {i + 1}</span>{workItems.length > 1 && <button onClick={() => removeWork(i)} className="text-xs text-red-500">Remove</button>}</div>
-        <div className="grid gap-3 md:grid-cols-2"><Field label="Person / Owner"><select value={w.owner} onChange={e => { updateWork(i,{owner:e.target.value}); setOwnerHints(h => { const n = { ...h }; delete n[i]; return n; }); }} className={`${inputCls} ${bad(!w.owner.trim())}`}><option value="">Select owner…</option>{employees.map(e => <option key={e.employeeId} value={e.name}>{e.name}</option>)}</select>{ownerHints[i]?.hint && !(ownerHints[i].tone === 'warn' && w.owner.trim() && ownerHints[i].owner !== w.owner) && <p className={`mt-1 text-[11px] ${ownerHints[i].tone === 'warn' ? 'text-red-600' : 'text-slate-500'}`}>{ownerHints[i].hint}</p>}</Field><Field label="Business / Project"><input list={`mm-projects-${i}`} value={w.project} onChange={e => updateWork(i,{project:e.target.value})} placeholder="Ad Consult" className={`${inputCls} ${bad(!w.project.trim())}`} /><datalist id={`mm-projects-${i}`}>{projects.map(p => <option key={p._id} value={p.name} />)}</datalist><ProjectHint name={w.project} projects={projects} loaded={projectsLoaded} /></Field></div>
+        <div className="grid gap-3 md:grid-cols-2"><Field label="Person / Owner"><select value={w.owner} onChange={e => { updateWork(i,{owner:e.target.value}); setOwnerHints(h => { const n = { ...h }; delete n[i]; return n; }); }} className={`${inputCls} ${bad(!w.owner.trim())}`}><option value="">Select owner…</option>{employees.map(e => <option key={e.employeeId} value={e.name}>{e.name}</option>)}</select>{ownerHints[i]?.hint && !(ownerHints[i].tone === 'warn' && w.owner.trim() && ownerHints[i].owner !== w.owner) && <p className={`mt-1 text-[11px] ${ownerHints[i].tone === 'warn' ? 'text-red-600' : 'text-slate-500'}`}>{ownerHints[i].hint}</p>}</Field><Field label="Business / Project"><input list={`mm-projects-${i}`} value={w.project} onChange={e => updateWork(i,{project:e.target.value})} placeholder="Ad Consult" className={`${inputCls} ${bad(!w.project.trim())}`} /><datalist id={`mm-projects-${i}`}>{projects.map(p => <option key={p._id} value={p.name} />)}</datalist>
+          {splitProjectNames(w.project).length > 1
+            ? <button onClick={() => splitWork(i)} className="mt-1 text-[11px] font-medium text-amber-700 underline hover:text-amber-800">Split into {splitProjectNames(w.project).length} Work Items (one per business)</button>
+            : <ProjectHint name={w.project} projects={projects} loaded={projectsLoaded} />}
+        </Field></div>
         <Field label="Requirement (becomes Task title)"><input value={w.requirement} onChange={e => updateWork(i,{requirement:e.target.value})} placeholder="Make home page responsive" className={`${inputCls} ${bad(!w.requirement.trim())}`} /></Field>
         <Field label="Discussion (becomes Task description)"><textarea value={w.discussion} onChange={e => updateWork(i,{discussion:e.target.value})} rows={3} placeholder="Homepage needs to work correctly on mobile and tablet." className={`${inputCls} ${bad(!w.discussion.trim())}`} /></Field>
         <Field label="ACTION ITEMS (become Subtasks)"><div className={`flex flex-col gap-2 ${showWarn && !w.action_items.some(a => a.task.trim()) ? 'rounded-md border border-red-400 bg-red-50 p-2' : ''}`}>{w.action_items.map((a,j) => <div key={j} className="flex flex-wrap gap-2"><input value={a.task} onChange={e => updateAction(i,j,{task:e.target.value})} placeholder="Update responsive layout" className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm" /><input type="date" value={a.due_date ?? ''} onChange={e => updateAction(i,j,{due_date:e.target.value || null})} className="rounded-md border border-slate-300 px-2 py-1 text-sm" /><button onClick={() => updateWork(i,{action_items:w.action_items.filter((_,k)=>k!==j)})} className="text-slate-400 hover:text-red-600">✕</button></div>)}<button onClick={() => updateWork(i,{action_items:[...w.action_items,blankAction()]})} className="self-start text-xs text-slate-500 hover:text-slate-700">+ Add action item</button></div></Field>
