@@ -7,7 +7,7 @@ import {
   type EditableTicket,
 } from '../../lib/briefHeuristics';
 import { localISO, matchEmployee } from '../../lib/meetingNotes';
-import { shortDate } from '../../lib/minutesFormat';
+import { shortDate, workItemHasContent, workItemTitle } from '../../lib/minutesFormat';
 import type {
   Employee,
   MeetingMinutesSummary,
@@ -111,9 +111,7 @@ export default function MeetingPicker({
       const missingProjects: string[] = [];
       let past = 0;
 
-      const workItems = (m.work_items ?? []).filter(
-        (w) => w.requirement.trim()
-      );
+      const workItems = (m.work_items ?? []).filter(workItemHasContent);
 
       let tickets: EditableTicket[];
 
@@ -148,11 +146,13 @@ export default function MeetingPicker({
             const projectName =
               w.project?.trim() ?? '';
 
-            // Saved as final, the server already linked this Work Item to its Taskmandu project.
+            // A work item saved as final carries the exact project it was matched to or created as.
             const project =
-              (w.project_id
-                ? projects.find((p) => p._id === w.project_id)
-                : undefined) ?? findProject(projectName, projects);
+              (w.project_id ? projects.find((p) => p._id === w.project_id) : null) ??
+              findProject(
+                projectName,
+                projects
+              );
 
             if (projectName && !project) {
               missingProjects.push(projectName);
@@ -179,7 +179,7 @@ export default function MeetingPicker({
               });
 
             return blankTicket({
-              title: w.requirement.trim(),
+              title: workItemTitle(w),
               description: descriptionFor(w),
               assigneeId:
                 hit && hit !== 'ambiguous'

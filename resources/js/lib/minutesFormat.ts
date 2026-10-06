@@ -1,4 +1,4 @@
-import type { ActionItem, MeetingMinutesFull, MeetingWorkItem, MinutesTopic, Project } from '../types/pm';
+import type { ActionItem, MeetingMinutesFull, MeetingWorkItem, MinutesTopic } from '../types/pm';
 import { localISO } from './meetingNotes';
 
 export const MEETING_TYPES = ['Weekly sync', 'Client call', 'Planning', 'Review / Retro', 'Daily standup', 'Kick-off', 'Other'];
@@ -148,15 +148,29 @@ interface WorkItemTextInput {
 
 const RULE = '─'.repeat(40);
 
+/** Anything typed in a work item at all (a completely empty one is dropped on save). */
+export const workItemHasContent = (w: MeetingWorkItem): boolean =>
+  [w.owner, w.project, w.requirement, w.discussion].some((s) => (s ?? '').trim()) || w.action_items.some((a) => (a.task ?? '').trim());
+
+/** Task title for a work item. A blank Requirement falls back to something readable so it can still be pushed. */
+export function workItemTitle(w: MeetingWorkItem): string {
+  const req = (w.requirement ?? '').trim();
+  if (req) return req;
+  const act = w.action_items.find((a) => (a.task ?? '').trim())?.task.trim();
+  if (act) return act.slice(0, 120);
+  const talk = (w.discussion ?? '').split('\n').map((l) => l.replace(/^[-*•]\s*/, '').trim()).find(Boolean);
+  return talk ? talk.slice(0, 120) : 'Untitled work item';
+}
+
 /** The whole meeting in one place: header, attendees, then every Work Item with its Action Items. */
 export function workItemsToText(m: WorkItemTextInput): string {
   const L: string[] = ['MEETING', RULE, '', 'Title:', m.title.trim() || '(untitled)', '', 'Date:', m.meeting_date ? shortDate(m.meeting_date) : '(no date)'];
   if (m.attendees.length) L.push('', 'Attendees:', ...m.attendees);
 
   m.work_items
-    .filter((w) => w.requirement.trim())
+    .filter(workItemHasContent)
     .forEach((w, i) => {
-      L.push('', '', `WORK ITEM ${i + 1}`, RULE, `Owner: ${w.owner.trim() || '(unassigned)'}`, `Project: ${w.project.trim() || '(not set)'}`, '', 'Requirement:', w.requirement.trim());
+      L.push('', '', `WORK ITEM ${i + 1}`, RULE, `Owner: ${w.owner.trim() || '(unassigned)'}`, `Project: ${w.project.trim() || '(not set)'}`, '', 'Requirement:', w.requirement.trim() || '(not set)');
       if (w.discussion.trim()) L.push('', 'Discussion:', w.discussion.trim());
       const actions = w.action_items.filter((a) => a.task.trim());
       if (actions.length) {
@@ -169,75 +183,23 @@ export function workItemsToText(m: WorkItemTextInput): string {
 }
 
 /** Non-blocking nudges for the Review step: what Brief to tickets will have to ask for later. */
-/** Catches "Techmandu, Remit, Adxpress" / "Adxpress and Bringo" typed into the single Project field —
- *  that would otherwise silently create one new Taskmandu project with that whole string as its name. */
-function looksLikeMultipleProjects(project: string): boolean {
-  return splitProjectNames(project).length > 1;
-}
-
-/** "Techmandu, Remit, Adxpress" / "Adxpress and Bringo" -> ['Techmandu','Remit','Adxpress']. Used by the
- *  "Split into N Work Items" action so you can type naturally during the meeting and split afterward. */
-export function splitProjectNames(project: string): string[] {
-  return project
-    .split(/\s*(?:,|\/|&|(?:^|\s)and(?:\s|$))\s*/i)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 export function workItemWarnings(items: MeetingWorkItem[], attendees: string[], now: Date = new Date()): string[] {
   const w: string[] = [];
   const today = localISO(now);
-  const empty = items.filter((x) => !x.requirement.trim()).length;
-  if (empty) w.push(`${empty} Work Item${empty === 1 ? ' has' : 's have'} no Requirement and will not be saved.`);
+  const empty = items.filter((x) => workItemHasContent(x) && !x.requirement.trim()).length;
+  if (empty) w.push(`${empty} Work Item${empty === 1 ? ' has' : 's have'} no Requirement — ${empty === 1 ? 'it' : 'they'} can still be saved and pushed, titled from the first Action Item or Discussion line.`);
   if (attendees.length === 0) w.push('No attendees added.');
 
   items
-    .filter((x) => x.requirement.trim())
+    .filter(workItemHasContent)
     .forEach((x, i) => {
       const n = `Work Item ${i + 1}`;
       const hasActions = x.action_items.some((a) => a.task.trim());
       if (!x.owner.trim()) w.push(`${n} has no owner — Taskmandu needs an assignee.`);
       if (!x.project.trim()) w.push(`${n} has no project${hasActions ? ', so its Action Items cannot become Subtasks' : ''}.`);
-      else if (looksLikeMultipleProjects(x.project)) w.push(`${n}'s project "${x.project.trim()}" looks like more than one business — a Work Item can only push to one Taskmandu project. Split this into one Work Item per business, or it will create a single new project with that whole name.`);
       if (!x.due_date) w.push(`${n} has no due date.`);
       else if (x.due_date < today) w.push(`${n} is due in the past — the date will be left blank in Brief to tickets.`);
       if (x.action_items.some((a) => a.task.trim() && a.due_date && a.due_date < today)) w.push(`${n} has Action Items due in the past — those dates will be left blank in Brief to tickets.`);
     });
   return w;
-}
-
-/* ------------------------------------------------------------------ */
-/* Projects named on Work Items                                        */
-/* ------------------------------------------------------------------ */
-
-/** Case, punctuation and spacing are ignored — the same rule the server applies when it saves as final. */
-export const normProject = (name: string): string =>
-  name.toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, ' ').replace(/\s+/g, ' ').trim();
-
-export type ProjectMatch = { kind: 'empty' } | { kind: 'existing'; project: Project } | { kind: 'new'; name: string };
-
-/** Is what was typed in a Work Item's Project box an existing project, or a new one? */
-export function projectMatch(name: string, projects: Project[]): ProjectMatch {
-  const key = normProject(name);
-  if (!name.trim()) return { kind: 'empty' };
-  const hit = key ? projects.find((p) => normProject(p.name) === key) : undefined;
-  return hit ? { kind: 'existing', project: hit } : { kind: 'new', name: name.trim() };
-}
-
-/** What "Save as final" will do about projects, for the Review step. Only Work Items that will be saved count. */
-export function projectPlan(items: MeetingWorkItem[], projects: Project[]): { toCreate: string[]; existing: string[] } {
-  const toCreate = new Map<string, string>();
-  const existing = new Map<string, string>();
-  items
-    .filter((w) => w.requirement.trim())
-    .forEach((w) => {
-      const m = projectMatch(w.project, projects);
-      // First spelling wins — it is the one the server creates (later Work Items then match it).
-      if (m.kind === 'new') {
-        const k = normProject(m.name) || m.name;
-        if (!toCreate.has(k)) toCreate.set(k, m.name);
-      }
-      if (m.kind === 'existing') existing.set(normProject(m.project.name), m.project.name);
-    });
-  return { toCreate: [...toCreate.values()], existing: [...existing.values()] };
 }

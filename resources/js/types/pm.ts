@@ -43,10 +43,7 @@ export interface VariableInput { key:string; value?:string; isSecret?:boolean; t
 export interface PullRequest { number:number; title:string; author:string|null; branch:string; base:string; draft:boolean; mergeable_state:string|null; checks_state:'success'|'failure'|'pending'|'unknown'; review_comments:number; updated_at:string; url:string; }
 export interface ActionItem { task:string; owner:string; due_date:string|null; }
 export interface MeetingWorkItemAction { task:string; due_date:string|null; }
-/** `project_id` is set by the server when the minutes are saved as final: the Taskmandu project this Work Item belongs to. */
-export interface MeetingWorkItem { owner:string; project:string; project_id?:string|null; requirement:string; discussion:string; action_items:MeetingWorkItemAction[]; due_date:string|null; }
-/** A project that "Save as final" had to create because it wasn't in the Taskmandu project list. */
-export interface CreatedProject { name:string; id:string; }
+export interface MeetingWorkItem { owner:string; project:string; /** Set when the work item is saved as final: the Taskmandu project it points to. */ project_id?:string|null; requirement:string; discussion:string; action_items:MeetingWorkItemAction[]; due_date:string|null; }
 export type MinutesStatus='draft'|'final';
 export interface MinutesTopic { title:string; notes:string; decision:string; }
 export interface MeetingMinutesSummary { id:number; title:string; status:MinutesStatus; meeting_date:string; attendees:string[]; action_items:ActionItem[]; work_items?:MeetingWorkItem[]; }
