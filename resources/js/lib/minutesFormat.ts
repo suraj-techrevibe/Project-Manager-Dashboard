@@ -182,6 +182,17 @@ export function workItemsToText(m: WorkItemTextInput): string {
   return L.join('\n');
 }
 
+/** "Techmandu, Remit, Adxpress" / "Adxpress and Bringo" -> ['Techmandu','Remit','Adxpress']. A Work Item can only
+ *  push to one Taskmandu project, so typing several business names into the one Project field — natural while
+ *  taking live notes — needs splitting into one Work Item per business before it's pushed, or it silently creates
+ *  a single new project with that whole string as its name. Used by the "Split into N Work Items" action. */
+export function splitProjectNames(project: string): string[] {
+  return project
+    .split(/\s*(?:,|\/|&|(?:^|\s)and(?:\s|$))\s*/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 /** Non-blocking nudges for the Review step: what Brief to tickets will have to ask for later. */
 export function workItemWarnings(items: MeetingWorkItem[], attendees: string[], now: Date = new Date()): string[] {
   const w: string[] = [];
@@ -197,6 +208,7 @@ export function workItemWarnings(items: MeetingWorkItem[], attendees: string[], 
       const hasActions = x.action_items.some((a) => a.task.trim());
       if (!x.owner.trim()) w.push(`${n} has no owner — Taskmandu needs an assignee.`);
       if (!x.project.trim()) w.push(`${n} has no project${hasActions ? ', so its Action Items cannot become Subtasks' : ''}.`);
+      else if (splitProjectNames(x.project).length > 1) w.push(`${n}'s project "${x.project.trim()}" looks like more than one business — a Work Item can only push to one Taskmandu project. Split this into one Work Item per business, or it will create a single new project with that whole name.`);
       if (!x.due_date) w.push(`${n} has no due date.`);
       else if (x.due_date < today) w.push(`${n} is due in the past — the date will be left blank in Brief to tickets.`);
       if (x.action_items.some((a) => a.task.trim() && a.due_date && a.due_date < today)) w.push(`${n} has Action Items due in the past — those dates will be left blank in Brief to tickets.`);
