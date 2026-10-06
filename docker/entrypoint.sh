@@ -5,7 +5,10 @@ if [ ! -f /var/www/html/.env ]; then
     cp /var/www/html/.env.example /var/www/html/.env
 fi
 
-if [ -z "$(grep -E '^APP_KEY=.+' /var/www/html/.env || true)" ]; then
+# Skip when APP_KEY is already set as a real environment variable (e.g. Render's dashboard) —
+# key:generate refuses to run in that case ("APP_KEY is already present in the environment"),
+# since it only knows how to persist a new key into the .env file, not the platform's env store.
+if [ -z "${APP_KEY:-}" ] && [ -z "$(grep -E '^APP_KEY=.+' /var/www/html/.env 2>/dev/null || true)" ]; then
     php /var/www/html/artisan key:generate --force
 fi
 
