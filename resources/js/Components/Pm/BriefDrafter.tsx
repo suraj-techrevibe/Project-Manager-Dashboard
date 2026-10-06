@@ -105,7 +105,7 @@ export default function BriefDrafter() {
 
   return <div className="flex flex-col gap-4">
     <PageHeader icon="list" title="Brief to tickets" description="Turn a client brief or saved Meeting Work Items into deterministic Tasks and Subtasks." status={tickets.length ? `${tickets.length} tickets · ${tickets.filter((t) => t.state === 'pushed').length} pushed · ${pending.length} waiting` : undefined} />
-    <Section title="1 · Brief" subtitle="Paste a brief or use a saved meeting">
+    <Section id="brief-input" title="1 · Brief" subtitle="Paste a brief or use a saved meeting">
       <textarea value={brief} onChange={(e) => { setBrief(e.target.value); setDraftError(null); }} className="min-h-40 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Paste brief or meeting minutes…" />
       <div className="mt-2 flex flex-wrap gap-2">
         <button className={btnSecondary} onClick={splitLocally} disabled={loading}>Split without AI</button>
@@ -118,7 +118,7 @@ export default function BriefDrafter() {
       {ctxError && <p className="mt-2 text-sm text-amber-700">{ctxError}</p>}
     </Section>
 
-    {tickets.length ? <Section title="2 · Review" count={tickets.length} subtitle="One Meeting Work Item = one parent Task. Action Items = real Subtasks.">
+    {tickets.length ? <Section id="brief-review" title="2 · Review" count={tickets.length} subtitle="One Meeting Work Item = one parent Task. Action Items = real Subtasks.">
       <div className="mb-3 flex flex-wrap gap-2"><select className={inputCls} defaultValue="" onChange={(e) => assignAll(e.target.value)}><option value="">Assign all…</option>{employees.map((e) => <option key={e.employeeId} value={e.employeeId}>{e.name}</option>)}</select><button className={btnSecondary} onClick={runAutoAssign}>Auto assign</button><button className={btnSecondary} onClick={addTicket}>Add Task</button></div>
       <div className="space-y-3">{tickets.map((t, i) => <article key={t.uid} className="rounded-xl border border-slate-200 p-3">
         <div className="flex gap-2"><span className="pt-2 text-xs text-slate-400">#{i + 1}</span><input className={`${inputCls} flex-1`} value={t.title} onChange={(e) => update(t.uid, { title: e.target.value })} placeholder="Task title / Requirement" /><button className="text-red-600" onClick={() => remove(t.uid)}>Remove</button></div>
@@ -131,12 +131,12 @@ export default function BriefDrafter() {
       </article>)}</div>
     </Section> : <EmptyState title="No tickets yet">Load a saved meeting or paste a brief above.</EmptyState>}
 
-    {tickets.length > 0 && <Section title="3 · Push to Taskmandu" subtitle={meeting ? `Source meeting: ${meeting.title} · ${meeting.meeting_date}` : 'Review every owner and project before pushing.'}>
+    {tickets.length > 0 && <Section id="brief-push" title="3 · Push to Taskmandu" subtitle={meeting ? `Source meeting: ${meeting.title} · ${meeting.meeting_date}` : 'Review every owner and project before pushing.'}>
       {pushError && <p className="mb-2 text-sm text-red-600">{pushError}</p>}{pushSummary && <p className="mb-2 text-sm text-green-700">{pushSummary}</p>}
       <button className={btnPrimary} disabled={pushing || pending.length === 0} onClick={() => pushList(pending)}>{pushing ? 'Pushing…' : `Push ${pending.length} to Taskmandu`}</button>
       {attempted && !pending.length && <p className="mt-2 text-xs text-slate-500">All Tasks in this batch have been pushed.</p>}
     </Section>}
 
-    {questions.length > 0 && <Section title="Client questions" subtitle="Questions raised by the brief."><button className={btnSecondary} onClick={copyQuestions}>{copied ? 'Copied' : 'Copy questions'}</button><ul className="mt-2 space-y-1 text-sm">{questions.map((q) => <li key={q}><label><input type="checkbox" checked={!skipped[q]} onChange={() => setSkipped((s) => ({ ...s, [q]: !s[q] }))} /> {q}</label></li>)}</ul></Section>}
+    {questions.length > 0 && <Section id="brief-questions" title="Client questions" subtitle="Questions raised by the brief."><button className={btnSecondary} onClick={copyQuestions}>{copied ? 'Copied' : 'Copy questions'}</button><ul className="mt-2 space-y-1 text-sm">{questions.map((q) => <li key={q}><label><input type="checkbox" checked={!skipped[q]} onChange={() => setSkipped((s) => ({ ...s, [q]: !s[q] }))} /> {q}</label></li>)}</ul></Section>}
   </div>;
 }
