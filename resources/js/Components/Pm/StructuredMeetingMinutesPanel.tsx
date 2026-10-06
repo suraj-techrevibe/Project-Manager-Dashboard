@@ -153,7 +153,7 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
       <div className="flex items-center justify-between"><div className="text-xs font-medium text-slate-500">Everything in this meeting, in one place</div><button onClick={copyText} className={ghostBtn}>{copied ? 'Copied ✓' : 'Copy as text'}</button></div>
       <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">{text}</pre>
       {(plan.toCreate.length > 0 || plan.existing.length > 0) && <div className="rounded-md border border-slate-200 p-3 text-sm" data-testid="project-plan"><div className="mb-1 text-xs font-medium text-slate-500">PROJECTS</div>
-        {plan.toCreate.length > 0 && <p className="text-amber-800">{canCheck ? 'Will be created in Taskmandu when you press Push to Taskmandu' : 'Checked against Taskmandu when you press Save as final'}: <b>{plan.toCreate.join(', ')}</b></p>}
+        {plan.toCreate.length > 0 && <p className="text-amber-800">{canCheck ? 'Will be created in Taskmandu when you press Push to Taskmandu' : 'Not pushed to Taskmandu until you press Push to Taskmandu'}: <b>{plan.toCreate.join(', ')}</b></p>}
         {plan.existing.length > 0 && <p className="text-emerald-800">Existing projects (linked, not recreated): {plan.existing.join(', ')}</p>}
         <p className="mt-1 text-xs text-slate-400">Save draft never creates anything in Taskmandu.</p></div>}
       {warnings.length > 0 && <ul className="list-inside list-disc text-xs text-amber-700">{warnings.map((x) => <li key={x}>{x}</li>)}</ul>}
@@ -201,8 +201,8 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
 function ProjectHint({ name, projects, canCheck }: { name: string; projects: Project[]; canCheck: boolean }) {
   const m = projectMatch(name, projects);
   const base = 'mt-1 text-[11px]';
-  if (m.kind === 'empty') return <p className={`${base} text-slate-400`}>Pick an existing project, or type a new name — a new project is created when you Save as final.</p>;
-  if (!canCheck) return <p className={`${base} text-slate-400`}>Can't check the project list right now — it is checked when you Save as final.</p>;
+  if (m.kind === 'empty') return <p className={`${base} text-slate-400`}>Pick an existing project, or type a new name — a new project is created when you press Push to Taskmandu.</p>;
+  if (!canCheck) return <p className={`${base} text-slate-400`}>Can't check the project list right now — it will be checked when you press Push to Taskmandu.</p>;
   if (m.kind === 'existing') return <p className={`${base} text-emerald-700`}>✓ Existing project{m.project.name !== name.trim() ? ` — will be saved as “${m.project.name}”` : ''}</p>;
-  return <p className={`${base} text-amber-700`}>＋ New project “{m.name}” — created in Taskmandu when you press <b>Save as final</b> (not when you save a draft).</p>;
+  return <p className={`${base} text-amber-700`}>＋ New project “{m.name}” — created in Taskmandu when you press <b>Push to Taskmandu</b> (not when you save a draft).</p>;
 }
