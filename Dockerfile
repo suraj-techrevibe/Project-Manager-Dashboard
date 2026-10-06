@@ -19,6 +19,10 @@ RUN composer dump-autoload --optimize --no-dev
 # ---- Stage 3: runtime image (nginx + php-fpm under supervisord) ----
 FROM php:8.3-fpm-alpine AS app
 
+# Runtime libraries stay installed. The *-dev packages are only needed to compile the PHP extensions,
+# so they go in a throw-away virtual group. (Deleting a -dev package on Alpine also deletes the runtime
+# library it pulled in — e.g. libpq for pdo_pgsql — which leaves the extension unable to load and shows
+# up at deploy time as "could not find driver".)
 RUN apk add --no-cache \
         bash \
         curl \
@@ -26,6 +30,12 @@ RUN apk add --no-cache \
         nginx \
         supervisor \
         sqlite \
+        sqlite-libs \
+        libpq \
+        icu-libs \
+        libzip \
+        oniguruma \
+    && apk add --no-cache --virtual .build-deps \
         icu-dev \
         libzip-dev \
         oniguruma-dev \
@@ -40,7 +50,10 @@ RUN apk add --no-cache \
         pdo_sqlite \
         zip \
         opcache \
-    && apk del --no-cache icu-dev libzip-dev oniguruma-dev sqlite-dev postgresql-dev
+    && apk del --no-cache .build-deps
+
+# Fail the BUILD (not the deploy) if an extension can't load.
+RUN php -r 'foreach (["pdo_pgsql", "pdo_mysql", "pdo_sqlite", "intl", "zip", "bcmath"] as $e) { if (!extension_loaded($e)) { fwrite(STDERR, "PHP extension failed to load: $e\n"); exit(1); } }'
 
 WORKDIR /var/www/html
 
