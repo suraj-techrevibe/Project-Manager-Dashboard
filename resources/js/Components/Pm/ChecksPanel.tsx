@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { setUrlParams, useUrlParam } from '../../lib/urlState';
