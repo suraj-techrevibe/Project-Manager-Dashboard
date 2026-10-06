@@ -30,15 +30,17 @@ RUN apk add --no-cache \
         libzip-dev \
         oniguruma-dev \
         sqlite-dev \
+        postgresql-dev \
     && docker-php-ext-install \
         bcmath \
         intl \
         pcntl \
         pdo_mysql \
+        pdo_pgsql \
         pdo_sqlite \
         zip \
         opcache \
-    && apk del --no-cache icu-dev libzip-dev oniguruma-dev sqlite-dev
+    && apk del --no-cache icu-dev libzip-dev oniguruma-dev sqlite-dev postgresql-dev
 
 WORKDIR /var/www/html
 
