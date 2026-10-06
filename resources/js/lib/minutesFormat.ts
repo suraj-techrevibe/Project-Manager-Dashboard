@@ -172,7 +172,16 @@ export function workItemsToText(m: WorkItemTextInput): string {
 /** Catches "Techmandu, Remit, Adxpress" / "Adxpress and Bringo" typed into the single Project field —
  *  that would otherwise silently create one new Taskmandu project with that whole string as its name. */
 function looksLikeMultipleProjects(project: string): boolean {
-  return /[,/&]|(?:^|\s)\band\b(?:\s|$)/i.test(project.trim());
+  return splitProjectNames(project).length > 1;
+}
+
+/** "Techmandu, Remit, Adxpress" / "Adxpress and Bringo" -> ['Techmandu','Remit','Adxpress']. Used by the
+ *  "Split into N Work Items" action so you can type naturally during the meeting and split afterward. */
+export function splitProjectNames(project: string): string[] {
+  return project
+    .split(/\s*(?:,|\/|&|(?:^|\s)and(?:\s|$))\s*/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export function workItemWarnings(items: MeetingWorkItem[], attendees: string[], now: Date = new Date()): string[] {

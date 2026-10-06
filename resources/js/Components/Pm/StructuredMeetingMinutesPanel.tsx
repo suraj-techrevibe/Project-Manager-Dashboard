@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { localISO } from '../../lib/meetingNotes';
-import { projectMatch, projectPlan, workItemWarnings, workItemsToText } from '../../lib/minutesFormat';
+import { projectMatch, projectPlan, splitProjectNames, workItemWarnings, workItemsToText } from '../../lib/minutesFormat';
 import type { CreatedProject, MeetingMinutesFull, MeetingMinutesSummary, MeetingWorkItem, MeetingWorkItemAction, MinutesStatus, Project } from '../../types/pm';
 import { ErrorNote, Field, err, ghostBtn, inputCls, primaryBtn, dangerBtn, formatTimestamp, useEmployees } from './Projects/ui';
 
@@ -121,6 +121,14 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
   const toggleAttendee = (n: string) => setAttendees(a => a.includes(n) ? a.filter(x => x !== n) : [...a, n]);
   const updateWork = (i: number, patch: Partial<MeetingWorkItem>) => setWorkItems(ws => ws.map((w,j) => j === i ? { ...w, ...patch } : w));
   const updateAction = (wi: number, ai: number, patch: Partial<MeetingWorkItemAction>) => setWorkItems(ws => ws.map((w,j) => j === wi ? { ...w, action_items: w.action_items.map((a,k) => k === ai ? { ...a, ...patch } : a) } : w));
+  /** Typed naturally during the meeting as "Techmandu, Remit, Adxpress" — split into one Work Item per
+   *  business now, each a full copy (same owner/requirement/discussion/due date), so each can push its own ticket. */
+  const splitWork = (i: number) => setWorkItems(ws => {
+    const names = splitProjectNames(ws[i].project);
+    if (names.length < 2) return ws;
+    const clones = names.map((name) => ({ ...ws[i], project: name, action_items: ws[i].action_items.map((a) => ({ ...a })) }));
+    return [...ws.slice(0, i), ...clones, ...ws.slice(i + 1)];
+  });
   async function save(nextStatus: MinutesStatus) {
     const valid = workItems.filter(w => w.requirement.trim());
     if (!title.trim() || !date) { setStep(0); setError('Add a meeting title and date.'); return; }
@@ -142,7 +150,11 @@ function WorkItemWizard({ initial, copy, onCancel, onSaved }: { initial: Meeting
     </div>}
     {step === 1 && <div className="flex flex-col gap-4"><div className="flex items-center justify-between"><div><h4 className="text-sm font-semibold text-slate-800">WORK ITEMS</h4><p className="text-xs text-slate-500">One Work Item = one Task. Action Items = Subtasks.</p></div><button onClick={() => setWorkItems(ws => [...ws, blankWork()])} className={ghostBtn}>+ Add Work Item</button></div>
       {workItems.map((w,i) => <div key={i} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Work Item {i + 1}</span>{workItems.length > 1 && <button onClick={() => setWorkItems(ws => ws.filter((_,j) => j !== i))} className="text-xs text-red-500">Remove</button>}</div>
-        <div className="grid gap-3 md:grid-cols-2"><Field label="Person / Owner"><select value={w.owner} onChange={e => updateWork(i,{owner:e.target.value})} className={inputCls}><option value="">Select owner…</option>{employees.map(e => <option key={e.employeeId} value={e.name}>{e.name}</option>)}</select></Field><Field label="Business / Project"><input list={`mm-projects-${i}`} value={w.project} onChange={e => updateWork(i,{project:e.target.value})} placeholder="Ad Consult" className={inputCls} /><datalist id={`mm-projects-${i}`}>{projects.map(p => <option key={p._id} value={p.name} />)}</datalist><ProjectHint name={w.project} projects={projects} canCheck={canCheck} /></Field></div>
+        <div className="grid gap-3 md:grid-cols-2"><Field label="Person / Owner"><select value={w.owner} onChange={e => updateWork(i,{owner:e.target.value})} className={inputCls}><option value="">Select owner…</option>{employees.map(e => <option key={e.employeeId} value={e.name}>{e.name}</option>)}</select></Field><Field label="Business / Project"><input list={`mm-projects-${i}`} value={w.project} onChange={e => updateWork(i,{project:e.target.value})} placeholder="Ad Consult" className={inputCls} /><datalist id={`mm-projects-${i}`}>{projects.map(p => <option key={p._id} value={p.name} />)}</datalist>
+          {splitProjectNames(w.project).length > 1
+            ? <button onClick={() => splitWork(i)} className="mt-1 text-[11px] font-medium text-amber-700 underline hover:text-amber-800">Split into {splitProjectNames(w.project).length} Work Items (one per business)</button>
+            : <ProjectHint name={w.project} projects={projects} canCheck={canCheck} />}
+        </Field></div>
         <Field label="Requirement (becomes Task title)"><input value={w.requirement} onChange={e => updateWork(i,{requirement:e.target.value})} placeholder="Make home page responsive" className={inputCls} /></Field>
         <Field label="Discussion (becomes Task description)"><textarea value={w.discussion} onChange={e => updateWork(i,{discussion:e.target.value})} rows={3} placeholder="Homepage needs to work correctly on mobile and tablet." className={inputCls} /></Field>
         <Field label="ACTION ITEMS (become Subtasks)"><div className="flex flex-col gap-2">{w.action_items.map((a,j) => <div key={j} className="flex flex-wrap gap-2"><input value={a.task} onChange={e => updateAction(i,j,{task:e.target.value})} placeholder="Update responsive layout" className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm" /><input type="date" value={a.due_date ?? ''} onChange={e => updateAction(i,j,{due_date:e.target.value || null})} className="rounded-md border border-slate-300 px-2 py-1 text-sm" /><button onClick={() => updateWork(i,{action_items:w.action_items.filter((_,k)=>k!==j)})} className="text-slate-400 hover:text-red-600">✕</button></div>)}<button onClick={() => updateWork(i,{action_items:[...w.action_items,blankAction()]})} className="self-start text-xs text-slate-500 hover:text-slate-700">+ Add action item</button></div></Field>
