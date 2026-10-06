@@ -417,16 +417,6 @@ function PushActionItemsModal({ items, onClose }: { items: ActionItem[]; onClose
         continue;
       }
 
-      // The task now exists in Taskmandu. If recording that on the minutes fails it must not be
-      // reported as a failed push (that would invite pushing the same task twice).
-      if (minuteId) {
-        working = working.map((a, j) => (j === i ? { ...a, pushed_to_board: true, pushed_project_id: projectId } : a));
-        try {
-          await pmApi.minutesUpdate(minuteId, { action_items: working });
-        } catch {
-          markFailed = true;
-        }
-      }
     }
     if (markFailed) setError("The tasks were created, but couldn't be marked as pushed on these minutes.");
     setResults(out);
