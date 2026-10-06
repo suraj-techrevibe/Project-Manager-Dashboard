@@ -48,15 +48,6 @@ type P = { project: Project };
 
 export const pmApi = {
   ask: (question: string) => api.post<{ answer: string }>('/ask', { question }),
-  recentPushes: () =>
-    api.get<{
-      pushes: Array<{
-        id: number;
-        title: string;
-        project_name: string | null;
-        occurred_at: string;
-      }>;
-    }>('/recent-pushes'),
   nudge: (cardId: number) => api.post<{ message: string }>(`/cards/${cardId}/nudge`),
 
   /** Record that a (template) nudge was actually sent, so Today can show "nudged 2d ago". */
