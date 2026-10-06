@@ -25,7 +25,6 @@ import type {
   MeetingMinutesFull,
   MinutesDraft,
   MinutesInput,
-  CreatedProject,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
 
