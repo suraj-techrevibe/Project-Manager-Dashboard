@@ -209,13 +209,13 @@ export const pmApi = {
   /** Reshapes pasted rough notes into the standard fields — nothing is saved. */
   minutesDraft: (notes: string) => api.post<{ draft: MinutesDraft }>('/minutes/draft', { notes }),
 
-  minutesCreate: (data: MinutesInput) => api.post<{ minute: MeetingMinutesFull; created_projects?: CreatedProject[] }>('/minutes', data),
+  minutesCreate: (data: MinutesInput) => api.post<{ minute: MeetingMinutesFull }>('/minutes', data),
 
   minutesUpdate: (id: number, data: Partial<MinutesInput>) =>
-    api.patch<{ minute: MeetingMinutesFull; created_projects?: CreatedProject[] }>(`/minutes/${id}`, data),
+    api.patch<{ minute: MeetingMinutesFull }>(`/minutes/${id}`, data),
 
   minutesPush: (id: number) =>
-    api.post<{ minute: MeetingMinutesFull; created_projects?: CreatedProject[] }>(`/minutes/${id}/push`),
+    api.post<{ minute: MeetingMinutesFull }>(`/minutes/${id}/push`),
 
   minutesDelete: (id: number) => api.delete<{ deleted: true }>(`/minutes/${id}`),
 };
