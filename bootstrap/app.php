@@ -16,7 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        //
+        // Render (like most hosts) ends TLS at its proxy and forwards plain http with X-Forwarded-Proto: https.
+        // Without this Laravel thinks the request is http and writes http:// asset URLs, which the browser blocks.
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
