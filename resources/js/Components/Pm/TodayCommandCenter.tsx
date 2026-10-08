@@ -441,7 +441,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </section>
       )}
 
-      {/* ===== 3. PM checklist (ordered) ===== */>
+      {/* ===== 4. PM checklist (ordered) ===== */}
       <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
