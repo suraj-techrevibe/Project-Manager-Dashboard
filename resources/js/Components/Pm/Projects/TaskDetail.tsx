@@ -469,11 +469,19 @@ function SubTasks({
   }
 
   // Same toggle Taskmandu uses: done ↔ in progress.
-  const toggle = (s: SubTask) =>
-    run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, { status: s.status === 'Completed' ? 'In Progress' : 'Completed' }), "Couldn't update that sub-task.");
+  const toggle = (s: SubTask) => {
+    const completed = s.status !== 'Completed';
+    return run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
+      status: completed ? 'Completed' : 'In Progress',
+      completedAt: completed ? new Date().toISOString() : null,
+    }), "Couldn't update that sub-task.");
+  };
 
   const setStatus = (s: SubTask, status: TaskStatus) =>
-    run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, { status }), "Couldn't update that sub-task.");
+    run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
+      status,
+      completedAt: status === 'Completed' ? new Date().toISOString() : null,
+    }), "Couldn't update that sub-task.");
 
   async function comment(s: SubTask) {
     const text = (drafts[s._id] ?? '').trim();
