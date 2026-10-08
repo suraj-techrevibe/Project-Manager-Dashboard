@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Employee, PmFlag, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, WorkloadRow } from '../../types/pm';
 import SinceStrip from './SinceStrip';
@@ -313,6 +313,11 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   const [checklistOpen, setChecklistOpen] = useState(true);
   const activeAnswer = p.answers.find((a) => a.key === p.activeKey);
 
+  useEffect(() => {
+    if (!p.showDigest || !p.digestText) return;
+    requestAnimationFrame(() => document.getElementById('morning-digest')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [p.showDigest, p.digestText]);
+
   const goTo = (item: CheckItem) => {
     if (item.go?.tab) p.onNavigate?.(item.go.tab);
     else if (item.go?.section) jump(item.go.section);
@@ -439,7 +444,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </CollapsibleSection>
 
       {p.showDigest && p.digestText && (
-        <section className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
+        <section id="morning-digest" className="scroll-mt-20 rounded-3xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
           <h3 className="text-xl font-semibold text-indigo-950">Morning digest</h3>
           <p className="mt-1 text-sm text-indigo-700">Generated stand-up summary.</p>
           <div className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{p.digestText}</div>
@@ -711,7 +716,6 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       <Panel id="since-strip" tone="slate" title="What changed" sub="Movement on the board since the last working day.">
         {p.since ? <SinceStrip since={p.since} onOpenItem={p.onOpenSince} onShowFree={p.onShowFree} /> : <Empty>No change data yet.</Empty>}
       </Panel>
-      <button type="button" aria-label="Back to top" title="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed !bottom-5 !right-4 z-[9999] flex h-12 w-12 items-center justify-center rounded-full border border-white/40 bg-gradient-to-br from-blue-500 via-indigo-600 to-slate-900 text-xl font-bold text-white shadow-2xl shadow-indigo-500/40 sm:!bottom-6 sm:!right-6">↑</button>
     </div>
   );
 }
