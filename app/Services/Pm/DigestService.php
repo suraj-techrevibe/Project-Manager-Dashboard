@@ -59,12 +59,33 @@ class DigestService
         ];
     }
 
-    /** Every open sub-task for the morning digest, including assigned work. */
+    /** Recently completed items and open sub-tasks that need a meeting decision. */
     private function digestSubtasks(): array
     {
-        return \App\Models\PmSubtask::query()
-            ->whereNotIn('status', ['Completed', 'Cancelled'])
-            ->orderByDesc('created_at')
+        $recentCutoff = now()->subDays(7);
+
+        return \\App\\Models\\PmSubtask::query()
+            ->where(function ($query) use ($recentCutoff) {
+                $query->where(function ($completed) use ($recentCutoff) {
+                    $completed->where('status', 'Completed')
+                        ->whereNotNull('completed_at')
+                        ->where('completed_at', '>=', $recentCutoff);
+                })->orWhere(function ($flagged) {
+                    $flagged->whereNotIn('status', ['Completed', 'Cancelled'])
+                        ->where(function ($issues) {
+                            $issues->whereNull('assignee')
+                                ->orWhere('assignee', '')
+                                ->orWhere('status', 'Blocked')
+                                ->orWhere(function ($overdue) {
+                                    $overdue->whereNotNull('parent_due_at')
+                                        ->whereDate('parent_due_at', '<', now()->toDateString());
+                                });
+                        });
+                });
+            })
+            ->orderByRaw("CASE WHEN status = 'Completed' THEN 0 ELSE 1 END")
+            ->orderByDesc('completed_at')
+            ->limit(100)
             ->get()
             ->map(fn ($s) => [
                 'title' => $s->title,
@@ -72,9 +93,11 @@ class DigestService
                 'assignee' => $s->assignee,
                 'project_name' => $s->project_name,
                 'parent_title' => $s->parent_title,
+                'completed_at' => $s->completed_at?->toIso8601String(),
                 'issues' => array_values(array_filter([
                     ! $s->assignee ? 'unassigned' : null,
                     $s->status === 'Blocked' ? 'blocked' : null,
+                    $s->status !== 'Completed' && $s->parent_due_at && $s->parent_due_at->isPast() ? 'overdue' : null,
                 ])),
             ])
             ->values()
@@ -160,7 +183,7 @@ class DigestService
         $subtasks = $d['subtasks'] ?? [];
         if ($subtasks) {
             $lines[] = '';
-            $lines[] = $bold('Sub-tasks ('.count($subtasks).')');
+            $lines[] = $bold('Sub-tasks to discuss ('.count($subtasks).')');
             foreach (array_slice($subtasks, 0, $max) as $s) {
                 $issues = array_map(
                     fn ($issue) => $issue === 'unassigned' ? 'no owner' : $issue,
@@ -168,7 +191,8 @@ class DigestService
                 );
                 $reason = $issues ? ' — '.implode(', ', $issues) : '';
                 $status = ! empty($s['status']) ? ' · '.$s['status'] : '';
-                $lines[] = '• '.$esc($s['title']).' — '.$esc($s['project_name'].' › '.$s['parent_title']).' · '.$esc($s['assignee'] ?: 'Unassigned').$esc($status).$esc($reason);
+                $completedAt = ! empty($s['completed_at']) ? ' · completed '.substr((string) $s['completed_at'], 0, 10) : '';
+                $lines[] = '• '.$esc($s['title']).' — '.$esc($s['project_name'].' › '.$s['parent_title']).' · '.$esc($s['assignee'] ?: 'Unassigned').$esc($status).$esc($completedAt).$esc($reason);
             }
             if (count($subtasks) > $max) {
                 $lines[] = '  …and '.(count($subtasks) - $max).' more';
