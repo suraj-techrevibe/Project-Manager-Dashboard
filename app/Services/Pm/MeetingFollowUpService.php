@@ -78,8 +78,11 @@ class MeetingFollowUpService
                 $w = $r['w'];
                 // The discussion is carried over unchanged: pushing the item again updates the task's
                 // description, so it must not be replaced by a note about why the item is back.
+                // Taskmandu sub-tasks have no due-date field of their own, so when the leftover action
+                // items come from the live board (not from the original minutes), recover each one's due
+                // date — if it has one — from the matching action item of the meeting it came from.
                 $actions = $r['card'] && $r['subs']->isNotEmpty()
-                    ? $this->openSubtaskActions($r['subs'])
+                    ? $this->openSubtaskActions($r['subs'], $w['action_items'] ?? [], $today)
                     : array_values(array_map(
                         fn (array $a) => ['task' => trim((string) $a['task']), 'due_date' => $this->future($a['due_date'] ?? null, $today)],
                         array_filter($w['action_items'] ?? [], fn ($a) => trim((string) ($a['task'] ?? '')) !== '')
@@ -112,13 +115,15 @@ class MeetingFollowUpService
 
             $subs = $card->task_id ? PmSubtask::query()->where('task_id', $card->task_id)->get() : collect();
             $workItems[] = [
-                'owner' => (string) ($card->assignee ?? ''),
+                // assignee can be "A, B" for a multi-assignee task — the Owner field is a single-select of
+                // exact employee names, so a joined string matches nothing and shows up as if no owner carried.
+                'owner' => $this->firstName($card->assignee),
                 'project' => (string) ($card->project_name ?? ''),
                 'project_id' => null,
                 'requirement' => $card->title,
                 'discussion' => (string) ($card->description ?? ''),
-                'due_date' => null,
-                'action_items' => $this->openSubtaskActions($subs),
+                'due_date' => $card->due_at?->toDateString(),
+                'action_items' => $this->openSubtaskActions($subs, [], $today),
                 'note' => 'On the board: '.$flags->pluck('detail')->unique()->implode(' · '),
             ];
             $fromBoard++;
@@ -256,14 +261,37 @@ class MeetingFollowUpService
         };
     }
 
-    /** @return array<int, array{task: string, due_date: null}> */
-    private function openSubtaskActions(Collection $subs): array
+    /**
+     * Leftover (not completed/cancelled) sub-tasks as action items. Taskmandu sub-tasks carry no due date of
+     * their own, so each one's due date (if any) is recovered by matching its title against the original
+     * meeting's action items — the only place a due date for it was ever recorded.
+     *
+     * @param  array<int, array<string, mixed>>  $originalActions
+     * @return array<int, array{task: string, due_date: string|null}>
+     */
+    private function openSubtaskActions(Collection $subs, array $originalActions, string $today): array
     {
+        $dueByTitle = collect($originalActions)
+            ->filter(fn ($a) => trim((string) ($a['task'] ?? '')) !== '')
+            ->mapWithKeys(fn ($a) => [self::key((string) $a['task']) => $a['due_date'] ?? null]);
+
         return $subs->whereNotIn('status', ['Completed', 'Cancelled'])
-            ->pluck('title')
-            ->map(fn ($t) => ['task' => (string) $t, 'due_date' => null])
+            ->map(fn ($s) => [
+                'task' => (string) $s->title,
+                'due_date' => $this->future($dueByTitle->get(self::key((string) $s->title)), $today),
+            ])
             ->values()
             ->all();
+    }
+
+    /** "Jane Doe, Sam Lee" -> "Jane Doe" — a multi-assignee task has no single owner the Work Item form can select. */
+    private function firstName(?string $names): string
+    {
+        if (! $names) {
+            return '';
+        }
+
+        return trim(explode(',', $names)[0]);
     }
 
     private function future(?string $date, string $today): ?string
