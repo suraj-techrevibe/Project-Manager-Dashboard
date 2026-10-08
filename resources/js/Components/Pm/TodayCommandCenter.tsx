@@ -273,6 +273,7 @@ export interface CommandCenterProps {
   onPickPerson: (name: string) => void;
   onNavigate?: (tab: string) => void;
   onOpenProject?: (projectId: string) => void;
+  subtaskSummary: { total:number; completed:number; remaining:number; progress:number };
 }
 
 export default function TodayCommandCenter(p: CommandCenterProps) {
@@ -421,7 +422,26 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
 
       </section>
 
-      {/* ===== 3. PM checklist (ordered) ===== */}
+      {/* ===== 3. Sub-task progress ===== */}
+      {p.subtaskSummary.total > 0 && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">Sub-task progress</h3>
+              <p className="mt-0.5 text-sm text-slate-500">Completion is read directly from Taskmandu sub-task status.</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-slate-900">{p.subtaskSummary.completed}/{p.subtaskSummary.total}</div>
+              <div className="text-xs text-slate-500">{p.subtaskSummary.progress}% complete · {p.subtaskSummary.remaining} remaining</div>
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${p.subtaskSummary.progress}%` }} />
+          </div>
+        </section>
+      )}
+
+      {/* ===== 3. PM checklist (ordered) ===== */>
       <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
