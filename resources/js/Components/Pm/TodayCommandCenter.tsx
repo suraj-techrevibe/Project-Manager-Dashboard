@@ -266,6 +266,7 @@ export interface CommandCenterProps {
   onSync: () => void;
   showDigest: boolean;
   digestText: string | null;
+  digestLoading: boolean;
   onToggleDigest: () => void;
   onCopyStandup: () => void;
   pinCount: number;
@@ -314,9 +315,11 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   const activeAnswer = p.answers.find((a) => a.key === p.activeKey);
 
   useEffect(() => {
-    if (!p.showDigest || !p.digestText) return;
-    requestAnimationFrame(() => document.getElementById('morning-digest')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  }, [p.showDigest, p.digestText]);
+    if (!p.showDigest) return;
+    requestAnimationFrame(() => {
+      document.getElementById('morning-digest')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [p.showDigest]);
 
   const goTo = (item: CheckItem) => {
     if (item.go?.tab) p.onNavigate?.(item.go.tab);
@@ -443,11 +446,24 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </div>
       </CollapsibleSection>
 
-      {p.showDigest && p.digestText && (
+      {p.showDigest && (
         <section id="morning-digest" className="scroll-mt-20 rounded-3xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
           <h3 className="text-xl font-semibold text-indigo-950">Morning digest</h3>
-          <p className="mt-1 text-sm text-indigo-700">Generated stand-up summary.</p>
-          <div className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{p.digestText}</div>
+          <p className="mt-1 text-sm text-indigo-700">
+            {p.digestLoading ? 'Generating your stand-up summary…' : 'Generated stand-up summary.'}
+          </p>
+          <div className="mt-4 min-h-20 rounded-2xl border border-indigo-100 bg-white/70 p-4">
+            {p.digestLoading ? (
+              <div className="flex items-center gap-3 text-sm font-medium text-indigo-700">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" aria-hidden="true" />
+                Loading morning digest…
+              </div>
+            ) : p.digestText ? (
+              <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{p.digestText}</div>
+            ) : (
+              <div className="text-sm text-slate-500">No digest could be generated.</div>
+            )}
+          </div>
         </section>
       )}
 
