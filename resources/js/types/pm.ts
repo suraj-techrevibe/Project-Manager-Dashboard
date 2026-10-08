@@ -42,7 +42,7 @@ export interface ProjectMember { _id:string; userId:string; role:MemberRole; nam
 export interface Project { _id:string; name:string; description:string; status:ProjectStatus; manager:string; startDate:string|null; endDate:string|null; color:string; createdBy:string; documents:ProjectDocument[]; sharedVariables:SharedVariable[]; tasks:ProjectTask[]; members:ProjectMember[]; createdAt:string; updatedAt:string; }
 export interface ProjectInput { name:string; description?:string; status?:ProjectStatus; manager?:string; startDate?:string|null; endDate?:string|null; color?:string; }
 export interface NewTaskInput { title:string; description?:string; assignedToId?:string[]; assignedByName?:string; priority?:TaskPriority; dueDate:string; estimatedHours?:number; status?:TaskStatus; tags?:string[]; }
-export interface NewSubTaskInput { title:string; assignedToId?:string[]; assignedByName?:string; status?:TaskStatus; }
+export interface NewSubTaskInput { title:string; assignedToId?:string[]; assignedByName?:string; status?:TaskStatus; completedAt?:string|null; }
 export interface VariableInput { key:string; value?:string; isSecret?:boolean; type?:VariableType; description?:string; }
 export interface PullRequest { number:number; title:string; author:string|null; branch:string; base:string; draft:boolean; mergeable_state:string|null; checks_state:'success'|'failure'|'pending'|'unknown'; review_comments:number; updated_at:string; url:string; }
 export interface ActionItem { task:string; owner:string; due_date:string|null; }
