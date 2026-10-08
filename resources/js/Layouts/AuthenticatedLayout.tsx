@@ -174,6 +174,16 @@ export default function Authenticated({
             )}
 
             <main>{children}</main>
+
+            <button
+                type="button"
+                aria-label="Back to top"
+                title="Back to top"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/40 bg-gradient-to-br from-blue-500 via-indigo-600 to-slate-900 text-xl font-bold text-white shadow-2xl shadow-indigo-500/40 sm:bottom-6 sm:right-6"
+            >
+                ↑
+            </button>
         </div>
     );
 }
