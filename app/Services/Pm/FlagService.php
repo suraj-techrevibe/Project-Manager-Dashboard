@@ -93,6 +93,7 @@ class FlagService
             'due_today' => $n['due_today'] ?? 0,
             'due_soon' => $n['due_soon'] ?? 0,
             'subtasks_incomplete' => $n['subtasks_incomplete'] ?? 0,
+            'subtasks_incomplete' => $n['subtasks_incomplete'] ?? 0,
         ];
     }
 
