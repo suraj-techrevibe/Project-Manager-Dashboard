@@ -711,7 +711,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       <Panel id="since-strip" tone="slate" title="What changed" sub="Movement on the board since the last working day.">
         {p.since ? <SinceStrip since={p.since} onOpenItem={p.onOpenSince} onShowFree={p.onShowFree} /> : <Empty>No change data yet.</Empty>}
       </Panel>
-      <button type="button" aria-label="Back to top" title="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed bottom-5 right-4 z-[100] flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-gradient-to-br from-blue-500 via-indigo-600 to-slate-900 text-xl font-bold text-white shadow-xl shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:from-blue-400 hover:via-indigo-500 hover:to-slate-800 sm:bottom-6 sm:right-6">↑</button>
+      <button type="button" aria-label="Back to top" title="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed !bottom-5 !right-4 z-[9999] flex h-12 w-12 items-center justify-center rounded-full border border-white/40 bg-gradient-to-br from-blue-500 via-indigo-600 to-slate-900 text-xl font-bold text-white shadow-2xl shadow-indigo-500/40 sm:!bottom-6 sm:!right-6">↑</button>
     </div>
   );
 }
