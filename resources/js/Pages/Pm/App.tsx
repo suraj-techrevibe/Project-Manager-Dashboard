@@ -51,6 +51,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [syncing, setSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState(false);
   const [showDigest, setShowDigest] = useState(false);
+  const [digestLoading, setDigestLoading] = useState(false);
   const [digestText, setDigestText] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [pinnedOnly, setPinnedOnly] = useState(false);
@@ -138,13 +139,24 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const handleDigest = async () => {
     const next = !showDigest;
     setShowDigest(next);
-    if (next && !digestText) {
-      try {
-        const { data } = await pmApi.digest();
-        setDigestText(data.text);
-      } catch {
-        setDigestText(null);
-      }
+
+    if (!next) return;
+
+    // Render the digest shell first, then jump to it immediately.
+    requestAnimationFrame(() => {
+      document.getElementById('morning-digest')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    if (digestText) return;
+
+    setDigestLoading(true);
+    try {
+      const { data } = await pmApi.digest();
+      setDigestText(data.text);
+    } catch {
+      setDigestText(null);
+    } finally {
+      setDigestLoading(false);
     }
   };
 
@@ -288,6 +300,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onSync={() => void handleSync()}
                   showDigest={showDigest}
                   digestText={digestText}
+                  digestLoading={digestLoading}
                   onToggleDigest={() => void handleDigest()}
                   onCopyStandup={() => void copyStandup()}
                   pinCount={0}
