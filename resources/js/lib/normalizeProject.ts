@@ -10,6 +10,15 @@ import type { Project } from '../types/pm';
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v ? [String(v)] : []);
 
+const taskStatus = (value: unknown, completedAt?: unknown): string => {
+  const raw = String(value ?? '').trim();
+  const canonical = ['Assigned', 'Pending', 'In Progress', 'Blocked', 'Completed', 'Cancelled']
+    .find((status) => status.toLowerCase() === raw.toLowerCase());
+  // A completion timestamp is a safe fallback for older/malformed payloads
+  // that omit status, but never overrides an explicit non-completed status.
+  return canonical ?? (raw === '' && completedAt ? 'Completed' : raw || 'Assigned');
+};
+
 export function normalizeProject(raw: any): Project {
   return {
     ...raw,
@@ -37,14 +46,14 @@ export function normalizeProject(raw: any): Project {
       assignedByName: t.assignedByName ?? '',
       priority: t.priority ?? 'Medium',
       estimatedHours: t.estimatedHours ?? 0,
-      status: t.status ?? 'Assigned',
+      status: taskStatus(t.status),
       tags: arr<string>(t.tags),
       comments: arr<any>(t.comments),
       subTasks: arr<any>(t.subTasks).map((s) => ({
         ...s,
         assignedToId: ids(s.assignedToId),
         assignedByName: s.assignedByName ?? '',
-        status: s.status ?? 'Assigned',
+        status: taskStatus(s.status, s.completedAt),
         completedAt: s.completedAt ?? null,
         comments: arr<any>(s.comments),
       })),
