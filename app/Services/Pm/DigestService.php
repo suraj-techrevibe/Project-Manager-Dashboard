@@ -46,7 +46,7 @@ class DigestService
             'due_today' => $ofType('due_today'),
             'blocked' => $ofType('blocked'),
             'unassigned' => $ofType('unassigned'),
-            'subtasks' => $this->flags->subtasks(),
+            'subtasks' => $this->digestSubtasks(),
             'unverified' => $ofType('unverified'),
             'since' => $since,
             'meeting' => $this->followUp->latest(),
@@ -57,6 +57,28 @@ class DigestService
                 ->values()
                 ->all(),
         ];
+    }
+
+    /** Every open sub-task for the morning digest, including assigned work. */
+    private function digestSubtasks(): array
+    {
+        return \App\Models\PmSubtask::query()
+            ->whereNotIn('status', ['Completed', 'Cancelled'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($s) => [
+                'title' => $s->title,
+                'status' => $s->status,
+                'assignee' => $s->assignee,
+                'project_name' => $s->project_name,
+                'parent_title' => $s->parent_title,
+                'issues' => array_values(array_filter([
+                    ! $s->assignee ? 'unassigned' : null,
+                    $s->status === 'Blocked' ? 'blocked' : null,
+                ])),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -138,14 +160,15 @@ class DigestService
         $subtasks = $d['subtasks'] ?? [];
         if ($subtasks) {
             $lines[] = '';
-            $lines[] = $bold('Sub-tasks needing attention ('.count($subtasks).')');
+            $lines[] = $bold('Sub-tasks ('.count($subtasks).')');
             foreach (array_slice($subtasks, 0, $max) as $s) {
                 $issues = array_map(
                     fn ($issue) => $issue === 'unassigned' ? 'no owner' : $issue,
                     $s['issues'] ?? []
                 );
                 $reason = $issues ? ' — '.implode(', ', $issues) : '';
-                $lines[] = '• '.$esc($s['title']).' — '.$esc($s['project_name'].' › '.$s['parent_title']).$esc($reason);
+                $status = ! empty($s['status']) ? ' · '.$s['status'] : '';
+                $lines[] = '• '.$esc($s['title']).' — '.$esc($s['project_name'].' › '.$s['parent_title']).' · '.$esc($s['assignee'] ?: 'Unassigned').$esc($status).$esc($reason);
             }
             if (count($subtasks) > $max) {
                 $lines[] = '  …and '.(count($subtasks) - $max).' more';
