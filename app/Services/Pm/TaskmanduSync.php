@@ -17,9 +17,53 @@ class TaskmanduSync
     public function run(): int { $employees=$this->employeeMap(); $count=0; $this->baseline=PmCard::query()->exists(); $count+=$this->syncStandaloneTasks($employees); $count+=$this->syncProjectBoards($employees); try{Cache::forever('pm.last_synced_at',now()->toIso8601String());}catch(\Throwable $e){report($e);} return $count; }
     public function employeeMap(): array { $map=[]; foreach($this->client->paginate('/employees') as $e){$name=trim(($e['firstName']??'').' '.($e['lastName']??''));foreach(['employeeId','_id','userId'] as $key)if(!empty($e[$key])&&is_string($e[$key]))$map[$e[$key]]=$name;} return $map; }
     private function names(array $employees,array $ids):?string{$names=collect($ids)->map(fn($id)=>$employees[$id]??$id)->filter();return $names->isEmpty()?null:$names->implode(', ');}
-    private function syncStandaloneTasks(array $employees):int{$tasks=$this->client->paginate('/tasks');$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');foreach($tasks as $t){$card=PmCard::firstOrNew(['external_id'=>'task:'.$t['_id']]);[$existed,$oldStatus,$oldComments]=[$card->exists,$card->status,(int)$card->comments_count];$card->fill(['title'=>$t['title'],'description'=>$t['description']??null,'assignee'=>$this->names($employees,$t['assignedToId']??[]),'status'=>$t['status'],'due_at'=>$t['dueDate']??null,'last_activity_at'=>Carbon::parse($t['updatedAt']),'subtasks_count'=>0,'project_id'=>null,'project_name'=>null,'task_id'=>$t['_id'],'priority'=>$t['priority']??null,'estimated_hours'=>$t['estimatedHours']??null,'tags'=>$t['tags']??[],'comments_count'=>count($t['comments']??[]),'assigned_by'=>$t['assignedByName']??null,'url'=>$frontend?"{$frontend}/tasks/{$t['_id']}":null]);$card->save();$this->track($card,$existed,$oldStatus,$oldComments);}return count($tasks);}
-    private function syncProjectBoards(array $employees):int{$projects=$this->client->paginate('/projects');$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');$count=0;$seenSubs=[];foreach($projects as $p){foreach($p['tasks']??[] as $t){$lastComment=collect($t['comments']??[])->last();$lastActivity=$lastComment['createdAt']??$t['createdAt']??null;$card=PmCard::firstOrNew(['external_id'=>"project:{$p['_id']}:task:{$t['_id']}"]);[$existed,$oldStatus,$oldComments]=[$card->exists,$card->status,(int)$card->comments_count];$card->fill(['title'=>$t['title'],'description'=>$t['description']??null,'assignee'=>$this->names($employees,$t['assignedToId']??[]),'status'=>$t['status'],'due_at'=>$t['dueDate']??null,'last_activity_at'=>$lastActivity?Carbon::parse($lastActivity):null,'subtasks_count'=>count($t['subTasks']??[]),'project_id'=>$p['_id'],'project_name'=>$p['name'],'task_id'=>$t['_id'],'priority'=>$t['priority']??null,'estimated_hours'=>$t['estimatedHours']??null,'tags'=>$t['tags']??[],'comments_count'=>count($t['comments']??[]),'assigned_by'=>$t['assignedByName']??null,'url'=>$frontend?"{$frontend}/projects/{$p['_id']}":null]);$card->save();$this->track($card,$existed,$oldStatus,$oldComments);$count++;$this->syncSubTasks($p,$t,$card,$employees,$seenSubs);}}PmSubtask::query()->whereNotIn('external_id',$seenSubs?:[''])->delete();return $count;}
-    private function syncSubTasks(array $project,array $task,PmCard $parent,array $employees,array &$seen):void{$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');foreach($task['subTasks']??[] as $s){$key="project:{$project['_id']}:task:{$task['_id']}:sub:{$s['_id']}";$seen[]=$key;PmSubtask::updateOrCreate(['external_id'=>$key],['project_id'=>$project['_id'],'project_name'=>$project['name'],'task_id'=>$task['_id'],'subtask_id'=>$s['_id'],'parent_title'=>$task['title'],'parent_assignee'=>$parent->assignee,'parent_due_at'=>$task['dueDate']??null,'title'=>$s['title'],'assignee'=>$this->names($employees,$s['assignedToId']??[]),'assigned_by'=>$s['assignedByName']??null,'status'=>$s['status']??'Assigned','comments_count'=>count($s['comments']??[]),'remote_created_at'=>!empty($s['createdAt'])?Carbon::parse($s['createdAt']):null,'url'=>$frontend?"{$frontend}/projects/{$project['_id']}":null]);}}
+    private function syncStandaloneTasks(array $employees):int{$tasks=$this->client->paginate('/tasks');$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');foreach($tasks as $t){$card=PmCard::firstOrNew(['external_id'=>'task:'.$t['_id']]);[$existed,$oldStatus,$oldComments]=[$card->exists,$card->status,(int)$card->comments_count];$card->fill(['title'=>$t['title'],'description'=>$t['description']??null,'assignee'=>$this->names($employees,$t['assignedToId']??[]),'status'=>$t['status'],'due_at'=>$t['dueDate']??null,'last_activity_at'=>Carbon::parse($t['updatedAt']),'subtasks_count'=>0,'subtasks_completed_count'=>0,'project_id'=>null,'project_name'=>null,'task_id'=>$t['_id'],'priority'=>$t['priority']??null,'estimated_hours'=>$t['estimatedHours']??null,'tags'=>$t['tags']??[],'comments_count'=>count($t['comments']??[]),'assigned_by'=>$t['assignedByName']??null,'url'=>$frontend?"{$frontend}/tasks/{$t['_id']}":null]);$card->save();$this->track($card,$existed,$oldStatus,$oldComments);}return count($tasks);}
+    private function syncProjectBoards(array $employees):int{$projects=$this->client->paginate('/projects');$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');$count=0;$seenSubs=[];foreach($projects as $p){foreach($p['tasks']??[] as $t){$lastComment=collect($t['comments']??[])->last();$lastActivity=$lastComment['createdAt']??$t['createdAt']??null;$card=PmCard::firstOrNew(['external_id'=>"project:{$p['_id']}:task:{$t['_id']}"]);[$existed,$oldStatus,$oldComments]=[$card->exists,$card->status,(int)$card->comments_count];$card->fill(['title'=>$t['title'],'description'=>$t['description']??null,'assignee'=>$this->names($employees,$t['assignedToId']??[]),'status'=>$t['status'],'due_at'=>$t['dueDate']??null,'last_activity_at'=>$lastActivity?Carbon::parse($lastActivity):null,'subtasks_count'=>count($t['subTasks']??[]),'subtasks_completed_count'=>$this->completedSubtaskCount($t['subTasks']??[]),'project_id'=>$p['_id'],'project_name'=>$p['name'],'task_id'=>$t['_id'],'priority'=>$t['priority']??null,'estimated_hours'=>$t['estimatedHours']??null,'tags'=>$t['tags']??[],'comments_count'=>count($t['comments']??[]),'assigned_by'=>$t['assignedByName']??null,'url'=>$frontend?"{$frontend}/projects/{$p['_id']}":null]);$card->save();$this->track($card,$existed,$oldStatus,$oldComments);$count++;$this->syncSubTasks($p,$t,$card,$employees,$seenSubs);}}PmSubtask::query()->whereNotIn('external_id',$seenSubs?:[''])->delete();return $count;}
+    private function syncSubTasks(array $project,array $task,PmCard $parent,array $employees,array &$seen):void{
+        $frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');
+
+        foreach($task['subTasks']??[] as $s){
+            $key="project:{$project['_id']}:task:{$task['_id']}:sub:{$s['_id']}";
+            $seen[]=$key;
+            $local=PmSubtask::query()->where('external_id',$key)->first();
+            $oldStatus=$local?->status;
+            $status=(string)($s['status']??'Assigned');
+            $completed=$status==='Completed';
+            $completedAt=$completed&&!empty($s['completedAt'])?Carbon::parse($s['completedAt']):($completed?now():null);
+
+            $sub=PmSubtask::updateOrCreate(['external_id'=>$key],[
+                'project_id'=>$project['_id'],
+                'project_name'=>$project['name'],
+                'task_id'=>$task['_id'],
+                'subtask_id'=>$s['_id'],
+                'parent_title'=>$task['title'],
+                'parent_assignee'=>$parent->assignee,
+                'parent_due_at'=>$task['dueDate']??null,
+                'title'=>$s['title'],
+                'assignee'=>$this->names($employees,$s['assignedToId']??[]),
+                'assigned_by'=>$s['assignedByName']??null,
+                'status'=>$status,
+                'completed_at'=>$completedAt,
+                'comments_count'=>count($s['comments']??[]),
+                'remote_created_at'=>!empty($s['createdAt'])?Carbon::parse($s['createdAt']):null,
+                'url'=>$frontend?"{$frontend}/projects/{$project['_id']}":null,
+            ]);
+
+            if($this->baseline && $oldStatus!==null && $oldStatus!==$status){
+                PmActivity::record('subtask_status_change',$parent,[
+                    'from'=>$oldStatus,
+                    'to'=>$status,
+                    'subtask_id'=>(string)$s['_id'],
+                    'subtask_title'=>(string)($s['title']??''),
+                ]);
+            }
+        }
+    }
+
+    private function completedSubtaskCount(array $subtasks): int
+    {
+        return collect($subtasks)->filter(fn($s)=>(string)($s['status']??'')==='Completed')->count();
+    }
     public function assignSubTask(PmSubtask $sub,string $employeeId):string{$this->client->patch("/projects/{$sub->project_id}/tasks/{$sub->task_id}/subtasks/{$sub->subtask_id}",['assignedToId'=>[$employeeId]]);$name=collect($this->listEmployees())->firstWhere('employeeId',$employeeId)['name']??null;return $name?:$employeeId;}
     public function createSubTask(string $projectId,string $taskId,string $title,string $assigneeEmployeeId,string $assignedByName):array{return $this->client->post("/projects/{$projectId}/tasks/{$taskId}/subtasks",['title'=>$title,'assignedToId'=>[$assigneeEmployeeId],'assignedByName'=>$assignedByName,'status'=>'Assigned']);}
     public function updateTask(string $taskId,string $title,string $description,string $assigneeEmployeeId,string $dueDate,array $extra=[]):array{return $this->client->patch("/tasks/{$taskId}",array_merge(['title'=>$title,'description'=>$description,'assignedToId'=>[$assigneeEmployeeId],'dueDate'=>$dueDate],array_filter($extra,fn($v)=>$v!==null&&$v!==[]&&$v!=='')));}
