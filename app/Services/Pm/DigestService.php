@@ -133,16 +133,22 @@ class DigestService
         $section('Blocked', $d['blocked']);
         $section('Unassigned', $d['unassigned']);
 
-        // Sub-tasks nobody owns — easy to miss because they're buried inside a task.
-        $unownedSubs = array_values(array_filter($d['subtasks'] ?? [], fn ($s) => in_array('unassigned', $s['issues'], true)));
-        if ($unownedSubs) {
+        // Sub-tasks are their own work items and need to appear in the digest,
+        // not only when their parent task is flagged.
+        $subtasks = $d['subtasks'] ?? [];
+        if ($subtasks) {
             $lines[] = '';
-            $lines[] = $bold('Unassigned sub-tasks ('.count($unownedSubs).')');
-            foreach (array_slice($unownedSubs, 0, $max) as $s) {
-                $lines[] = '• '.$esc($s['title']).' — '.$esc($s['project_name'].' › '.$s['parent_title']);
+            $lines[] = $bold('Sub-tasks needing attention ('.count($subtasks).')');
+            foreach (array_slice($subtasks, 0, $max) as $s) {
+                $issues = array_map(
+                    fn ($issue) => $issue === 'unassigned' ? 'no owner' : $issue,
+                    $s['issues'] ?? []
+                );
+                $reason = $issues ? ' — '.implode(', ', $issues) : '';
+                $lines[] = '• '.$esc($s['title']).' — '.$esc($s['project_name'].' › '.$s['parent_title']).$esc($reason);
             }
-            if (count($unownedSubs) > $max) {
-                $lines[] = '  …and '.(count($unownedSubs) - $max).' more';
+            if (count($subtasks) > $max) {
+                $lines[] = '  …and '.(count($subtasks) - $max).' more';
             }
         }
 
