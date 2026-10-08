@@ -8,7 +8,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('pm:sync')->hourly()->withoutOverlapping();
+Schedule::command('pm:sync')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('pm:report')->weekdays()->dailyAt('18:00');
 Schedule::command('pm:report --weekly')->fridays()->at('18:30');
 
