@@ -35,6 +35,10 @@ class FlagService
             }
 
             if ($c->status === 'Completed') {
+                $remainingSubtasks = max(0, (int) ($c->subtasks_count ?? 0) - (int) ($c->subtasks_completed_count ?? 0));
+                if ($remainingSubtasks > 0) {
+                    $flags->push($this->flag($c, 'subtasks_incomplete', 'warning', "Marked completed with {$remainingSubtasks} sub-task".($remainingSubtasks === 1 ? '' : 's').' remaining'));
+                }
                 if (! $c->verified && $c->last_activity_at?->gte(now()->subDays(14))) {
                     $flags->push($this->flag($c, 'unverified', 'neutral', 'Marked done, not verified'));
                 }
@@ -88,6 +92,7 @@ class FlagService
             'unassigned' => $n['unassigned'] ?? 0,
             'due_today' => $n['due_today'] ?? 0,
             'due_soon' => $n['due_soon'] ?? 0,
+            'subtasks_incomplete' => $n['subtasks_incomplete'] ?? 0,
         ];
     }
 
