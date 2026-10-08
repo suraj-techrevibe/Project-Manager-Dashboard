@@ -22,6 +22,7 @@ import type {
   ProjectMember,
   MemberRole,
   MeetingMinutesSummary,
+  CarryOver,
   MeetingMinutesFull,
   MinutesDraft,
   MinutesInput,
@@ -218,4 +219,6 @@ export const pmApi = {
     api.post<{ minute: MeetingMinutesFull }>(`/minutes/${id}/push`),
 
   minutesDelete: (id: number) => api.delete<{ deleted: true }>(`/minutes/${id}`),
+  /** Unfinished Work Items from the last meeting plus overdue / blocked / stuck board tasks. */
+  minutesCarryOver: () => api.get<CarryOver>('/minutes/carry-over'),
 };

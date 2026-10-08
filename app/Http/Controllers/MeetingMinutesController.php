@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MeetingMinutes;
 use App\Services\Pm\ClaudeClient;
+use App\Services\Pm\MeetingFollowUpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,6 +28,12 @@ class MeetingMinutesController extends Controller
             ]);
 
         return response()->json(['minutes' => $minutes]);
+    }
+
+    /** Work Items to start a new meeting's minutes with: unfinished ones from the last meeting + stuck board tasks. */
+    public function carryOver(MeetingFollowUpService $followUp): JsonResponse
+    {
+        return response()->json($followUp->carryOver());
     }
 
     public function show(MeetingMinutes $minute): JsonResponse

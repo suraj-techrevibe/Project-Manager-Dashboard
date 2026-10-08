@@ -7,6 +7,7 @@ use App\Models\PmCard;
 use App\Models\PmSubtask;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\DigestService;
+use App\Services\Pm\MeetingFollowUpService;
 use App\Services\Pm\FlagService;
 use App\Services\Pm\GitHubService;
 use App\Services\Pm\GitService;
@@ -29,6 +30,7 @@ class PmController extends Controller
         private GitService $git,
         private GitHubService $github,
         private DigestService $digest,
+        private MeetingFollowUpService $followUp,
     ) {}
 
     /** Pages that used to be tabs inside this one page, now at /pm/{page}. */
@@ -174,6 +176,7 @@ class PmController extends Controller
             'subtasks' => $this->flags->subtasks(),
             'staff' => $this->staff(),
             'since' => $this->flags->sinceLastWorkday($workload),
+            'meeting_followup' => $this->followUp->latest(),
             'lastSyncedAt' => Cache::get('pm.last_synced_at'),
         ];
     }

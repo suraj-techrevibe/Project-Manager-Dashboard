@@ -12,7 +12,7 @@ use Throwable;
  */
 class DigestService
 {
-    public function __construct(private FlagService $flags) {}
+    public function __construct(private FlagService $flags, private MeetingFollowUpService $followUp) {}
 
     /** True when at least one delivery channel is configured. */
     public function channels(): array
@@ -49,6 +49,7 @@ class DigestService
             'subtasks' => $this->flags->subtasks(),
             'unverified' => $ofType('unverified'),
             'since' => $since,
+            'meeting' => $this->followUp->latest(),
             'idle' => collect($workload)->where('open', 0)->pluck('name')->values()->all(),
             'over_capacity' => collect($workload)
                 ->filter(fn ($w) => $capacity > 0 && $w['week_hours'] > $capacity)
@@ -86,6 +87,28 @@ class DigestService
                 $since['overdue']['count'],
                 $since['created']['count']
             );
+        }
+
+        // Where last meeting's Work Items stand now — the loop from minutes back to the board.
+        if (! empty($d['meeting'])) {
+            $mt = $d['meeting'];
+            $c = $mt['counts'];
+            $mDate = $mt['meeting']['meeting_date'] ? \Illuminate\Support\Carbon::parse($mt['meeting']['meeting_date'])->format('D j M') : '';
+            $lines[] = '';
+            $lines[] = $bold(sprintf('Last meeting: %s%s — %d of %d done', $esc($mt['meeting']['title']), $mDate ? " ({$mDate})" : '', $c['done'], $c['total']));
+
+            $open = array_values(array_filter($mt['items'], fn ($i) => ! in_array($i['state'], ['done', 'cancelled'], true)));
+            if (! $open) {
+                $lines[] = 'Everything from that meeting is done.';
+            }
+            foreach (array_slice($open, 0, $max) as $i) {
+                $who = $i['assignee'] ?: ($i['owner'] ?: 'Unassigned');
+                $where = $i['project'] ? $i['project'].' · ' : '';
+                $lines[] = '• '.$esc($i['requirement']).' — '.$esc($where.$who).' — '.$esc($i['detail']);
+            }
+            if (count($open) > $max) {
+                $lines[] = '  …and '.(count($open) - $max).' more';
+            }
         }
 
         $section = function (string $title, array $items) use (&$lines, $bold, $esc, $max, $slack) {

@@ -7,7 +7,11 @@ export interface WorkloadRow { name:string; designation?:string|null; open:numbe
 export interface SinceItem { card_id:number; title:string; assignee:string|null; project_id:string|null; project_name:string|null; task_id:string|null; url:string|null; at:string|null; }
 export interface SinceGroup { count:number; items:SinceItem[]; }
 export interface SinceSummary { since:string; label:string; tracked:boolean; completed:SinceGroup; blocked:SinceGroup; created:SinceGroup; overdue:SinceGroup; idle:string[]; }
-export interface TodayData { flags:PmFlag[]; metrics:PmMetrics; workload:WorkloadRow[]; subtasks:SubtaskFlag[]; staff:Employee[]; since:SinceSummary; lastSyncedAt:string|null; }
+export type FollowUpState='blocked'|'overdue'|'stuck'|'not_pushed'|'not_started'|'in_progress'|'done'|'cancelled';
+export interface FollowUpItem { requirement:string; owner:string|null; assignee:string|null; project:string|null; state:FollowUpState; detail:string; due:string|null; subtasks:{done:number;total:number}|null; url:string|null; card_id:number|null; }
+export interface MeetingFollowUp { meeting:{id:number;title:string;meeting_date:string|null;days_ago:number|null}; items:FollowUpItem[]; counts:Record<FollowUpState|'total',number>; }
+export interface CarryOver { from:MeetingFollowUp['meeting']|null; work_items:MeetingWorkItem[]; from_meeting:number; from_board:number; }
+export interface TodayData { flags:PmFlag[]; metrics:PmMetrics; workload:WorkloadRow[]; subtasks:SubtaskFlag[]; staff:Employee[]; since:SinceSummary; lastSyncedAt:string|null; meeting_followup?:MeetingFollowUp|null; }
 export interface DigestPreview { text:string; channels:{slack:boolean;email:boolean}; }
 export interface DraftTicket { title:string; description:string; level:'senior dev'|'intern'|string; estimate_hours:number; }
 export interface PushSubtask { title:string; description?:string; assignee_employee_id:string; due_date:string|null; }
@@ -43,7 +47,7 @@ export interface VariableInput { key:string; value?:string; isSecret?:boolean; t
 export interface PullRequest { number:number; title:string; author:string|null; branch:string; base:string; draft:boolean; mergeable_state:string|null; checks_state:'success'|'failure'|'pending'|'unknown'; review_comments:number; updated_at:string; url:string; }
 export interface ActionItem { task:string; owner:string; due_date:string|null; }
 export interface MeetingWorkItemAction { task:string; due_date:string|null; }
-export interface MeetingWorkItem { owner:string; project:string; /** Set when the work item is saved as final: the Taskmandu project it points to. */ project_id?:string|null; requirement:string; discussion:string; action_items:MeetingWorkItemAction[]; due_date:string|null; }
+export interface MeetingWorkItem { owner:string; project:string; /** Set when the work item is saved as final: the Taskmandu project it points to. */ project_id?:string|null; requirement:string; discussion:string; action_items:MeetingWorkItemAction[]; due_date:string|null; /** Why a carried-over item is here. Shown in the editor only; never saved. */ note?:string; }
 export type MinutesStatus='draft'|'final';
 export interface MinutesTopic { title:string; notes:string; decision:string; }
 export interface MeetingMinutesSummary { id:number; title:string; status:MinutesStatus; meeting_date:string; attendees:string[]; action_items:ActionItem[]; work_items?:MeetingWorkItem[]; }

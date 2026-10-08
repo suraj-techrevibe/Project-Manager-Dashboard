@@ -2,6 +2,7 @@ import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import FlagsPanel from '@/Components/Pm/FlagsPanel';
+import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import GitPanel from '@/Components/Pm/GitPanel';
@@ -144,6 +145,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                 {showAllTasks ? (
                   <AllTasksPanel tasks={allTasks} onOpenTask={openTask} onBack={() => setShowAllTasks(false)} />
                 ) : (
+                  <div className="flex flex-col gap-4">
+                  <MeetingFollowUpCard data={today.meeting_followup} />
                   <FlagsPanel
                     active={page === 'today'}
                     flags={today.flags}
@@ -153,6 +156,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                     lastSyncedAt={today.lastSyncedAt}
                     onOpenTask={openTask}
                   />
+                  </div>
                 )}
               </div>
             ) : (

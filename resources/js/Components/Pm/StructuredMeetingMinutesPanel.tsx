@@ -137,6 +137,23 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
       return out;
     });
   };
+  const [carryBusy, setCarryBusy] = useState(false);
+  const [carryMsg, setCarryMsg] = useState<string | null>(null);
+  /** Start from where the last meeting left off: its unfinished Work Items plus overdue / blocked / stuck board tasks. */
+  async function carryOver() {
+    setCarryBusy(true); setCarryMsg(null);
+    try {
+      const { data } = await pmApi.minutesCarryOver();
+      const have = new Set(workItems.map(w => `${normName(w.requirement)}|${normName(w.project)}`));
+      const fresh = data.work_items.map(w => ({ ...normalizeWork(w), note: w.note })).filter(w => !have.has(`${normName(w.requirement)}|${normName(w.project)}`));
+      if (!fresh.length) { setCarryMsg(data.work_items.length ? 'Those items are already in this meeting.' : 'Nothing to carry over: the last meeting is finished and nothing on the board is overdue, blocked or stuck.'); return; }
+      const base = workItems.length === 1 && !workItemHasContent(workItems[0]) ? [] : workItems; // replace the blank starter item
+      setWorkItems([...base, ...fresh]);
+      const added = fresh.length;
+      setCarryMsg(`Added ${added} Work Item${added === 1 ? '' : 's'}${data.from ? ` (${data.from_meeting} unfinished from “${data.from.title}”, ${data.from_board} from the board)` : ` from the board`}. Check owners and due dates, remove what you don't need.`);
+    } catch (e) { setCarryMsg(err(e, "Couldn't load carry-over items.")); }
+    finally { setCarryBusy(false); }
+  }
   const text = useMemo(() => workItemsToText({ title, meeting_date: date, attendees, work_items: workItems }), [title, date, attendees, workItems]);
   const warnings = useMemo(() => workItemWarnings(workItems, attendees), [workItems, attendees]);
   async function copyText() { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } }
@@ -183,7 +200,7 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
     try {
       // Draft: keep the typed names untouched. Final: match each name to an existing project, or create it (once per distinct name).
       const items = await resolveProjects(valid, nextStatus === 'final');
-      const payload = { title: title.trim(), status: nextStatus, meeting_date: date, attendees, work_items: items.map(w => ({ ...w, owner: w.owner.trim(), project: w.project.trim(), requirement: w.requirement.trim(), discussion: w.discussion.trim(), action_items: w.action_items.filter(a => a.task.trim()).map(a => ({ task: a.task.trim(), due_date: a.due_date || null })) })) };
+      const payload = { title: title.trim(), status: nextStatus, meeting_date: date, attendees, work_items: items.map(w => ({ ...w, note: undefined, owner: w.owner.trim(), project: w.project.trim(), requirement: w.requirement.trim(), discussion: w.discussion.trim(), action_items: w.action_items.filter(a => a.task.trim()).map(a => ({ task: a.task.trim(), due_date: a.due_date || null })) })) };
       const { data } = isEdit ? await pmApi.minutesUpdate(initial!.id, payload) : await pmApi.minutesCreate(payload);
       onSaved(data.minute);
     } catch (e) { setError(e instanceof Error && !(e as { response?: unknown }).response ? e.message : err(e, "Couldn't save these minutes.")); }
@@ -204,9 +221,10 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
     {!pasting && step === 0 && <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="grid gap-3 md:grid-cols-2"><Field label="Meeting"><input value={title} onChange={e => setTitle(e.target.value)} placeholder="Daily standup — DevOps" className={inputCls} /></Field><Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} /></Field></div>
       <Field label="Attendees"><div className="flex flex-col gap-2"><input value={attendeeSearch} onChange={e => setAttendeeSearch(e.target.value)} placeholder="Search team…" className={inputCls} /><div className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded-md border border-slate-200 p-2">{shown.map(e => <label key={e.employeeId} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={attendees.includes(e.name)} onChange={() => toggleAttendee(e.name)} /><span>{e.name}</span></label>)}</div><div className="text-xs text-slate-400">{attendees.join(', ') || 'No attendees selected'}</div></div></Field>
     </div>}
-    {!pasting && step === 1 && <div className="flex flex-col gap-4"><div className="flex items-center justify-between"><div><h4 className="text-sm font-semibold text-slate-800">WORK ITEMS</h4><p className="text-xs text-slate-500">One Work Item = one Task. Action Items = Subtasks.</p></div><button onClick={() => setWorkItems(ws => [...ws, blankWork()])} className={ghostBtn}>+ Add Work Item</button></div>
+    {!pasting && step === 1 && <div className="flex flex-col gap-4"><div className="flex items-center justify-between"><div><h4 className="text-sm font-semibold text-slate-800">WORK ITEMS</h4><p className="text-xs text-slate-500">One Work Item = one Task. Action Items = Subtasks.</p></div><div className="flex flex-wrap gap-2"><button onClick={carryOver} disabled={carryBusy} title="Unfinished items from the last meeting, plus overdue, blocked and stuck tasks from the board" className={ghostBtn}>{carryBusy ? 'Loading…' : '↩ Carry over from last meeting'}</button><button onClick={() => setWorkItems(ws => [...ws, blankWork()])} className={ghostBtn}>+ Add Work Item</button></div></div>{carryMsg && <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">{carryMsg}</div>}
       {showWarn && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{emptyFields > 0 ? <><b>{emptyFields} empty field{emptyFields === 1 ? '' : 's'}</b> marked in red.</> : <>No empty fields.</>} This is only a warning — you can still save, and push, with blanks.{pasteNotes.map(n => <div key={n} className="mt-1 text-amber-700">• {n}</div>)}</div>}
       {workItems.map((w,i) => <div key={i} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Work Item {i + 1}</span>{workItems.length > 1 && <button onClick={() => removeWork(i)} className="text-xs text-red-500">Remove</button>}</div>
+        {w.note && <div className="mb-3 rounded-md bg-indigo-50 px-2 py-1 text-xs text-indigo-700">↩ {w.note}</div>}
         <div className="grid gap-3 md:grid-cols-2"><Field label="Person / Owner"><select value={w.owner} onChange={e => { updateWork(i,{owner:e.target.value}); setOwnerHints(h => { const n = { ...h }; delete n[i]; return n; }); }} className={`${inputCls} ${bad(!w.owner.trim())}`}><option value="">Select owner…</option>{employees.map(e => <option key={e.employeeId} value={e.name}>{e.name}</option>)}</select>{ownerHints[i]?.hint && !(ownerHints[i].tone === 'warn' && w.owner.trim() && ownerHints[i].owner !== w.owner) && <p className={`mt-1 text-[11px] ${ownerHints[i].tone === 'warn' ? 'text-red-600' : 'text-slate-500'}`}>{ownerHints[i].hint}</p>}</Field><Field label="Business / Project"><input list={`mm-projects-${i}`} value={w.project} onChange={e => updateWork(i,{project:e.target.value})} placeholder="Ad Consult" className={`${inputCls} ${bad(!w.project.trim())}`} /><datalist id={`mm-projects-${i}`}>{projects.map(p => <option key={p._id} value={p.name} />)}</datalist>
           {splitProjectNames(w.project).length > 1
             ? <button onClick={() => splitWork(i)} className="mt-1 text-[11px] font-medium text-amber-700 underline hover:text-amber-800">Split into {splitProjectNames(w.project).length} Work Items (one per business)</button>
