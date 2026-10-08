@@ -65,10 +65,29 @@ export default function TaskDetail({
 
   useEffect(() => {
     let active = true;
-    pmApi.project(project._id).then(({ data }) => {
-      if (active) onChanged(data.project);
-    }).catch(() => {});
-    return () => { active = false; };
+    let inFlight = false;
+
+    const refreshFromTaskmandu = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const { data } = await pmApi.project(project._id);
+        if (active) onChanged(data.project);
+      } catch {
+        // A temporary network/API failure should not blank the current task.
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void refreshFromTaskmandu();
+    // Taskmandu is authoritative: pick up completions made outside PM while
+    // this detail is open, without requiring a manual refresh or checkbox click.
+    const interval = window.setInterval(refreshFromTaskmandu, 15000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, [project._id, task._id]);
 
   const index = project.tasks.findIndex((t) => t._id === task._id);
@@ -467,7 +486,6 @@ function SubTasks({
   const openSub = useUrlParam('sub');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [deleting, setDeleting] = useState<SubTask | null>(null);
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, TaskStatus>>({});
 
   async function add() {
     const t = title.trim();
@@ -481,24 +499,19 @@ function SubTasks({
   }
 
   // Same toggle Taskmandu uses: done ↔ in progress.
-  const toggle = async (s: SubTask) => {
-    const currentStatus = statusOverrides[s._id] ?? s.status;
-    const completed = currentStatus !== 'Completed';
-    const nextStatus: TaskStatus = completed ? 'Completed' : 'In Progress';
-    const ok = await run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
-      status: nextStatus,
+  const toggle = (s: SubTask) => {
+    const completed = s.status !== 'Completed';
+    return run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
+      status: completed ? 'Completed' : 'In Progress',
       completedAt: completed ? new Date().toISOString() : null,
     }), "Couldn't update that sub-task.");
-    if (ok) setStatusOverrides((m) => ({ ...m, [s._id]: nextStatus }));
   };
 
-  const setStatus = async (s: SubTask, status: TaskStatus) => {
-    const ok = await run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
+  const setStatus = (s: SubTask, status: TaskStatus) =>
+    run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
       status,
       completedAt: status === 'Completed' ? new Date().toISOString() : null,
     }), "Couldn't update that sub-task.");
-    if (ok) setStatusOverrides((m) => ({ ...m, [s._id]: status }));
-  };
 
   async function comment(s: SubTask) {
     const text = (drafts[s._id] ?? '').trim();
@@ -520,7 +533,7 @@ function SubTasks({
       {task.subTasks.length === 0 && <p className="text-sm text-slate-400">No sub-tasks yet.</p>}
 
       {task.subTasks.map((s) => {
-        const displayedStatus = statusOverrides[s._id] ?? s.status;
+        const displayedStatus = s.status;
         const done = displayedStatus === 'Completed';
         const open = openSub === s._id;
         return (
