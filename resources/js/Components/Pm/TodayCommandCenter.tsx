@@ -91,7 +91,7 @@ const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behav
 function Panel({ id, tone, title, sub, badge, action, children }: { id?: string; tone: Tone; title: string; sub?: string; badge?: ReactNode; action?: ReactNode; children: ReactNode }) {
   const t = TONES[tone];
   return (
-    <section id={id} className={`scroll-mt-4 rounded-3xl border p-6 shadow-sm ${t.panel}`}>
+    <section id={id} className={`scroll-mt-4 rounded-[1.75rem] border p-6 shadow-md shadow-slate-200/40 ${t.panel}`}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className={`flex items-center gap-2 text-lg font-semibold ${t.head}`}>
@@ -313,9 +313,12 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 rounded-[2rem] bg-slate-50/80 p-1 sm:p-2">
       {/* ===== 1. Hero ===== */}
-      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-7 text-white shadow-lg sm:p-9">
+      <section className="relative isolate overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-7 text-white shadow-xl shadow-slate-900/10 sm:p-9">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="relative">
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div className="max-w-3xl">
             <div className="text-xs font-semibold uppercase tracking-widest text-indigo-200">Command center · {today}</div>
@@ -355,6 +358,25 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           </div>
         </div>
 
+        <div className="mt-6 grid grid-cols-2 gap-2 border-t border-white/10 pt-5 sm:grid-cols-4">
+          <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-red-200">Overdue</div>
+            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{counts.overdue}</div>
+          </div>
+          <div className="rounded-2xl border border-orange-400/20 bg-orange-500/10 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">Blocked</div>
+            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{counts.blocked}</div>
+          </div>
+          <div className="rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-200">Due today</div>
+            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{counts.due_today}</div>
+          </div>
+          <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-200">No owner</div>
+            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{noOwner}</div>
+          </div>
+        </div>
+
         {/* Redirect buttons */}
         <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-white/10 pt-5">
           <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Go to</span>
@@ -364,6 +386,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             </button>
           ))}
         </div>
+        </div>
       </section>
 
       {/* ===== 2. Big numbers ===== */}
@@ -372,12 +395,15 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           {KPIS.map((k) => {
             const t = TONES[k.tone];
             return (
-              <button key={k.key} onClick={() => p.onFilter(k.key)} className={`rounded-3xl border p-5 text-left shadow-sm transition ${k.value ? t.tile : 'border-slate-200 bg-white'}`}>
+              <button key={k.key} onClick={() => p.onFilter(k.key)} className={`rounded-3xl border p-5 text-left transition duration-200 hover:-translate-y-0.5 ${k.value ? `${t.tile} shadow-md` : 'border-slate-200 bg-white/90 shadow-sm'} ${k.value && (k.key === 'overdue' || k.key === 'blocked') ? 'ring-1 ring-red-200 shadow-lg' : ''}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-700">{k.label}</span>
+                  <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    {k.label}
+                    {k.value > 0 && (k.key === 'overdue' || k.key === 'blocked') && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-700">Action</span>}
+                  </span>
                   <span className={`h-2.5 w-2.5 rounded-full ${k.value ? t.dot : 'bg-emerald-400'}`} />
                 </div>
-                <div className={`mt-3 text-5xl font-bold tabular-nums ${k.value ? t.num : 'text-slate-300'}`}>{k.value}</div>
+                <div className={`mt-3 text-5xl font-bold tabular-nums sm:text-6xl ${k.value ? t.num : 'text-slate-300'}`}>{k.value}</div>
                 <div className="mt-2 text-xs text-slate-500">{k.value ? k.hint : 'All clear ✓'}</div>
                 {k.value > 0 && <div className={`mt-0.5 text-xs font-semibold ${t.num}`}>View tasks →</div>}
               </button>
@@ -393,7 +419,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             { label: 'Overloaded', value: String(over.length), sub: over.length ? over.slice(0, 2).map((w) => w.name.split(' ')[0]).join(', ') : 'nobody', tone: 'rose' as Tone },
             { label: p.since ? `Done since ${p.since.label}` : 'Done recently', value: String(p.since?.completed.count ?? 0), sub: p.since?.tracked ? `${p.since.created.count} new tasks` : 'fills in after 2nd sync', tone: 'teal' as Tone },
           ].map((m) => (
-            <div key={m.label} className={`rounded-2xl border px-5 py-4 ${TONES[m.tone].panel}`}>
+            <div key={m.label} className={`rounded-2xl border px-5 py-4 shadow-sm backdrop-blur-sm ${TONES[m.tone].panel}`}>
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{m.label}</div>
               <div className={`mt-1 text-3xl font-bold tabular-nums ${TONES[m.tone].num}`}>{m.value}</div>
               <div className="truncate text-xs text-slate-500">{m.sub}</div>
