@@ -272,6 +272,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   agingCards={agingCards}
                   unassignedTasks={unassignedTasks}
                   unassignedSubtasks={today.subtasks}
+                  subtaskSummary={today.subtask_summary}
                   staff={today.staff}
                   since={today.since}
                   timelineProjects={projects}
