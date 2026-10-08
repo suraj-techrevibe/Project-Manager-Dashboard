@@ -410,7 +410,7 @@ export default function TodayDashboard({
 
   // Tile counts follow the list, so snoozing or verifying a card updates them immediately.
   const counts = useMemo(() => {
-    const c: Record<FlagType, number> = { overdue: 0, stuck: 0, blocked: 0, unverified: 0, unassigned: 0, due_today: 0, due_soon: 0 };
+    const c: Record<FlagType, number> = { overdue: 0, stuck: 0, blocked: 0, unverified: 0, unassigned: 0, due_today: 0, due_soon: 0, subtasks_incomplete: 0 };
     flags.forEach((f) => (c[f.type] += 1));
     return c;
   }, [flags]);
