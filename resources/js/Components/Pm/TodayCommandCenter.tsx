@@ -113,6 +113,21 @@ function Panel({ id, tone, title, sub, badge, action, children }: { id?: string;
   );
 }
 
+function CollapsibleSection({ id, title, sub, children }: { id?: string; title: string; sub?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section id={id} className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="mb-4 w-full text-left">
+        <h3 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+          {title}<span className="text-xs text-slate-400">{open ? '▾' : '▸'}</span>
+        </h3>
+        {sub && <p className="mt-0.5 text-sm text-slate-500">{sub}</p>}
+      </button>
+      {open && children}
+    </section>
+  );
+}
+
 function LinkButton({ children, onClick, tone = 'slate' }: { children: ReactNode; onClick: () => void; tone?: Tone }) {
   return (
     <button onClick={onClick} className={`rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50 ${TONES[tone].head}`}>
@@ -398,7 +413,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </section>
 
       {/* ===== 2. Big numbers ===== */}
-      <section>
+      <CollapsibleSection title="Today at a glance" sub="Click any metric to open its relevant task list.">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
           {KPIS.map((k) => {
             const t = TONES[k.tone];
@@ -418,8 +433,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             );
           })}
         </div>
-
-      </section>
+      </CollapsibleSection>
 
       {/* ===== 3. PM checklist (ordered) ===== */}
       <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
@@ -480,11 +494,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </section>
 
       {/* ===== 4. Act now ===== */}
-      <section id="act-now" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-xl font-semibold text-slate-900">Act now</h3>
-          <span className="text-sm text-slate-500">Open the task list with the correct filter.</span>
-        </div>
+      <CollapsibleSection id="act-now" title="Act now" sub="Open the task list with the correct filter.">
         <div className="grid gap-3 md:grid-cols-3">
           {[
             { title: 'Overdue', tone: 'red' as Tone, count: counts.overdue, text: 'Past the due date.', filter: 'overdue' },
@@ -500,7 +510,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             </button>;
           })}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* ===== 5. Stalled + waiting on client ===== */}
       <div className="grid gap-5 lg:grid-cols-2">
@@ -690,6 +700,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       <Panel id="since-strip" tone="slate" title="What changed" sub="Movement on the board since the last working day.">
         {p.since ? <SinceStrip since={p.since} onOpenItem={p.onOpenSince} onShowFree={p.onShowFree} /> : <Empty>No change data yet.</Empty>}
       </Panel>
+      <button type="button" aria-label="Back to top" title="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed bottom-5 right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-bold text-slate-700 shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-50">↑</button>
     </div>
   );
 }
