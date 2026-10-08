@@ -57,7 +57,7 @@ export const pmApi = {
   today: () => api.get<TodayData>('/today'),
 
   /** Pull from Taskmandu now (can take a while), then return fresh Today data. */
-  sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 180_000 }),
+  sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 60_000 }),
 
   /** The morning digest as text, plus which delivery channels are configured. */
   digest: () => api.get<DigestPreview>('/digest'),
