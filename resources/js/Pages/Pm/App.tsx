@@ -262,21 +262,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           <Pane show={page === 'today'}>
             {today ? (
               <div className="flex flex-col gap-4">
-                {showDigest && digestText && (
-                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm whitespace-pre-wrap text-slate-700">{digestText}</div>
-                )}
-                <div className="flex justify-end">
-                  <button onClick={() => setShowAllTasks((v) => !v)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50">
-                    {showAllTasks ? 'Back to command center' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
-                  </button>
-                </div>
-                {showAllTasks && <div id="task-list"><AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => {
-  if (taskFilter === 'open') return t.status !== 'Completed' && t.status !== 'Cancelled';
-  if (taskFilter === 'free' || taskFilter === 'overloaded') return true;
-  if (taskFilter === 'done_since') return t.status === 'Completed';
-  const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id));
-  return ids.has(t.card_id);
-}) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} /></div>}
                 <TodayCommandCenter
                   counts={counts}
                   workload={today.workload}
@@ -296,6 +281,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   syncing={syncing}
                   onSync={() => void handleSync()}
                   showDigest={showDigest}
+                  digestText={digestText}
                   onToggleDigest={() => void handleDigest()}
                   onCopyStandup={() => void copyStandup()}
                   pinCount={0}
@@ -337,6 +323,20 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onOpenProject={(id) => visitPm('projects', { project: id })}
                 />
                 <MeetingFollowUpCard data={today.meeting_followup} />
+                <div id="task-list" className="scroll-mt-4">
+                  <div className="mb-2 flex justify-end">
+                    <button onClick={() => setShowAllTasks((v) => !v)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50">
+                      {showAllTasks ? 'Hide all tasks' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
+                    </button>
+                  </div>
+                  {showAllTasks && <AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => {
+                    if (taskFilter === 'open') return t.status !== 'Completed' && t.status !== 'Cancelled';
+                    if (taskFilter === 'free' || taskFilter === 'overloaded') return true;
+                    if (taskFilter === 'done_since') return t.status === 'Completed';
+                    const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id));
+                    return ids.has(t.card_id);
+                  }) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} />}
+                </div>
               </div>
             ) : (
               <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
