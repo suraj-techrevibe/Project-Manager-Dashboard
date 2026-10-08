@@ -262,6 +262,21 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           <Pane show={page === 'today'}>
             {today ? (
               <div className="flex flex-col gap-4">
+                {showDigest && digestText && (
+                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm whitespace-pre-wrap text-slate-700">{digestText}</div>
+                )}
+                <div className="flex justify-end">
+                  <button onClick={() => setShowAllTasks((v) => !v)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50">
+                    {showAllTasks ? 'Back to command center' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
+                  </button>
+                </div>
+                {showAllTasks && <div id="task-list"><AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => {
+  if (taskFilter === 'open') return t.status !== 'Completed' && t.status !== 'Cancelled';
+  if (taskFilter === 'free' || taskFilter === 'overloaded') return true;
+  if (taskFilter === 'done_since') return t.status === 'Completed';
+  const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id));
+  return ids.has(t.card_id);
+}) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} /></div>}
                 <TodayCommandCenter
                   counts={counts}
                   workload={today.workload}
@@ -292,6 +307,12 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onAsk={setActiveKey}
                   onClearAsk={() => setActiveKey(null)}
                   onShowTaskList={(filter) => {
+                    if (filter === 'free' || filter === 'overloaded') {
+                      setShowAllTasks(false);
+                      setTaskFilter(null);
+                      requestAnimationFrame(() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                      return;
+                    }
                     const map: Record<string, string> = { blocking: 'blocked', duesoon: 'due_soon', unowned: 'unassigned', stuck: 'stuck', unverified: 'unverified' };
                     setTaskFilter(map[filter] ?? filter);
                     setShowAllTasks(true);
@@ -311,25 +332,10 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onAssignSubtask={(id, employeeId) => void pmApi.assignSubtask(id, employeeId).then(() => loadToday())}
                   onOpenSince={(item) => item.project_id && item.task_id ? openTask({ projectId: item.project_id, taskId: item.task_id }) : undefined}
                   onShowFree={() => document.getElementById('capacity')?.scrollIntoView({ behavior: 'smooth' })}
-                  onPickPerson={() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth' })}
+                  onPickPerson={() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onOpenProject={(id) => visitPm('projects', { project: id })}
                 />
-                {showDigest && digestText && (
-                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm whitespace-pre-wrap text-slate-700">{digestText}</div>
-                )}
-                <div className="flex justify-end">
-                  <button onClick={() => setShowAllTasks((v) => !v)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50">
-                    {showAllTasks ? 'Back to command center' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
-                  </button>
-                </div>
-                {showAllTasks && <div id="task-list"><AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => {
-  if (taskFilter === 'open') return t.status !== 'Completed' && t.status !== 'Cancelled';
-  if (taskFilter === 'free' || taskFilter === 'overloaded') return true;
-  if (taskFilter === 'done_since') return t.status === 'Completed';
-  const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id));
-  return ids.has(t.card_id);
-}) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} /></div>}
                 <MeetingFollowUpCard data={today.meeting_followup} />
               </div>
             ) : (
