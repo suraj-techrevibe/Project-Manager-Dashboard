@@ -93,17 +93,17 @@ function Panel({ id, tone, title, sub, badge, action, children }: { id?: string;
   const t = TONES[tone];
   const [open, setOpen] = useState(true);
   return (
-    <section id={id} className={`scroll-mt-4 rounded-[1.75rem] border p-6 shadow-md shadow-slate-200/40 ${t.panel}`}>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <button type="button" onClick={() => setOpen((v) => !v)} className="text-left">
-            <h3 className={`flex items-center gap-2 text-lg font-semibold ${t.head}`}>
+    <section id={id} className={`w-full min-w-0 overflow-hidden scroll-mt-4 rounded-[1.75rem] border p-3 shadow-md shadow-slate-200/40 sm:p-6 ${t.panel}`}>
+      <div className="mb-4 flex min-w-0 flex-wrap items-start justify-between gap-3 sm:mb-5">
+        <div className="min-w-0 flex-1">
+          <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full min-w-0 max-w-full text-left">
+            <h3 className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words text-base font-semibold sm:text-lg ${t.head}`}>
               <span className={`h-2.5 w-2.5 rounded-full ${t.dot}`} />
               {title}
               {badge}
               <span className="ml-1 text-xs text-slate-400">{open ? '▾' : '▸'}</span>
             </h3>
-            {sub && <p className="mt-0.5 text-sm text-slate-500">{sub}</p>}
+            {sub && <p className="mt-0.5 break-words text-xs leading-relaxed text-slate-500 sm:text-sm">{sub}</p>}
           </button>
         </div>
         {action}
@@ -173,7 +173,7 @@ function TaskRow({ c, onOpen, onNudge, extra, compact }: { c: CcCard; onOpen: ()
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
+    <div className="flex min-w-0 flex-col items-stretch gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:p-3.5">
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-medium text-slate-900">{t.title}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
@@ -673,7 +673,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         badge={<Count n={noOwner} tone="violet" />}
         action={p.unassignedTasks.length > 5 ? <LinkButton tone="violet" onClick={() => p.onFilter('unassigned')}>View all →</LinkButton> : undefined}
       >
-        <div className="grid gap-2.5 lg:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-2.5 xl:grid-cols-2">
           {p.unassignedTasks.slice(0, 6).map((c) => (
             <AssignRow
               key={c.card_id}
