@@ -34,6 +34,7 @@ class BoardChecks
         'unverified' => 'Done but not verified',
         'by_project' => 'Progress by project',
         'snoozed' => 'What is snoozed?',
+        'subtasks_incomplete' => 'Completed tasks with unfinished sub-tasks',
     ];
 
     public function list(): array
@@ -67,6 +68,7 @@ class BoardChecks
             'unverified' => $this->unverified($today),
             'by_project' => $this->byProject(),
             'snoozed' => $this->snoozed($today),
+            'subtasks_incomplete' => $this->subtasksIncomplete(),
         };
     }
 
@@ -241,6 +243,28 @@ class BoardChecks
         })->sortByDesc('_sort')->values();
 
         return $this->result('by_project', $rows, $rows->count().' '.Str::plural('project', $rows->count()).', most overdue first.', 'No tasks synced yet — run php artisan pm:sync.');
+    }
+
+    private function subtasksIncomplete(): array
+    {
+        $cards = PmCard::query()->where('status', 'Completed')
+            ->where('subtasks_count', '>', 0)
+            ->whereColumn('subtasks_completed_count', '<', 'subtasks_count')
+            ->orderByDesc('subtasks_count')->get();
+
+        $rows = $cards->map(fn ($c) => $this->row(
+            $c,
+            now()->startOfDay(),
+            "Completed task still has ".max(0, (int) $c->subtasks_count - (int) $c->subtasks_completed_count)." unfinished sub-task".((int) $c->subtasks_count - (int) $c->subtasks_completed_count === 1 ? '' : 's'),
+            'warning'
+        ));
+
+        return $this->result(
+            'subtasks_incomplete',
+            $rows,
+            $rows->count().' completed '.Str::plural('task', $rows->count()).' still have unfinished sub-tasks.',
+            'All completed tasks have all sub-tasks completed.'
+        );
     }
 
     private function snoozed($today): array
