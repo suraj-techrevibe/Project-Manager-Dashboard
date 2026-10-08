@@ -74,7 +74,7 @@ class PmController extends Controller
 
         Cache::forget('pm.employees');
 
-        return response()->json($this->todayPayload() + ['synced' => $synced]);
+        return response()->json(['synced' => $synced]);
     }
 
 
