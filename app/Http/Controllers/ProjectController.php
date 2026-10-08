@@ -272,10 +272,54 @@ class ProjectController extends Controller
     {
         $data = $r->validate($this->subTaskRules(partial: true));
 
-        return $this->respond(fn () => $this->taskmandu->patch(
-            "/projects/{$project}/tasks/{$task}/subtasks/{$subTask}",
-            $this->payload($data),
-        ));
+        try {
+            $res = $this->taskmandu->patch(
+                "/projects/{$project}/tasks/{$task}/subtasks/{$subTask}",
+                $this->payload($data),
+            );
+
+            // Keep the PM mirror in step immediately. The next scheduled/manual
+            // sync will reconcile it against Taskmandu again.
+            if (array_key_exists('status', $data)) {
+                $completed = $data['status'] === 'Completed';
+                PmSubtask::updateOrCreate(
+                    [
+                        'external_id' => "project:{$project}:task:{$task}:sub:{$subTask}",
+                    ],
+                    [
+                        'project_id' => $project,
+                        'task_id' => $task,
+                        'subtask_id' => $subTask,
+                        'status' => $data['status'],
+                        'completed_at' => $completed ? ($data['completedAt'] ?? now()) : null,
+                    ],
+                );
+            }
+
+            $data = $this->present($res['data'] ?? null);
+
+            if (is_array($data)) {
+                $mirrors = PmSubtask::query()
+                    ->where('project_id', $project)
+                    ->get(['task_id', 'subtask_id', 'status', 'completed_at'])
+                    ->keyBy(fn ($s) => "{$s->task_id}:{$s->subtask_id}");
+
+                foreach ($data['tasks'] ?? [] as &$t) {
+                    foreach ($t['subTasks'] ?? [] as &$s) {
+                        $mirror = $mirrors->get("{$t['_id']}:{$s['_id']}");
+                        if ($mirror && $mirror->status === 'Completed') {
+                            $s['status'] = 'Completed';
+                            $s['completedAt'] = $mirror->completed_at?->toIso8601String();
+                        }
+                    }
+                }
+                unset($t, $s);
+            }
+
+            return response()->json(['project' => $data]);
+        } catch (RuntimeException $e) {
+            return $this->fail($e);
+        }
     }
 
     public function deleteSubTask(string $project, string $task, string $subTask): JsonResponse
