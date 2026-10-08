@@ -194,8 +194,9 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         unassigned: today.metrics.unassigned,
         unverified: today.metrics.unverified,
         due_soon: today.metrics.due_soon,
+        subtasks_incomplete: today.metrics.subtasks_incomplete,
       }
-    : { overdue: 0, blocked: 0, due_today: 0, stuck: 0, unassigned: 0, unverified: 0, due_soon: 0 };
+    : { overdue: 0, blocked: 0, due_today: 0, stuck: 0, unassigned: 0, unverified: 0, due_soon: 0, subtasks_incomplete: 0 };
 
   const cardByFlag = (type: PmFlag['type']) => commandCards.filter((c) => c.flags.some((f) => f.type === type));
   const agingCards = cardByFlag('stuck');
@@ -289,6 +290,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   agingCards={agingCards}
                   unassignedTasks={unassignedTasks}
                   unassignedSubtasks={today.subtasks}
+                  subtaskSummary={today.subtask_summary}
                   staff={today.staff}
                   since={today.since}
                   timelineProjects={projects}
