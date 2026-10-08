@@ -114,8 +114,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     setSyncNotice(false);
     const noticeTimer = window.setTimeout(() => setSyncNotice(true), 10_000);
     try {
-      const { data } = await pmApi.sync();
-      setToday(data);
+      await pmApi.sync();
+      await loadToday();
       await loadProjects();
     } catch (e) {
       const message = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
