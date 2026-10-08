@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Employee, PmFlag, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, WorkloadRow } from '../../types/pm';
 import SinceStrip from './SinceStrip';
