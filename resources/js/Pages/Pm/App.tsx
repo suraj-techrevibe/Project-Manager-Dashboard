@@ -288,7 +288,10 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onSync={() => void handleSync()}
                   showDigest={showDigest}
                   digestText={digestText}
-                  onToggleDigest={() => void handleDigest()}
+                  onToggleDigest={() => {
+                    void handleDigest();
+                    requestAnimationFrame(() => document.getElementById('morning-digest')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }}
                   onCopyStandup={() => void copyStandup()}
                   pinCount={0}
                   maxPins={6}
