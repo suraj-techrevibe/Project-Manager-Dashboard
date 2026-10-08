@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
 import type { Employee, NewSubTaskInput, NewTaskInput, Project, ProjectComment, ProjectTask, SubTask, TaskPriority, TaskStatus } from '../../../types/pm';
@@ -62,6 +62,14 @@ export default function TaskDetail({
   const [subD, setSubD] = useState<Record<string, SubDraft>>({});
   const [newSubs, setNewSubs] = useState<NewSub[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    pmApi.project(project._id).then(({ data }) => {
+      if (active) onChanged(data.project);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [project._id, task._id]);
 
   const index = project.tasks.findIndex((t) => t._id === task._id);
   const taskKey = `${project.name.slice(0, 4).toUpperCase()}-${index + 1}`;
@@ -143,7 +151,10 @@ export default function TaskDetail({
       }
       const sp: Partial<NewSubTaskInput> = {};
       if (x.title.trim() !== sub.title) sp.title = x.title.trim();
-      if (x.status !== sub.status) sp.status = x.status;
+      if (x.status !== sub.status) {
+        sp.status = x.status;
+        sp.completedAt = x.status === 'Completed' ? new Date().toISOString() : null;
+      }
       if (!sameIds(x.assignees, sub.assignedToId)) sp.assignedToId = x.assignees;
       if (Object.keys(sp).length && !(await run(sub._id, () => pmApi.updateSubTask(project._id, task._id, sub._id, sp), "Couldn't update a sub-task."))) return;
     }
@@ -456,6 +467,7 @@ function SubTasks({
   const openSub = useUrlParam('sub');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [deleting, setDeleting] = useState<SubTask | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, TaskStatus>>({});
 
   async function add() {
     const t = title.trim();
@@ -469,19 +481,24 @@ function SubTasks({
   }
 
   // Same toggle Taskmandu uses: done ↔ in progress.
-  const toggle = (s: SubTask) => {
-    const completed = s.status !== 'Completed';
-    return run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
-      status: completed ? 'Completed' : 'In Progress',
+  const toggle = async (s: SubTask) => {
+    const currentStatus = statusOverrides[s._id] ?? s.status;
+    const completed = currentStatus !== 'Completed';
+    const nextStatus: TaskStatus = completed ? 'Completed' : 'In Progress';
+    const ok = await run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
+      status: nextStatus,
       completedAt: completed ? new Date().toISOString() : null,
     }), "Couldn't update that sub-task.");
+    if (ok) setStatusOverrides((m) => ({ ...m, [s._id]: nextStatus }));
   };
 
-  const setStatus = (s: SubTask, status: TaskStatus) =>
-    run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
+  const setStatus = async (s: SubTask, status: TaskStatus) => {
+    const ok = await run(s._id, () => pmApi.updateSubTask(project._id, task._id, s._id, {
       status,
       completedAt: status === 'Completed' ? new Date().toISOString() : null,
     }), "Couldn't update that sub-task.");
+    if (ok) setStatusOverrides((m) => ({ ...m, [s._id]: status }));
+  };
 
   async function comment(s: SubTask) {
     const text = (drafts[s._id] ?? '').trim();
@@ -503,7 +520,8 @@ function SubTasks({
       {task.subTasks.length === 0 && <p className="text-sm text-slate-400">No sub-tasks yet.</p>}
 
       {task.subTasks.map((s) => {
-        const done = s.status === 'Completed';
+        const displayedStatus = statusOverrides[s._id] ?? s.status;
+        const done = displayedStatus === 'Completed';
         const open = openSub === s._id;
         return (
           <div key={s._id} className="rounded-lg border border-slate-100 p-2">
@@ -514,10 +532,10 @@ function SubTasks({
                 {s.assignedToId.length > 0 && <div className="text-xs text-slate-400">{s.assignedToId.map(nameFor).join(', ')}</div>}
               </div>
               <select
-                value={s.status}
+                value={displayedStatus}
                 onChange={(e) => setStatus(s, e.target.value as TaskStatus)}
                 disabled={busy === s._id}
-                className={`shrink-0 rounded border-0 px-1.5 py-0.5 text-xs ${taskStatusColors[s.status]}`}
+                className={`shrink-0 rounded border-0 px-1.5 py-0.5 text-xs ${taskStatusColors[displayedStatus]}`}
               >
                 {TASK_STATUSES.map((st) => (
                   <option key={st} value={st}>{st}</option>
