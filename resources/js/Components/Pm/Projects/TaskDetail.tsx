@@ -10,6 +10,7 @@ import {
   ConfirmModal,
   ErrorNote,
   Field,
+  Modal,
   dangerBtn,
   formatTimestamp,
   ghostBtn,
@@ -46,6 +47,7 @@ export default function TaskDetail({
   const [hours, setHours] = useState(String(task.estimatedHours ?? 0));
   const [tags, setTags] = useState((task.tags ?? []).join(', '));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const index = project.tasks.findIndex((t) => t._id === task._id);
   const taskKey = `${project.name.slice(0, 4).toUpperCase()}-${index + 1}`;
@@ -93,7 +95,10 @@ export default function TaskDetail({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-700">← Back to {project.name}</button>
-        <button onClick={() => setConfirmDelete(true)} className={dangerBtn}>Delete task</button>
+        <div className="flex gap-2">
+          <button onClick={() => setEditOpen(true)} className={ghostBtn}>Edit</button>
+          <button onClick={() => setConfirmDelete(true)} className={dangerBtn}>Delete task</button>
+        </div>
       </div>
 
       <div>
@@ -205,6 +210,167 @@ export default function TaskDetail({
           onClose={() => setConfirmDelete(false)}
         />
       )}
+
+      {editOpen && (
+        <EditTaskModal
+          project={project}
+          task={task}
+          employees={employees}
+          onChanged={onChanged}
+          onClose={() => setEditOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Everything about a task in one place: its own fields plus every sub-task's title and assignees. */
+function EditTaskModal({
+  project,
+  task,
+  employees,
+  onChanged,
+  onClose,
+}: {
+  project: Project;
+  task: ProjectTask;
+  employees: Employee[];
+  onChanged: (p: Project) => void;
+  onClose: () => void;
+}) {
+  const { busy, error, run } = useRunner(onChanged);
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description);
+  const [status, setStatus] = useState<TaskStatus>(task.status);
+  const [priority, setPriority] = useState<TaskPriority>(task.priority);
+  const [dueDate, setDueDate] = useState(task.dueDate);
+  const [hours, setHours] = useState(String(task.estimatedHours ?? 0));
+  const [tags, setTags] = useState((task.tags ?? []).join(', '));
+  const [assignees, setAssignees] = useState<string[]>(task.assignedToId);
+
+  async function save() {
+    const t = title.trim();
+    if (!t) return;
+    const ok = await run(
+      'save',
+      () =>
+        pmApi.updateProjectTask(project._id, task._id, {
+          title: t,
+          description,
+          status,
+          priority,
+          dueDate,
+          estimatedHours: Math.max(0, Number(hours) || 0),
+          tags: tags.split(',').map((x) => x.trim()).filter(Boolean),
+          assignedToId: assignees,
+        }),
+      "Couldn't save those changes."
+    );
+    if (ok) onClose();
+  }
+
+  return (
+    <Modal title="Edit task" onClose={onClose} wide>
+      <div className="flex flex-col gap-3">
+        <ErrorNote message={error} />
+        <Field label="Title">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={inputCls} autoFocus />
+        </Field>
+        <Field label="Description">
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} maxLength={5000} className={inputCls} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Status">
+            <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} className={inputCls}>
+              {TASK_STATUSES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Priority">
+            <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)} className={inputCls}>
+              {TASK_PRIORITIES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Due date">
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Estimated hours">
+            <input type="number" min={0} max={1000} value={hours} onChange={(e) => setHours(e.target.value)} className={inputCls} />
+          </Field>
+        </div>
+        <Field label="Tags (comma separated)">
+          <input value={tags} onChange={(e) => setTags(e.target.value)} className={inputCls} />
+        </Field>
+        <Field label={`Assignees (${assignees.length})`}>
+          <AssigneePicker employees={employees} value={assignees} onChange={setAssignees} />
+        </Field>
+
+        {task.subTasks.length > 0 && (
+          <div>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Sub-tasks</span>
+            <div className="flex flex-col gap-2">
+              {task.subTasks.map((s) => (
+                <SubTaskEditRow key={s._id} project={project} task={task} sub={s} employees={employees} onChanged={onChanged} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-2 flex justify-end gap-2">
+          <button onClick={onClose} className={ghostBtn}>Cancel</button>
+          <button onClick={save} disabled={busy === 'save' || !title.trim()} className={primaryBtn}>
+            {busy === 'save' ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** One sub-task's title + assignees, saved on its own (sub-tasks are a separate API call from the task itself). */
+function SubTaskEditRow({
+  project,
+  task,
+  sub,
+  employees,
+  onChanged,
+}: {
+  project: Project;
+  task: ProjectTask;
+  sub: SubTask;
+  employees: Employee[];
+  onChanged: (p: Project) => void;
+}) {
+  const { busy, error, run } = useRunner(onChanged);
+  const [title, setTitle] = useState(sub.title);
+  const [assignees, setAssignees] = useState<string[]>(sub.assignedToId);
+  const [saved, setSaved] = useState(false);
+  const dirty = title.trim() !== sub.title || assignees.join(',') !== sub.assignedToId.join(',');
+
+  async function save() {
+    const t = title.trim();
+    if (!t) return;
+    const ok = await run('save', () => pmApi.updateSubTask(project._id, task._id, sub._id, { title: t, assignedToId: assignees }), "Couldn't update that sub-task.");
+    if (ok) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-100 p-2">
+      <ErrorNote message={error} />
+      <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={`${inputCls} mb-2`} />
+      <AssigneePicker employees={employees} value={assignees} onChange={setAssignees} />
+      <div className="mt-2 flex items-center gap-2">
+        <button onClick={save} disabled={!dirty || busy === 'save' || !title.trim()} className="rounded-md bg-indigo-600 px-2 py-1 text-xs text-white disabled:opacity-50">
+          {busy === 'save' ? 'Saving…' : 'Save sub-task'}
+        </button>
+        {saved && <span className="text-xs text-green-600">Saved</span>}
+      </div>
     </div>
   );
 }
