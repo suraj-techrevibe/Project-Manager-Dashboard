@@ -54,7 +54,7 @@ export function normalizeProject(raw: any): Project {
         assignedToId: ids(s.assignedToId),
         assignedByName: s.assignedByName ?? '',
         status: taskStatus(s.status, s.completedAt),
-        completedAt: s.completedAt ?? null,
+        // Taskmandu may not expose completedAt on older sub-tasks. When a sub-task\n        // is already Completed, updatedAt is the best available completion timestamp.\n        completedAt: s.completedAt ?? (taskStatus(s.status, s.completedAt) === 'Completed' ? (s.updatedAt ?? null) : null),
         comments: arr<any>(s.comments),
       })),
     })),
