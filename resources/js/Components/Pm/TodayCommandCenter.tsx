@@ -315,6 +315,30 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   const [checklistOpen, setChecklistOpen] = useState(true);
   const activeAnswer = p.answers.find((a) => a.key === p.activeKey);
 
+  // Completed nested subtasks come from the live project data, not parent-task counts.
+  const completedSubtasks = useMemo(
+    () => p.timelineProjects.flatMap((project) =>
+      project.tasks.flatMap((task) =>
+        task.subTasks
+          .filter((subtask) => subtask.status === 'Completed')
+          .map((subtask) => ({
+            projectId: project._id,
+            projectName: project.name,
+            taskId: task._id,
+            taskTitle: task.title,
+            subtaskId: subtask._id,
+            subtaskTitle: subtask.title,
+            completedAt: subtask.completedAt,
+          }))
+      )
+    ).sort((a, b) => {
+      const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return bTime - aTime;
+    }),
+    [p.timelineProjects]
+  );
+
   useEffect(() => {
     if (!p.showDigest) return;
     requestAnimationFrame(() => {
@@ -487,6 +511,47 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           </div>
         </section>
       )}
+
+
+      {/* ===== Completed subtasks QA ===== */}
+      <Panel
+        id="completed-subtasks"
+        tone="emerald"
+        title="Completed subtasks · QA"
+        sub="Completed subtasks synced from Taskmandu. Open the parent task to check the completion state and strikethrough."
+        badge={<Count n={completedSubtasks.length} tone="emerald" />}
+      >
+        {p.projectsLoading ? (
+          <Empty>Loading project subtasks…</Empty>
+        ) : completedSubtasks.length ? (
+          <div className="space-y-2.5">
+            {completedSubtasks.slice(0, 12).map((item) => (
+              <div key={`${item.projectId}:${item.taskId}:${item.subtaskId}`} className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">✓</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-slate-800">{item.subtaskTitle}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">{item.projectName} · Parent task: {item.taskTitle}</div>
+                  <div className="mt-1 text-[11px] text-emerald-700">
+                    Completed{item.completedAt ? ` · ${new Date(item.completedAt).toLocaleString()}` : ' · date not recorded'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => p.onOpenTask({ projectId: item.projectId, taskId: item.taskId, subId: item.subtaskId })}
+                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                >
+                  QA in Task Detail →
+                </button>
+              </div>
+            ))}
+            {completedSubtasks.length > 12 && (
+              <p className="pt-1 text-center text-xs text-slate-500">Showing 12 of {completedSubtasks.length} completed subtasks. Use Projects to inspect others.</p>
+            )}
+          </div>
+        ) : (
+          <Empty>No completed subtasks found in the currently loaded project data. Sync/refresh projects from Taskmandu, then check again.</Empty>
+        )}
+      </Panel>
 
       {/* ===== 4. PM checklist (ordered) ===== */}
       <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
