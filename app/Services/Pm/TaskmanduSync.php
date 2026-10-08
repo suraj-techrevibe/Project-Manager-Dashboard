@@ -29,7 +29,7 @@ class TaskmanduSync
             $oldStatus=$local?->status;
             $status=(string)($s['status']??'Assigned');
             $completed=$status==='Completed';
-            $completedAt=$completed&&!empty($s['completedAt'])?Carbon::parse($s['completedAt']):($completed?now():null);
+            $completedAt=$completed&&!empty($s['completedAt'])?Carbon::parse($s['completedAt']):null;
 
             $sub=PmSubtask::updateOrCreate(['external_id'=>$key],[
                 'project_id'=>$project['_id'],
