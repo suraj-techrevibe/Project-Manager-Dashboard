@@ -24,8 +24,8 @@ class MeetingFollowUpService
 {
     /** Lower rank = needs you sooner. */
     private const RANK = [
-        'blocked' => 0, 'overdue' => 1, 'stuck' => 2, 'not_pushed' => 3,
-        'not_started' => 4, 'in_progress' => 5, 'done' => 6, 'cancelled' => 7,
+        'blocked' => 0, 'overdue' => 1, 'subtasks_incomplete' => 2, 'stuck' => 3, 'not_pushed' => 4,
+        'not_started' => 5, 'in_progress' => 6, 'done' => 7, 'cancelled' => 8,
     ];
 
     public function __construct(private FlagService $flags) {}
@@ -103,7 +103,7 @@ class MeetingFollowUpService
         $fromMeeting = count($workItems);
 
         $limit = max(0, (int) config('pm.followup.carry_board_limit', 12));
-        $byCard = $this->flags->all()->whereIn('type', ['overdue', 'blocked', 'stuck'])->groupBy('card_id');
+        $byCard = $this->flags->all()->whereIn('type', ['overdue', 'blocked', 'stuck', 'subtasks_incomplete'])->groupBy('card_id');
         $cards = PmCard::query()->whereIn('id', $byCard->keys()->all())->get()->keyBy('id');
         $fromBoard = 0;
 
@@ -193,8 +193,8 @@ class MeetingFollowUpService
 
         $rows = [];
         foreach ($pairs as [$w, $card]) {
-            [$state, $detail] = $this->state($card, $today);
             $own = $card ? $subs->get($card->task_id, collect())->where('status', '!=', 'Cancelled') : collect();
+            [$state, $detail] = $this->state($card, $today, $own);
 
             $rows[] = [
                 'w' => $w,
@@ -235,8 +235,11 @@ class MeetingFollowUpService
             : self::key((string) $c->project_name) === $project);
     }
 
-    /** @return array{0: string, 1: string} state and a short human detail */
-    private function state(?PmCard $c, Carbon $today): array
+    /**
+     * @param  Collection  $openSubs  the task's sub-tasks, Cancelled ones already excluded
+     * @return array{0: string, 1: string} state and a short human detail
+     */
+    private function state(?PmCard $c, Carbon $today, Collection $openSubs): array
     {
         if (! $c) {
             return ['not_pushed', 'Not in Taskmandu yet'];
@@ -246,6 +249,16 @@ class MeetingFollowUpService
         if ($c->due_at && $c->due_at->lt($today)) {
             $d = (int) $c->due_at->diffInDays($today, true);
             $late = $d.' '.Str::plural('day', $d).' overdue';
+        }
+
+        // Taskmandu lets a task be marked Completed while a sub-task under it is still open — common when
+        // someone ticks the task off and forgets the last sub-task. Treat it as unfinished, not done, so
+        // it keeps showing up here and gets carried into the next meeting instead of silently dropping.
+        $stillOpen = $openSubs->whereNotIn('status', ['Completed', 'Cancelled']);
+        if ($c->status === 'Completed' && $stillOpen->isNotEmpty()) {
+            $n = $stillOpen->count();
+
+            return ['subtasks_incomplete', "Marked done but {$n} sub-task".($n === 1 ? '' : 's').' still open'];
         }
 
         return match (true) {

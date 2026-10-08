@@ -5,6 +5,7 @@ import { shortDate } from '../../lib/minutesFormat';
 const TONE: Record<FollowUpState, string> = {
   blocked: 'bg-red-50 text-red-700',
   overdue: 'bg-red-50 text-red-700',
+  subtasks_incomplete: 'bg-amber-50 text-amber-700',
   stuck: 'bg-amber-50 text-amber-700',
   not_pushed: 'bg-slate-100 text-slate-600',
   not_started: 'bg-slate-100 text-slate-600',
@@ -16,6 +17,7 @@ const TONE: Record<FollowUpState, string> = {
 const LABEL: Record<FollowUpState, string> = {
   blocked: 'Blocked',
   overdue: 'Overdue',
+  subtasks_incomplete: 'Sub-task still open',
   stuck: 'Stuck',
   not_pushed: 'Not pushed',
   not_started: 'Not started',
@@ -33,7 +35,7 @@ export default function MeetingFollowUpCard({ data }: { data: MeetingFollowUp | 
   const open = items.filter((i) => i.state !== 'done' && i.state !== 'cancelled');
   const finished = items.filter((i) => i.state === 'done' || i.state === 'cancelled');
   const when = meeting.meeting_date ? ` · ${shortDate(meeting.meeting_date)}` : '';
-  const chips = (['blocked', 'overdue', 'stuck', 'not_pushed', 'not_started', 'in_progress'] as FollowUpState[]).filter((k) => counts[k] > 0);
+  const chips = (['blocked', 'overdue', 'subtasks_incomplete', 'stuck', 'not_pushed', 'not_started', 'in_progress'] as FollowUpState[]).filter((k) => counts[k] > 0);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">

@@ -7,7 +7,7 @@ export interface WorkloadRow { name:string; designation?:string|null; open:numbe
 export interface SinceItem { card_id:number; title:string; assignee:string|null; project_id:string|null; project_name:string|null; task_id:string|null; url:string|null; at:string|null; }
 export interface SinceGroup { count:number; items:SinceItem[]; }
 export interface SinceSummary { since:string; label:string; tracked:boolean; completed:SinceGroup; blocked:SinceGroup; created:SinceGroup; overdue:SinceGroup; idle:string[]; }
-export type FollowUpState='blocked'|'overdue'|'stuck'|'not_pushed'|'not_started'|'in_progress'|'done'|'cancelled';
+export type FollowUpState='blocked'|'overdue'|'subtasks_incomplete'|'stuck'|'not_pushed'|'not_started'|'in_progress'|'done'|'cancelled';
 export interface FollowUpItem { requirement:string; owner:string|null; assignee:string|null; project:string|null; state:FollowUpState; detail:string; due:string|null; subtasks:{done:number;total:number}|null; url:string|null; card_id:number|null; }
 export interface MeetingFollowUp { meeting:{id:number;title:string;meeting_date:string|null;days_ago:number|null}; items:FollowUpItem[]; counts:Record<FollowUpState|'total',number>; }
 export interface CarryOver { from:MeetingFollowUp['meeting']|null; work_items:MeetingWorkItem[]; from_meeting:number; from_board:number; }
