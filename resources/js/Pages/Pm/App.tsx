@@ -52,6 +52,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [digestText, setDigestText] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<string | null>(null);
 
   const seen = useRef<Set<PmPage>>(new Set());
   const [gen, setGen] = useState<Partial<Record<PmPage, number>>>({});
@@ -289,6 +290,12 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   activeKey={activeKey}
                   onAsk={setActiveKey}
                   onClearAsk={() => setActiveKey(null)}
+                  onShowTaskList={(filter) => {
+                    const map: Record<string, string> = { blocking: 'blocked', duesoon: 'due_soon', unowned: 'unassigned', stuck: 'stuck', unverified: 'unverified' };
+                    setTaskFilter(map[filter] ?? filter);
+                    setShowAllTasks(true);
+                    requestAnimationFrame(() => document.getElementById('task-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }}
                   onFilter={(type) => {
                     setActiveKey(type === 'blocked' ? 'blocking' : type === 'due_today' ? 'duesoon' : type);
                     document.getElementById(type === 'stuck' ? 'stalled' : type === 'unassigned' ? 'no-owner' : 'act-now')?.scrollIntoView({ behavior: 'smooth' });
@@ -315,7 +322,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                     {showAllTasks ? 'Back to command center' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
                   </button>
                 </div>
-                {showAllTasks && <AllTasksPanel tasks={allTasks} onOpenTask={openTask} onBack={() => setShowAllTasks(false)} />}
+                {showAllTasks && <div id="task-list"><AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => { const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id)); return ids.has(t.card_id); }) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} /></div>}
                 <MeetingFollowUpCard data={today.meeting_followup} />
               </div>
             ) : (
