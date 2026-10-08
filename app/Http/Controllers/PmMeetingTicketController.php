@@ -30,13 +30,16 @@ class PmMeetingTicketController extends Controller
         $projectId=$ticket['project_id']??null; $subtasks=$ticket['subtasks']??[];
         if(!$projectId && $subtasks) throw new RuntimeException('A meeting Work Item with Action Items must have a confirmed project so its Subtasks can be created.');
         if($projectId && empty($ticket['project_confirmed'])) throw new RuntimeException('Project confirmation is required before this Work Item can be pushed.');
-        $assigneeId=$ticket['assignee_employee_id']; $due=$ticket['due_date']??now()->addWeek()->toDateString(); $priority=$ticket['priority']??'Medium'; $hours=isset($ticket['estimate_hours'])?(float)$ticket['estimate_hours']:null; $level=$ticket['level']??null; $extra=['priority'=>$priority,'estimatedHours'=>$hours,'tags'=>$level?[$level]:[]]; $fallback='Level: '.($level?:'-').' | Est: '.($hours??'?').'h | Priority: '.$priority;
+        $assigneeId=$ticket['assignee_employee_id']; $dueGiven=$ticket['due_date']??null; $due=$dueGiven??now()->addWeek()->toDateString(); $priority=$ticket['priority']??'Medium'; $hours=isset($ticket['estimate_hours'])?(float)$ticket['estimate_hours']:null; $level=$ticket['level']??null; $extra=['priority'=>$priority,'estimatedHours'=>$hours,'tags'=>$level?[$level]:[]]; $fallback='Level: '.($level?:'-').' | Est: '.($hours??'?').'h | Priority: '.$priority;
 
         $existing=$projectId
             ? PmCard::query()->where('project_id',$projectId)->where('title',$ticket['title'])->whereNotNull('task_id')->first()
             : PmCard::query()->whereNull('project_id')->where('title',$ticket['title'])->whereNotNull('task_id')->first();
 
         if($existing){
+            // No date on the ticket (e.g. an overdue item whose past date was blanked): keep the task's own due date
+            // instead of silently moving it a week out.
+            $due=$dueGiven??($existing->due_at?->toDateString()??$due);
             $taskId=(string)$existing->task_id;
             if($projectId){
                 $task=$this->taskmandu->getProjectTask($projectId,$taskId);
