@@ -541,7 +541,10 @@ function SubTasks({
             <div className="flex items-start gap-2">
               <input type="checkbox" checked={done} onChange={() => toggle(s)} disabled={busy === s._id} className="mt-1" />
               <div className="min-w-0 flex-1">
-                <div className={`text-sm ${done ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{s.title}</div>
+                <div
+                  className={`text-sm ${done ? 'text-slate-400' : 'text-slate-800'}`}
+                  style={{ textDecoration: done ? 'line-through' : 'none' }}
+                >{s.title}</div>
                 {s.assignedToId.length > 0 && <div className="text-xs text-slate-400">{s.assignedToId.map(nameFor).join(', ')}</div>}
               </div>
               <select
