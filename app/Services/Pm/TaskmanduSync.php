@@ -28,7 +28,7 @@ class TaskmanduSync
             $oldStatus=$local?->status;
             $status=(string)($s['status']??'Assigned');
             $completed=$status==='Completed';
-            $completedAt=$completed&&!empty($s['completedAt'])?Carbon::parse($s['completedAt']):null;
+            // Older Taskmandu sub-tasks may not have completedAt; updatedAt is the best\n            // available timestamp once the status is Completed.\n            $completedAt=$completed&&!empty($s['completedAt'])?Carbon::parse($s['completedAt']):($completed&&!empty($s['updatedAt'])?Carbon::parse($s['updatedAt']):null);
             PmSubtask::updateOrCreate(['external_id'=>$key],[
                 'project_id'=>$project['_id'],'project_name'=>$project['name'],'task_id'=>$task['_id'],'subtask_id'=>$s['_id'],
                 'parent_title'=>$task['title'],'parent_assignee'=>$parent->assignee,'parent_due_at'=>$task['dueDate']??null,
