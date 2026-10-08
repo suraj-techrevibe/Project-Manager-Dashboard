@@ -205,11 +205,11 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     { key: 'overdue', label: 'Overdue', text: counts.overdue ? `${counts.overdue} task(s) are already late.` : 'Nothing is late.', count: counts.overdue },
     { key: 'blocking', label: 'Blocked', text: counts.blocked ? `${counts.blocked} task(s) are blocked.` : 'Nothing is blocked.', count: counts.blocked },
     { key: 'duesoon', label: 'Due soon', text: counts.due_today + counts.due_soon ? `${counts.due_today + counts.due_soon} task(s) are due today or within 3 days.` : 'No near-term due dates.', count: counts.due_today + counts.due_soon },
-    { key: 'unowned', label: 'No owner', text: unassignedTasks.length + (today?.subtasks.length ?? 0) ? `${unassignedTasks.length + today.subtasks.length} item(s) need an owner.` : 'Everything has an owner.', count: unassignedTasks.length + (today?.subtasks.length ?? 0) },
+    { key: 'unowned', label: 'No owner', text: unassignedTasks.length + (today?.subtasks.length ?? 0) ? `${unassignedTasks.length + (today?.subtasks.length ?? 0)} item(s) need an owner.` : 'Everything has an owner.', count: unassignedTasks.length + (today?.subtasks.length ?? 0) },
     { key: 'stuck', label: 'Stuck', text: agingCards.length ? `${agingCards.length} task(s) have had no movement for 3+ days.` : 'No task is stalled.', count: agingCards.length },
     { key: 'unverified', label: 'Verify', text: counts.unverified ? `${counts.unverified} completed task(s) still need checking.` : 'Nothing is waiting for verification.', count: counts.unverified },
-    { key: 'overloaded', label: 'Capacity', text: `${(today?.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length} people are over weekly capacity.`, count: today.workload.filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length },
-    { key: 'free', label: 'Free capacity', text: `${(today?.workload ?? []).filter((w) => w.open === 0).length} people have no open work.`, count: today.workload.filter((w) => w.open === 0).length },
+    { key: 'overloaded', label: 'Capacity', text: `${(today?.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length} people are over weekly capacity.`, count: (today?.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length },
+    { key: 'free', label: 'Free capacity', text: `${(today?.workload ?? []).filter((w) => w.open === 0).length} people have no open work.`, count: (today?.workload ?? []).filter((w) => w.open === 0).length },
     { key: 'worst', label: 'Project risk', text: riskProjects.length ? `${riskProjects[0].name} has the most warning signals.` : 'No project warning signals.', count: riskProjects.length },
   ];
   const current = PM_PAGES.find((p) => p.key === page)!;
