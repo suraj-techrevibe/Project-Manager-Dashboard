@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Employee, PmFlag, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, WorkloadRow } from '../../types/pm';
 import SinceStrip from './SinceStrip';
@@ -90,20 +91,24 @@ const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behav
 
 function Panel({ id, tone, title, sub, badge, action, children }: { id?: string; tone: Tone; title: string; sub?: string; badge?: ReactNode; action?: ReactNode; children: ReactNode }) {
   const t = TONES[tone];
+  const [open, setOpen] = useState(true);
   return (
     <section id={id} className={`scroll-mt-4 rounded-[1.75rem] border p-6 shadow-md shadow-slate-200/40 ${t.panel}`}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className={`flex items-center gap-2 text-lg font-semibold ${t.head}`}>
-            <span className={`h-2.5 w-2.5 rounded-full ${t.dot}`} />
-            {title}
-            {badge}
-          </h3>
-          {sub && <p className="mt-0.5 text-sm text-slate-500">{sub}</p>}
+          <button type="button" onClick={() => setOpen((v) => !v)} className="text-left">
+            <h3 className={`flex items-center gap-2 text-lg font-semibold ${t.head}`}>
+              <span className={`h-2.5 w-2.5 rounded-full ${t.dot}`} />
+              {title}
+              {badge}
+              <span className="ml-1 text-xs text-slate-400">{open ? '▾' : '▸'}</span>
+            </h3>
+            {sub && <p className="mt-0.5 text-sm text-slate-500">{sub}</p>}
+          </button>
         </div>
         {action}
       </div>
-      {children}
+      {open && children}
     </section>
   );
 }
@@ -257,6 +262,7 @@ export interface CommandCenterProps {
   onClearAsk: () => void;
 
   onFilter: (t: FlagType) => void;
+  onShowTaskList: (filter: string) => void;
   onOpenCard: (c: CcCard) => void;
   onNudgeCard: (c: CcCard) => void;
   onOpenTask: (f: TaskFocus) => void;
@@ -287,6 +293,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   const free = p.workload.filter((w) => w.open === 0);
   const over = p.workload.filter((w) => levelOf(w, p.overloadAt) === 'over');
   const active = CHECKLIST.find((i) => i.key === p.activeKey);
+  const [checklistOpen, setChecklistOpen] = useState(true);
   const activeAnswer = p.answers.find((a) => a.key === p.activeKey);
 
   const goTo = (item: CheckItem) => {
@@ -395,7 +402,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           {KPIS.map((k) => {
             const t = TONES[k.tone];
             return (
-              <button key={k.key} onClick={() => p.onFilter(k.key)} className={`rounded-3xl border p-5 text-left transition duration-200 hover:-translate-y-0.5 ${k.value ? `${t.tile} shadow-md` : 'border-slate-200 bg-white/90 shadow-sm'} ${k.value && (k.key === 'overdue' || k.key === 'blocked') ? 'ring-1 ring-red-200 shadow-lg' : ''}`}>
+              <button key={k.key} onClick={() => p.onShowTaskList(k.key)} className={`rounded-3xl border p-5 text-left transition duration-200 hover:-translate-y-0.5 ${k.value ? `${t.tile} shadow-md` : 'border-slate-200 bg-white/90 shadow-sm'} ${k.value && (k.key === 'overdue' || k.key === 'blocked') ? 'ring-1 ring-red-200 shadow-lg' : ''}`}>
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                     {k.label}
@@ -432,7 +439,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h3 className="text-xl font-semibold text-slate-900">Your checklist · work it from 1 down</h3>
+            <button type="button" onClick={() => setChecklistOpen((v) => !v)} className="text-left"><h3 className="text-xl font-semibold text-slate-900">Your checklist · work it from 1 down <span className="ml-1 text-sm text-slate-400">{checklistOpen ? "▾" : "▸"}</span></h3></button>
             <p className="mt-0.5 text-sm text-slate-500">Each line is a question. Press <b>Show tasks</b> to filter the list below to the answer.</p>
           </div>
           {p.activeKey && (
@@ -442,7 +449,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           )}
         </div>
 
-        <ol className="space-y-3">
+        {checklistOpen && <ol className="space-y-3">
           {CHECKLIST.map((item, i) => {
             const a = p.answers.find((x) => x.key === item.key);
             if (!a) return null;
@@ -463,20 +470,20 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {item.go && (
-                    <button onClick={() => goTo(item)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                    <button onClick={() => p.onShowTaskList(item.key)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
                       {item.go.label} →
                     </button>
                   )}
-                  <button onClick={() => (isActive ? p.onClearAsk() : p.onAsk(item.key))} className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold ${isActive ? 'bg-slate-900 text-white' : t.btn}`}>
+                  <button onClick={() => (isActive ? p.onClearAsk() : p.onShowTaskList(item.key)) className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold ${isActive ? 'bg-slate-900 text-white' : t.btn}`}>
                     {isActive ? 'Showing ✓' : 'Show tasks'}
                   </button>
                 </div>
               </li>
             );
           })}
-        </ol>
+        </ol>}
 
-        {active && activeAnswer && (
+        {checklistOpen && active && activeAnswer && (
           <div className={`mt-4 rounded-2xl border p-4 text-sm ${TONES[active.tone].panel}`}>
             <b className={TONES[active.tone].head}>{active.title}:</b> {activeAnswer.text}{' '}
             <button onClick={() => jump('task-list')} className="font-semibold text-slate-900 underline">
@@ -487,29 +494,25 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </section>
 
       {/* ===== 4. Act now ===== */}
-      <section id="act-now" className="scroll-mt-4">
+      <section id="act-now" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xl font-semibold text-slate-900">Act now</h3>
-          <span className="text-sm text-slate-500">Top items per column · open a task or copy a nudge</span>
+          <span className="text-sm text-slate-500">Open the task list with the correct filter.</span>
         </div>
-        <div className="grid gap-5 xl:grid-cols-3">
-          {([
-            { title: 'Overdue', tone: 'red', list: overdue, type: 'overdue', empty: 'Nothing is overdue.' },
-            { title: 'Blocked', tone: 'orange', list: blocked, type: 'blocked', empty: 'Nothing is blocked.' },
-            { title: 'Due today', tone: 'blue', list: dueToday, type: 'due_today', empty: 'Nothing is due today.' },
-          ] as { title: string; tone: Tone; list: CcCard[]; type: FlagType; empty: string }[]).map((col) => (
-            <Panel
-              key={col.title}
-              tone={col.tone}
-              title={col.title}
-              badge={<Count n={col.list.length} tone={col.tone} />}
-              action={col.list.length > 5 ? <LinkButton tone={col.tone} onClick={() => p.onFilter(col.type)}>View all {col.list.length} →</LinkButton> : undefined}
-            >
-              <div className="space-y-2.5">
-                {col.list.length ? col.list.slice(0, 5).map((c) => <TaskRow key={c.card_id} c={c} compact onOpen={() => p.onOpenCard(c)} onNudge={() => p.onNudgeCard(c)} />) : <Empty>{col.empty} ✓</Empty>}
-              </div>
-            </Panel>
-          ))}
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            { title: 'Overdue', tone: 'red' as Tone, count: counts.overdue, text: 'Past the due date.', filter: 'overdue' },
+            { title: 'Blocked', tone: 'orange' as Tone, count: counts.blocked, text: 'Waiting on something before it can move.', filter: 'blocked' },
+            { title: 'Due today', tone: 'blue' as Tone, count: counts.due_today, text: 'Finish by end of day.', filter: 'due_today' },
+          ].map((item) => {
+            const t = TONES[item.tone];
+            return <button key={item.title} onClick={() => p.onShowTaskList(item.filter)} className={`rounded-2xl border p-5 text-left transition hover:-translate-y-0.5 ${t.panel} hover:shadow-md`}>
+              <div className={`text-sm font-semibold ${t.head}`}>{item.title}</div>
+              <div className={`mt-1 text-4xl font-bold ${t.num}`}>{item.count}</div>
+              <div className="mt-1 text-sm text-slate-500">{item.text}</div>
+              <div className={`mt-3 text-xs font-semibold ${t.head}`}>View filtered tasks →</div>
+            </button>;
+          })}
         </div>
       </section>
 
