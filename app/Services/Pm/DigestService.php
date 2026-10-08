@@ -64,7 +64,7 @@ class DigestService
     {
         $recentCutoff = now()->subDays(7);
 
-        return \\App\\Models\\PmSubtask::query()
+        return \App\Models\PmSubtask::query()
             ->where(function ($query) use ($recentCutoff) {
                 $query->where(function ($completed) use ($recentCutoff) {
                     $completed->where('status', 'Completed')
