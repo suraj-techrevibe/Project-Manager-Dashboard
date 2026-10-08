@@ -460,7 +460,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
                       {item.go.label} →
                     </button>
                   )}
-                  <button onClick={() => (isActive ? p.onClearAsk() : p.onShowTaskList(item.key)) className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold ${isActive ? 'bg-slate-900 text-white' : t.btn}`}>
+                  <button onClick={() => (isActive ? p.onClearAsk() : p.onShowTaskList(item.key))} className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold ${isActive ? 'bg-slate-900 text-white' : t.btn}`}>
                     {isActive ? 'Showing ✓' : 'Show tasks'}
                   </button>
                 </div>
