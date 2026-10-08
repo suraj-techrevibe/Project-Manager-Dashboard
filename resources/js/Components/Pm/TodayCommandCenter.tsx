@@ -291,12 +291,13 @@ export interface CommandCenterProps {
   onPickPerson: (name: string) => void;
   onNavigate?: (tab: string) => void;
   onOpenProject?: (projectId: string) => void;
+  subtaskSummary: { total:number; completed:number; remaining:number; progress:number };
 }
 
 export default function TodayCommandCenter(p: CommandCenterProps) {
   const { counts } = p;
   const noOwner = counts.unassigned + p.unassignedSubtasks.length;
-  const attention = counts.overdue + counts.blocked + counts.due_today + noOwner;
+  const attention = counts.overdue + counts.blocked + counts.due_today + counts.subtasks_incomplete + noOwner;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -333,6 +334,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
     { key: 'stuck', label: 'Stuck 3+ days', hint: 'No movement', tone: 'amber', value: counts.stuck },
     { key: 'unassigned', label: 'No owner', hint: 'Nobody assigned', tone: 'violet', value: noOwner },
     { key: 'unverified', label: 'To verify', hint: 'Done, not yet checked', tone: 'teal', value: counts.unverified },
+    { key: 'subtasks_incomplete', label: 'Incomplete subtasks', hint: 'Parent task marked done', tone: 'rose', value: counts.subtasks_incomplete },
   ];
 
   const links: { label: string; tab: string }[] = [
@@ -467,7 +469,26 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </section>
       )}
 
-      {/* ===== 3. PM checklist (ordered) ===== */}
+      {/* ===== 3. Sub-task progress ===== */}
+      {p.subtaskSummary.total > 0 && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">Sub-task progress</h3>
+              <p className="mt-0.5 text-sm text-slate-500">Completion is read directly from Taskmandu sub-task status.</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-slate-900">{p.subtaskSummary.completed}/{p.subtaskSummary.total}</div>
+              <div className="text-xs text-slate-500">{p.subtaskSummary.progress}% complete · {p.subtaskSummary.remaining} remaining</div>
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-emerald-500" style={{ width: p.subtaskSummary.progress + '%' }} />
+          </div>
+        </section>
+      )}
+
+      {/* ===== 4. PM checklist (ordered) ===== */}
       <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
