@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
-import type { Employee, Project, ProjectComment, ProjectTask, SubTask, TaskPriority, TaskStatus } from '../../../types/pm';
+import type { Employee, NewSubTaskInput, NewTaskInput, Project, ProjectComment, ProjectTask, SubTask, TaskPriority, TaskStatus } from '../../../types/pm';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../../../types/pm';
 import {
   AssigneePicker,
@@ -10,7 +10,6 @@ import {
   ConfirmModal,
   ErrorNote,
   Field,
-  Modal,
   dangerBtn,
   formatTimestamp,
   ghostBtn,
@@ -22,6 +21,16 @@ import {
   taskStatusColors,
   useRunner,
 } from './ui';
+
+/** Everything the inline editor can change, held as a draft until Save. */
+interface TaskDraft { title: string; description: string; status: TaskStatus; priority: TaskPriority; dueDate: string; hours: string; tags: string; assignees: string[] }
+interface SubDraft { title: string; assignees: string[]; status: TaskStatus; remove: boolean }
+interface NewSub { key: string; title: string; assignees: string[] }
+
+const taskDraft = (t: ProjectTask): TaskDraft => ({ title: t.title, description: t.description, status: t.status, priority: t.priority, dueDate: t.dueDate, hours: String(t.estimatedHours ?? 0), tags: (t.tags ?? []).join(', '), assignees: t.assignedToId });
+const subDraft = (s: SubTask): SubDraft => ({ title: s.title, assignees: s.assignedToId, status: s.status, remove: false });
+const sameIds = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join(',') === [...b].sort().join(',');
+const parseTags = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
 
 export default function TaskDetail({
   project,
@@ -47,7 +56,12 @@ export default function TaskDetail({
   const [hours, setHours] = useState(String(task.estimatedHours ?? 0));
   const [tags, setTags] = useState((task.tags ?? []).join(', '));
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
+  // Inline edit mode: the whole page becomes editable and Save applies every change in one go.
+  const [editing, setEditing] = useState(false);
+  const [d, setD] = useState<TaskDraft>(() => taskDraft(task));
+  const [subD, setSubD] = useState<Record<string, SubDraft>>({});
+  const [newSubs, setNewSubs] = useState<NewSub[]>([]);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const index = project.tasks.findIndex((t) => t._id === task._id);
   const taskKey = `${project.name.slice(0, 4).toUpperCase()}-${index + 1}`;
@@ -86,6 +100,61 @@ export default function TaskDetail({
     if (next.join(', ') !== (task.tags ?? []).join(', ')) update({ tags: next });
   }
 
+  function startEdit() {
+    setD(taskDraft(task));
+    setSubD(Object.fromEntries(task.subTasks.map((x) => [x._id, subDraft(x)])));
+    setNewSubs([]);
+    setFormError(null);
+    setEditingTitle(false);
+    setEditingDesc(false);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setFormError(null);
+    setEditing(false);
+  }
+
+  /** Save the task, then each changed sub-task, removed sub-task and new sub-task. Only what changed is sent. */
+  async function saveAll() {
+    const title = d.title.trim();
+    if (!title) { setFormError('Give the task a title.'); return; }
+    if (!d.dueDate) { setFormError('Pick a due date.'); return; }
+    const rows = task.subTasks.map((x) => ({ s: x, x: subD[x._id] ?? subDraft(x) }));
+    if (rows.some(({ x }) => !x.remove && !x.title.trim())) { setFormError('Every sub-task needs a title (or remove it).'); return; }
+    setFormError(null);
+
+    const patch: Partial<NewTaskInput> = {};
+    const hrs = Math.max(0, Number(d.hours) || 0);
+    if (title !== task.title) patch.title = title;
+    if (d.description !== task.description) patch.description = d.description;
+    if (d.status !== task.status) patch.status = d.status;
+    if (d.priority !== task.priority) patch.priority = d.priority;
+    if (d.dueDate !== task.dueDate) patch.dueDate = d.dueDate;
+    if (hrs !== (task.estimatedHours ?? 0)) patch.estimatedHours = hrs;
+    if (parseTags(d.tags).join(', ') !== (task.tags ?? []).join(', ')) patch.tags = parseTags(d.tags);
+    if (!sameIds(d.assignees, task.assignedToId)) patch.assignedToId = d.assignees;
+    if (Object.keys(patch).length && !(await update(patch, 'save'))) return;
+
+    for (const { s: sub, x } of rows) {
+      if (x.remove) {
+        if (!(await run(sub._id, () => pmApi.deleteSubTask(project._id, task._id, sub._id), "Couldn't remove a sub-task."))) return;
+        continue;
+      }
+      const sp: Partial<NewSubTaskInput> = {};
+      if (x.title.trim() !== sub.title) sp.title = x.title.trim();
+      if (x.status !== sub.status) sp.status = x.status;
+      if (!sameIds(x.assignees, sub.assignedToId)) sp.assignedToId = x.assignees;
+      if (Object.keys(sp).length && !(await run(sub._id, () => pmApi.updateSubTask(project._id, task._id, sub._id, sp), "Couldn't update a sub-task."))) return;
+    }
+
+    for (const n of newSubs.filter((v) => v.title.trim())) {
+      if (!(await run('new', () => pmApi.addSubTask(project._id, task._id, { title: n.title.trim(), assignedToId: n.assignees }), "Couldn't add a sub-task."))) return;
+      setNewSubs((list) => list.filter((v) => v.key !== n.key)); // already saved: a retry must not add it twice
+    }
+    setEditing(false);
+  }
+
   async function removeTask() {
     const ok = await run('delete', () => pmApi.deleteProjectTask(project._id, task._id), "Couldn't delete that task.");
     if (ok) onBack();
@@ -96,8 +165,17 @@ export default function TaskDetail({
       <div className="flex items-center justify-between gap-2">
         <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-700">← Back to {project.name}</button>
         <div className="flex gap-2">
-          <button onClick={() => setEditOpen(true)} className={ghostBtn}>Edit</button>
-          <button onClick={() => setConfirmDelete(true)} className={dangerBtn}>Delete task</button>
+          {editing ? (
+            <>
+              <button onClick={cancelEdit} disabled={busy !== null} className={ghostBtn}>Cancel</button>
+              <button onClick={saveAll} disabled={busy !== null || !d.title.trim()} className={primaryBtn}>{busy !== null ? 'Saving…' : 'Save changes'}</button>
+            </>
+          ) : (
+            <>
+              <button onClick={startEdit} className={ghostBtn}>Edit</button>
+              <button onClick={() => setConfirmDelete(true)} className={dangerBtn}>Delete task</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -108,7 +186,9 @@ export default function TaskDetail({
           <Badge className={taskStatusColors[task.status]}>{task.status}</Badge>
         </div>
 
-        {editingTitle ? (
+        {editing ? (
+          <input value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} maxLength={200} placeholder="Task title" className={`${inputCls} mt-2 text-base font-medium`} autoFocus />
+        ) : editingTitle ? (
           <div className="mt-2 flex gap-2">
             <input value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} maxLength={200} className={inputCls} autoFocus />
             <button onClick={saveTitle} disabled={busy === 'task' || !titleDraft.trim()} className={primaryBtn}>Save</button>
@@ -126,13 +206,15 @@ export default function TaskDetail({
         </p>
       </div>
 
-      <ErrorNote message={error} />
+      <ErrorNote message={formError ?? error} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Main column */}
         <div className="flex flex-col gap-4 lg:col-span-2">
-          <Section title="Description" action={!editingDesc && <button onClick={() => { setDescDraft(task.description); setEditingDesc(true); }} className="text-xs text-slate-500 hover:text-slate-800">Edit</button>}>
-            {editingDesc ? (
+          <Section title="Description" action={!editing && !editingDesc && <button onClick={() => { setDescDraft(task.description); setEditingDesc(true); }} className="text-xs text-slate-500 hover:text-slate-800">Edit</button>}>
+            {editing ? (
+              <textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} rows={6} maxLength={5000} placeholder="Describe the task…" className={inputCls} />
+            ) : editingDesc ? (
               <div className="flex flex-col gap-2">
                 <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)} rows={6} maxLength={5000} className={inputCls} autoFocus />
                 <div className="flex gap-2">
@@ -146,7 +228,11 @@ export default function TaskDetail({
           </Section>
 
           <Section title={`Sub-tasks (${sub.done}/${sub.total})`}>
-            <SubTasks project={project} task={task} employees={employees} nameFor={nameFor} onChanged={onChanged} />
+            {editing ? (
+              <SubTaskEditor task={task} employees={employees} subD={subD} setSubD={setSubD} newSubs={newSubs} setNewSubs={setNewSubs} />
+            ) : (
+              <SubTasks project={project} task={task} employees={employees} nameFor={nameFor} onChanged={onChanged} />
+            )}
           </Section>
 
           <Section title={`Comments (${task.comments.length})`}>
@@ -167,6 +253,37 @@ export default function TaskDetail({
 
         {/* Sidebar */}
         <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 self-start">
+          {editing ? (
+            <>
+          <Field label="Status">
+            <select value={d.status} onChange={(e) => setD({ ...d, status: e.target.value as TaskStatus })} className={inputCls}>
+              {TASK_STATUSES.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Priority">
+            <select value={d.priority} onChange={(e) => setD({ ...d, priority: e.target.value as TaskPriority })} className={inputCls}>
+              {TASK_PRIORITIES.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Due date">
+            <input type="date" value={d.dueDate} onChange={(e) => setD({ ...d, dueDate: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Estimated hours">
+            <input type="number" min={0} max={1000} value={d.hours} onChange={(e) => setD({ ...d, hours: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Tags (comma separated)">
+            <input value={d.tags} onChange={(e) => setD({ ...d, tags: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label={`Assignees (${d.assignees.length})`}>
+            <AssigneePicker employees={employees} value={d.assignees} onChange={(ids) => setD({ ...d, assignees: ids })} />
+          </Field>
+            </>
+          ) : (
+            <>
           <Field label="Status">
             <select value={task.status} onChange={(e) => update({ status: e.target.value as TaskStatus })} disabled={busy === 'task'} className={inputCls}>
               {TASK_STATUSES.map((s) => (
@@ -198,6 +315,8 @@ export default function TaskDetail({
           <Field label={`Assignees (${task.assignedToId.length})`}>
             <AssigneePicker employees={employees} value={task.assignedToId} onChange={(ids) => update({ assignedToId: ids })} />
           </Field>
+            </>
+          )}
         </div>
       </div>
 
@@ -210,167 +329,75 @@ export default function TaskDetail({
           onClose={() => setConfirmDelete(false)}
         />
       )}
-
-      {editOpen && (
-        <EditTaskModal
-          project={project}
-          task={task}
-          employees={employees}
-          onChanged={onChanged}
-          onClose={() => setEditOpen(false)}
-        />
-      )}
     </div>
   );
 }
 
-/** Everything about a task in one place: its own fields plus every sub-task's title and assignees. */
-function EditTaskModal({
-  project,
+/** Sub-tasks while the page is in edit mode: title, status, assignees, remove, and add — all saved by the page's Save button. */
+function SubTaskEditor({
   task,
   employees,
-  onChanged,
-  onClose,
+  subD,
+  setSubD,
+  newSubs,
+  setNewSubs,
 }: {
-  project: Project;
   task: ProjectTask;
   employees: Employee[];
-  onChanged: (p: Project) => void;
-  onClose: () => void;
+  subD: Record<string, SubDraft>;
+  setSubD: React.Dispatch<React.SetStateAction<Record<string, SubDraft>>>;
+  newSubs: NewSub[];
+  setNewSubs: React.Dispatch<React.SetStateAction<NewSub[]>>;
 }) {
-  const { busy, error, run } = useRunner(onChanged);
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description);
-  const [status, setStatus] = useState<TaskStatus>(task.status);
-  const [priority, setPriority] = useState<TaskPriority>(task.priority);
-  const [dueDate, setDueDate] = useState(task.dueDate);
-  const [hours, setHours] = useState(String(task.estimatedHours ?? 0));
-  const [tags, setTags] = useState((task.tags ?? []).join(', '));
-  const [assignees, setAssignees] = useState<string[]>(task.assignedToId);
-
-  async function save() {
-    const t = title.trim();
-    if (!t) return;
-    const ok = await run(
-      'save',
-      () =>
-        pmApi.updateProjectTask(project._id, task._id, {
-          title: t,
-          description,
-          status,
-          priority,
-          dueDate,
-          estimatedHours: Math.max(0, Number(hours) || 0),
-          tags: tags.split(',').map((x) => x.trim()).filter(Boolean),
-          assignedToId: assignees,
-        }),
-      "Couldn't save those changes."
-    );
-    if (ok) onClose();
-  }
+  const rowOf = (x: SubTask) => subD[x._id] ?? subDraft(x);
+  const patchRow = (x: SubTask, p: Partial<SubDraft>) => setSubD((m) => ({ ...m, [x._id]: { ...rowOf(x), ...p } }));
+  const patchNew = (key: string, p: Partial<NewSub>) => setNewSubs((list) => list.map((v) => (v.key === key ? { ...v, ...p } : v)));
 
   return (
-    <Modal title="Edit task" onClose={onClose} wide>
-      <div className="flex flex-col gap-3">
-        <ErrorNote message={error} />
-        <Field label="Title">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={inputCls} autoFocus />
-        </Field>
-        <Field label="Description">
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} maxLength={5000} className={inputCls} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Status">
-            <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} className={inputCls}>
-              {TASK_STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Priority">
-            <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)} className={inputCls}>
-              {TASK_PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Due date">
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="Estimated hours">
-            <input type="number" min={0} max={1000} value={hours} onChange={(e) => setHours(e.target.value)} className={inputCls} />
-          </Field>
-        </div>
-        <Field label="Tags (comma separated)">
-          <input value={tags} onChange={(e) => setTags(e.target.value)} className={inputCls} />
-        </Field>
-        <Field label={`Assignees (${assignees.length})`}>
-          <AssigneePicker employees={employees} value={assignees} onChange={setAssignees} />
-        </Field>
+    <div className="flex flex-col gap-2">
+      {task.subTasks.length === 0 && newSubs.length === 0 && <p className="text-sm text-slate-400">No sub-tasks yet.</p>}
 
-        {task.subTasks.length > 0 && (
-          <div>
-            <span className="mb-1 block text-xs font-medium text-slate-500">Sub-tasks</span>
-            <div className="flex flex-col gap-2">
-              {task.subTasks.map((s) => (
-                <SubTaskEditRow key={s._id} project={project} task={task} sub={s} employees={employees} onChanged={onChanged} />
-              ))}
+      {task.subTasks.map((x) => {
+        const row = rowOf(x);
+        return (
+          <div key={x._id} className={`rounded-lg border p-2 ${row.remove ? 'border-red-200 bg-red-50' : 'border-slate-200'}`}>
+            <div className="flex gap-2">
+              <input value={row.title} onChange={(e) => patchRow(x, { title: e.target.value })} disabled={row.remove} maxLength={200} placeholder="Sub-task title" className={`${inputCls} ${row.remove ? 'line-through opacity-60' : ''}`} />
+              <select value={row.status} onChange={(e) => patchRow(x, { status: e.target.value as TaskStatus })} disabled={row.remove} className="shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-xs">
+                {TASK_STATUSES.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+              <button onClick={() => patchRow(x, { remove: !row.remove })} className="shrink-0 text-xs text-slate-400 hover:text-red-600" title={row.remove ? 'Keep this sub-task' : 'Remove this sub-task'}>
+                {row.remove ? 'Undo' : '✕'}
+              </button>
             </div>
+            {row.remove ? (
+              <p className="mt-1 text-xs text-red-600">Will be deleted when you save.</p>
+            ) : (
+              <div className="mt-2">
+                <AssigneePicker employees={employees} value={row.assignees} onChange={(ids) => patchRow(x, { assignees: ids })} />
+              </div>
+            )}
           </div>
-        )}
+        );
+      })}
 
-        <div className="mt-2 flex justify-end gap-2">
-          <button onClick={onClose} className={ghostBtn}>Cancel</button>
-          <button onClick={save} disabled={busy === 'save' || !title.trim()} className={primaryBtn}>
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
+      {newSubs.map((n) => (
+        <div key={n.key} className="rounded-lg border border-dashed border-indigo-300 p-2">
+          <div className="flex gap-2">
+            <input value={n.title} onChange={(e) => patchNew(n.key, { title: e.target.value })} maxLength={200} placeholder="New sub-task title" className={inputCls} autoFocus />
+            <button onClick={() => setNewSubs((list) => list.filter((v) => v.key !== n.key))} className="shrink-0 text-xs text-slate-400 hover:text-red-600" title="Discard">✕</button>
+          </div>
+          <div className="mt-2">
+            <AssigneePicker employees={employees} value={n.assignees} onChange={(ids) => patchNew(n.key, { assignees: ids })} />
+          </div>
         </div>
-      </div>
-    </Modal>
-  );
-}
+      ))}
 
-/** One sub-task's title + assignees, saved on its own (sub-tasks are a separate API call from the task itself). */
-function SubTaskEditRow({
-  project,
-  task,
-  sub,
-  employees,
-  onChanged,
-}: {
-  project: Project;
-  task: ProjectTask;
-  sub: SubTask;
-  employees: Employee[];
-  onChanged: (p: Project) => void;
-}) {
-  const { busy, error, run } = useRunner(onChanged);
-  const [title, setTitle] = useState(sub.title);
-  const [assignees, setAssignees] = useState<string[]>(sub.assignedToId);
-  const [saved, setSaved] = useState(false);
-  const dirty = title.trim() !== sub.title || assignees.join(',') !== sub.assignedToId.join(',');
-
-  async function save() {
-    const t = title.trim();
-    if (!t) return;
-    const ok = await run('save', () => pmApi.updateSubTask(project._id, task._id, sub._id, { title: t, assignedToId: assignees }), "Couldn't update that sub-task.");
-    if (ok) {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-slate-100 p-2">
-      <ErrorNote message={error} />
-      <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={`${inputCls} mb-2`} />
-      <AssigneePicker employees={employees} value={assignees} onChange={setAssignees} />
-      <div className="mt-2 flex items-center gap-2">
-        <button onClick={save} disabled={!dirty || busy === 'save' || !title.trim()} className="rounded-md bg-indigo-600 px-2 py-1 text-xs text-white disabled:opacity-50">
-          {busy === 'save' ? 'Saving…' : 'Save sub-task'}
-        </button>
-        {saved && <span className="text-xs text-green-600">Saved</span>}
-      </div>
+      <button onClick={() => setNewSubs((list) => [...list, { key: `${Date.now()}-${list.length}`, title: '', assignees: [] }])} className="self-start text-xs text-indigo-600 hover:text-indigo-800">
+        + Add sub-task
+      </button>
     </div>
   );
 }
