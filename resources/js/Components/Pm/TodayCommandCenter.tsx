@@ -264,6 +264,7 @@ export interface CommandCenterProps {
   syncing: boolean;
   onSync: () => void;
   showDigest: boolean;
+  digestText: string | null;
   onToggleDigest: () => void;
   onCopyStandup: () => void;
   pinCount: number;
@@ -434,6 +435,14 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           })}
         </div>
       </CollapsibleSection>
+
+      {p.showDigest && p.digestText && (
+        <section className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
+          <h3 className="text-xl font-semibold text-indigo-950">Morning digest</h3>
+          <p className="mt-1 text-sm text-indigo-700">Generated stand-up summary.</p>
+          <div className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{p.digestText}</div>
+        </section>
+      )}
 
       {/* ===== 3. PM checklist (ordered) ===== */}
       <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
