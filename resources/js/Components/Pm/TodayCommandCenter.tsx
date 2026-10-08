@@ -451,27 +451,27 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </section>
 
       {/* ===== 2. Big numbers ===== */}
-      <section className="rounded-3xl border border-[#493b31] bg-[#211d1a] p-5 shadow-sm sm:p-6">
-        <button type="button" onClick={() => setGlanceOpen((v) => !v)} className="mb-4 w-full text-left">
+      <section className="w-full min-w-0 overflow-hidden rounded-3xl border border-[#493b31] bg-[#211d1a] p-3 shadow-sm sm:p-5">
+        <button type="button" onClick={() => setGlanceOpen((v) => !v)} className="mb-4 w-full min-w-0 text-left">
           <h3 className="flex items-center gap-2 text-xl font-semibold text-[#f0e7df]">
             Today at a glance<span className="text-xs text-[#b5a99e]">{glanceOpen ? '▾' : '▸'}</span>
           </h3>
           <p className="mt-0.5 text-sm text-[#b5a99e]">Click any metric to open its relevant task list.</p>
         </button>
-        {glanceOpen && <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+        {glanceOpen && <div className="grid min-w-0 grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {KPIS.map((k) => {
             const t = TONES[k.tone];
             const accent: Record<Tone, string> = { red: 'text-red-300', orange: 'text-orange-300', amber: 'text-amber-200', blue: 'text-sky-300', violet: 'text-violet-300', teal: 'text-teal-300', emerald: 'text-emerald-300', rose: 'text-rose-300', indigo: 'text-indigo-300', slate: 'text-stone-300' };
             return (
-              <button key={k.key} onClick={() => p.onShowTaskList(k.key)} className={`rounded-3xl border p-5 text-left transition duration-200 hover:-translate-y-0.5 ${k.value ? 'border-[#5b493d] bg-[#302923] shadow-md hover:bg-[#382f28]' : 'border-[#403831] bg-[#292420] shadow-sm hover:bg-[#332b25]'} ${k.value && (k.key === 'overdue' || k.key === 'blocked') ? 'ring-1 ring-red-400/50 shadow-lg' : ''}`}>
+              <button key={k.key} onClick={() => p.onShowTaskList(k.key)} className={`min-w-0 rounded-2xl border p-3 text-left transition duration-200 hover:-translate-y-0.5 sm:rounded-3xl sm:p-5 ${k.value ? 'border-[#5b493d] bg-[#302923] shadow-md hover:bg-[#382f28]' : 'border-[#403831] bg-[#292420] shadow-sm hover:bg-[#332b25]'} ${k.value && (k.key === 'overdue' || k.key === 'blocked') ? 'ring-1 ring-red-400/50 shadow-lg' : ''}`}>
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2 text-sm font-semibold text-[#e7ddd4]">
+                  <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-semibold leading-snug text-[#e7ddd4] sm:gap-2 sm:text-sm">
                     {k.label}
                     {k.value > 0 && (k.key === 'overdue' || k.key === 'blocked') && <span className="rounded-full bg-red-950/70 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-200">Action</span>}
                   </span>
                   <span className={`h-2.5 w-2.5 rounded-full ${k.value ? t.dot : 'bg-emerald-400'}`} />
                 </div>
-                <div className={`mt-3 text-5xl font-bold tabular-nums sm:text-6xl ${k.value ? accent[k.tone] : 'text-[#80746a]'}`}>{k.value}</div>
+                <div className={`mt-3 break-words text-4xl font-bold tabular-nums sm:text-5xl ${k.value ? accent[k.tone] : 'text-[#80746a]'}`}>{k.value}</div>
                 <div className="mt-2 text-xs text-[#b5a99e]">{k.value ? k.hint : 'All clear ✓'}</div>
                 {k.value > 0 && <div className={`mt-0.5 text-xs font-semibold ${accent[k.tone]}`}>View tasks →</div>}
               </button>
