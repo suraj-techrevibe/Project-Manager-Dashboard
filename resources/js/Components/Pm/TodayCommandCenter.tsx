@@ -279,7 +279,7 @@ export interface CommandCenterProps {
 export default function TodayCommandCenter(p: CommandCenterProps) {
   const { counts } = p;
   const noOwner = counts.unassigned + p.unassignedSubtasks.length;
-  const attention = counts.overdue + counts.blocked + counts.due_today + noOwner;
+  const attention = counts.overdue + counts.blocked + counts.due_today + counts.subtasks_incomplete + noOwner;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -309,6 +309,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
     { key: 'stuck', label: 'Stuck 3+ days', hint: 'No movement', tone: 'amber', value: counts.stuck },
     { key: 'unassigned', label: 'No owner', hint: 'Nobody assigned', tone: 'violet', value: noOwner },
     { key: 'unverified', label: 'To verify', hint: 'Done, not yet checked', tone: 'teal', value: counts.unverified },
+    { key: 'subtasks_incomplete', label: 'Incomplete subtasks', hint: 'Parent task marked done', tone: 'rose', value: counts.subtasks_incomplete },
   ];
 
   const links: { label: string; tab: string }[] = [
