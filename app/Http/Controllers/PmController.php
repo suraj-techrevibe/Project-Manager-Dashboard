@@ -174,10 +174,26 @@ class PmController extends Controller
             'metrics' => $this->flags->metrics($flags),
             'workload' => $workload,
             'subtasks' => $this->flags->subtasks(),
+            'subtask_summary' => $this->subtaskSummary(),
             'staff' => $this->staff(),
             'since' => $this->flags->sinceLastWorkday($workload),
             'meeting_followup' => $this->followUp->latest(),
             'lastSyncedAt' => Cache::get('pm.last_synced_at'),
+        ];
+    }
+
+    private function subtaskSummary(): array
+    {
+        $query=PmSubtask::query()->whereNotIn('status',['Cancelled']);
+        $total=(clone $query)->count();
+        $completed=(clone $query)->where('status','Completed')->count();
+        $remaining=max(0,$total-$completed);
+
+        return [
+            'total'=>$total,
+            'completed'=>$completed,
+            'remaining'=>$remaining,
+            'progress'=>$total>0?(int)round($completed/$total*100):0,
         ];
     }
 
