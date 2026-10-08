@@ -1,5 +1,6 @@
 import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
