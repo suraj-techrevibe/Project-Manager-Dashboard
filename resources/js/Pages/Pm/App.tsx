@@ -117,8 +117,11 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       const { data } = await pmApi.sync();
       setToday(data);
       await loadProjects();
-    } catch {
-      setTodayError("Couldn't sync Today.");
+    } catch (e) {
+      const message = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
+        ?? (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? (e instanceof Error ? e.message : null);
+      setTodayError(message ? `Sync failed: ${message}` : "Couldn't sync Today.");
     } finally {
       window.clearTimeout(noticeTimer);
       setSyncing(false);
