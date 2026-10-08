@@ -365,22 +365,23 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-2 border-t border-white/10 pt-5 sm:grid-cols-4">
-          <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-red-200">Overdue</div>
-            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{counts.overdue}</div>
-          </div>
-          <div className="rounded-2xl border border-orange-400/20 bg-orange-500/10 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">Blocked</div>
-            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{counts.blocked}</div>
-          </div>
-          <div className="rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-200">Due today</div>
-            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{counts.due_today}</div>
-          </div>
-          <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-200">No owner</div>
-            <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{noOwner}</div>
+        <div className="mt-6 border-t border-white/10 pt-5">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Board snapshot</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {[
+              { label: 'Open tasks', value: String(openTasks), sub: `across ${plural(p.workload.length, 'person', 'people')}`, filter: 'open' },
+              { label: 'Planned this week', value: `${Math.round(weekHours)}h`, sub: 'due by end of week', filter: 'due_soon' },
+              { label: 'Free people', value: String(free.length), sub: free.length ? free.slice(0, 2).map((w) => w.name.split(' ')[0]).join(', ') : 'everyone has work', filter: 'free' },
+              { label: 'Overloaded', value: String(over.length), sub: over.length ? over.slice(0, 2).map((w) => w.name.split(' ')[0]).join(', ') : 'nobody', filter: 'overloaded' },
+              { label: p.since ? `Done since ${p.since.label}` : 'Done recently', value: String(p.since?.completed.count ?? 0), sub: p.since?.tracked ? `${p.since.created.count} new tasks` : 'fills in after 2nd sync', filter: 'done_since' },
+            ].map((m) => (
+              <button key={m.label} type="button" onClick={() => p.onShowTaskList(m.filter)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/10">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{m.label}</div>
+                <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{m.value}</div>
+                <div className="truncate text-[11px] text-slate-400">{m.sub}</div>
+                <div className="mt-1 text-[10px] font-semibold text-indigo-200">View filtered tasks →</div>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -418,21 +419,6 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           })}
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-5">
-          {[
-            { label: 'Open tasks', value: String(openTasks), sub: `across ${plural(p.workload.length, 'person', 'people')}`, tone: 'slate' as Tone },
-            { label: 'Planned this week', value: `${Math.round(weekHours)}h`, sub: 'due by end of week', tone: 'indigo' as Tone },
-            { label: 'Free people', value: String(free.length), sub: free.length ? free.slice(0, 2).map((w) => w.name.split(' ')[0]).join(', ') : 'everyone has work', tone: 'emerald' as Tone },
-            { label: 'Overloaded', value: String(over.length), sub: over.length ? over.slice(0, 2).map((w) => w.name.split(' ')[0]).join(', ') : 'nobody', tone: 'rose' as Tone },
-            { label: p.since ? `Done since ${p.since.label}` : 'Done recently', value: String(p.since?.completed.count ?? 0), sub: p.since?.tracked ? `${p.since.created.count} new tasks` : 'fills in after 2nd sync', tone: 'teal' as Tone },
-          ].map((m) => (
-            <div key={m.label} className={`rounded-2xl border px-5 py-4 shadow-sm backdrop-blur-sm ${TONES[m.tone].panel}`}>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{m.label}</div>
-              <div className={`mt-1 text-3xl font-bold tabular-nums ${TONES[m.tone].num}`}>{m.value}</div>
-              <div className="truncate text-xs text-slate-500">{m.sub}</div>
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* ===== 3. PM checklist (ordered) ===== */}
