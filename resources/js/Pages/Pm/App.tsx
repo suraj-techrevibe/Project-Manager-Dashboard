@@ -49,6 +49,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState(false);
   const [showDigest, setShowDigest] = useState(false);
   const [digestText, setDigestText] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -109,6 +110,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
 
   const handleSync = async () => {
     setSyncing(true);
+    setSyncNotice(false);
+    const noticeTimer = window.setTimeout(() => setSyncNotice(true), 10_000);
     try {
       const { data } = await pmApi.sync();
       setToday(data);
@@ -116,7 +119,9 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     } catch {
       setTodayError("Couldn't sync Today.");
     } finally {
+      window.clearTimeout(noticeTimer);
       setSyncing(false);
+      setSyncNotice(false);
     }
   };
 
@@ -279,6 +284,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   lastSynced={today.lastSyncedAt}
                   stale={today.lastSyncedAt ? Date.now() - new Date(today.lastSyncedAt).getTime() > 86_400_000 : true}
                   syncing={syncing}
+                  syncNotice={syncNotice}
                   onSync={() => void handleSync()}
                   showDigest={showDigest}
                   digestText={digestText}
