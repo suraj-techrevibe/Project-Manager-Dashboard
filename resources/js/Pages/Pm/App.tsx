@@ -322,7 +322,13 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                     {showAllTasks ? 'Back to command center' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
                   </button>
                 </div>
-                {showAllTasks && <div id="task-list"><AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => { const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id)); return ids.has(t.card_id); }) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} /></div>}
+                {showAllTasks && <div id="task-list"><AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => {
+  if (taskFilter === 'open') return t.status !== 'Completed' && t.status !== 'Cancelled';
+  if (taskFilter === 'free' || taskFilter === 'overloaded') return true;
+  if (taskFilter === 'done_since') return t.status === 'Completed';
+  const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id));
+  return ids.has(t.card_id);
+}) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} /></div>}
                 <MeetingFollowUpCard data={today.meeting_followup} />
               </div>
             ) : (
