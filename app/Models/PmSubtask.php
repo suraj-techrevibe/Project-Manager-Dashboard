@@ -12,6 +12,7 @@ class PmSubtask extends Model
     protected $casts = [
         'parent_due_at' => 'date',
         'remote_created_at' => 'datetime',
+        'completed_at' => 'datetime',
         'snoozed_until' => 'date',
     ];
 }
