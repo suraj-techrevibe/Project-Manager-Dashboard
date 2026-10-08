@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Pm\TaskmanduClient;
 use App\Services\Pm\TaskmanduUploadClient;
+use App\Models\PmSubtask;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -63,7 +64,35 @@ class ProjectController extends Controller
 
     public function show(string $project): JsonResponse
     {
-        return $this->respond(fn () => $this->taskmandu->get("/projects/{$project}"));
+        try {
+            $res = $this->taskmandu->get("/projects/{$project}");
+            $data = $this->present($res['data'] ?? null);
+
+            // Today is built from the same Taskmandu sync mirror. If the live
+            // project response is missing/stale for a nested sub-task, keep the
+            // task-detail view consistent with the authoritative synced status.
+            if (is_array($data)) {
+                $mirrors = PmSubtask::query()
+                    ->where('project_id', $project)
+                    ->get(['task_id', 'subtask_id', 'status', 'completed_at'])
+                    ->keyBy(fn ($s) => "{$s->task_id}:{$s->subtask_id}");
+
+                foreach ($data['tasks'] ?? [] as &$task) {
+                    foreach ($task['subTasks'] ?? [] as &$sub) {
+                        $mirror = $mirrors->get("{$task['_id']}:{$sub['_id']}");
+                        if ($mirror && $mirror->status === 'Completed') {
+                            $sub['status'] = 'Completed';
+                            $sub['completedAt'] = $mirror->completed_at?->toIso8601String();
+                        }
+                    }
+                }
+                unset($task, $sub);
+            }
+
+            return response()->json(['project' => $data]);
+        } catch (RuntimeException $e) {
+            return $this->fail($e);
+        }
     }
 
     public function store(Request $r): JsonResponse
@@ -355,6 +384,7 @@ class ProjectController extends Controller
             'assignedToId.*' => 'string|max:100',
             'assignedByName' => 'nullable|string|max:100',
             'status' => ['nullable', Rule::in(self::TASK_STATUSES)],
+            'completedAt' => 'nullable|date',
         ];
     }
 
