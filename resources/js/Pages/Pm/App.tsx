@@ -1,7 +1,6 @@
 import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import FlagsPanel from '@/Components/Pm/FlagsPanel';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
@@ -45,8 +44,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
 
   const [today, setToday] = useState<TodayData | null>(props.flags ? (props as TodayData) : null);
   const [todayError, setTodayError] = useState<string | null>(null);
-  const [todayLoading, setTodayLoading] = useState(false);
-  const [showAllTasks, setShowAllTasks] = useState(false);
+    const [showAllTasks, setShowAllTasks] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -149,7 +147,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       'PM stand-up',
       m ? `Overdue: ${m.overdue} · Blocked: ${m.blocked} · Due today: ${m.due_today} · No owner: ${m.unassigned}` : '',
       today?.since ? `Since ${today.since.label}: ${today.since.completed.count} completed · ${today.since.created.count} created · ${today.since.blocked.count} blocked` : '',
-    ].filter(Boolean).join('\\n');
+    ].filter(Boolean).join('\n');
     try { await navigator.clipboard.writeText(text); } catch {}
   };
 
@@ -298,8 +296,9 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onOpenCard={(card) => card.task.project_id && card.task.task_id ? openTask({ projectId: card.task.project_id, taskId: card.task.task_id }) : undefined}
                   onNudgeCard={(card) => void handleNudge(card)}
                   onOpenTask={openTask}
-                  onAssignTask={(card) => {
-                    if (card.task.project_id && card.task.task_id) openTask({ projectId: card.task.project_id, taskId: card.task.task_id });
+                  onAssignTask={(card, employeeId) => {
+                    if (!card.task.project_id || !card.task.task_id) return;
+                    void pmApi.updateProjectTask(card.task.project_id, card.task.task_id, { assignedToId: [employeeId] }).then(() => loadToday());
                   }}
                   onAssignSubtask={(id, employeeId) => void pmApi.assignSubtask(id, employeeId).then(() => loadToday())}
                   onOpenSince={(item) => item.project_id && item.task_id ? openTask({ projectId: item.project_id, taskId: item.task_id }) : undefined}
