@@ -16,7 +16,8 @@ export default function TaskmanduActivityMinutes({ onCancel, onSaved, lastMeetin
     d.setDate(d.getDate() + amount);
     return localISO(d);
   };
-  const [from, setFrom] = useState(lastMeetingDate ? shiftDay(lastMeetingDate, 1) : shiftDay(today, -1));
+  const defaultFrom = lastMeetingDate && lastMeetingDate < today ? shiftDay(lastMeetingDate, 1) : shiftDay(today, -1);
+  const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(today);
   const [draft, setDraft] = useState<TaskmanduActivityDraft | null>(null);
   const [title, setTitle] = useState('');

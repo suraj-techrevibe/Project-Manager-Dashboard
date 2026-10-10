@@ -18,7 +18,7 @@ import {
 import EmailModal from './EmailModal';
 import TaskmanduActivityMinutes from './TaskmanduActivityMinutes';
 import { EmptyState, JumpNav, PageHeader, Section, StatTile, btnChip, btnPrimary } from './ui/kit';
-import type { ActionItem, MeetingMinutesFull, MeetingMinutesSummary, MinutesStatus, MinutesTopic, Project } from '../../types/pm';
+import type { ActionItem, MeetingMinutesFull, MeetingMinutesSummary, MinutesStatus, MinutesTopic, Project, MeetingWorkItem } from '../../types/pm';
 import {
   ErrorNote,
   Field,
