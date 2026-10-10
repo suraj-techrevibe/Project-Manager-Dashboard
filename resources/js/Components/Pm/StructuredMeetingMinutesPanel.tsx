@@ -148,7 +148,13 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
     try {
       const { data } = await pmApi.minutesCarryOver();
       const have = new Set(workItems.map(w => `${normName(w.requirement)}|${normName(w.project)}`));
-      const fresh = data.work_items.map(w => ({ ...normalizeWork(w), note: w.note })).filter(w => !have.has(`${normName(w.requirement)}|${normName(w.project)}`));
+      // Deduplicate both against the form and within the carry-over response itself.
+      const fresh = data.work_items.map(w => ({ ...normalizeWork(w), note: w.note })).filter(w => {
+        const key = `${normName(w.requirement)}|${normName(w.project)}`;
+        if (have.has(key)) return false;
+        have.add(key);
+        return true;
+      });
       if (!fresh.length) { setCarryMsg(data.work_items.length ? 'Those items are already in this meeting.' : 'Nothing to carry over: the last meeting is finished and nothing on the board is overdue, blocked or stuck.'); return; }
       const base = workItems.length === 1 && !workItemHasContent(workItems[0]) ? [] : workItems; // replace the blank starter item
       setWorkItems([...base, ...fresh]);
@@ -243,6 +249,12 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
       <div className="flex items-center justify-between"><div className="text-xs font-medium text-slate-500">Everything in this meeting, in one place</div><button onClick={copyText} className={ghostBtn}>{copied ? 'Copied ✓' : 'Copy as text'}</button></div>
       <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">{text}</pre>
       {warnings.length > 0 && <ul className="list-inside list-disc text-xs text-amber-700">{warnings.map((x) => <li key={x}>{x}</li>)}</ul>}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">Work items to review</div><div className="text-lg font-semibold text-slate-800">{workItems.filter(workItemHasContent).length}</div></div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">Missing owner</div><div className={`text-lg font-semibold ${workItems.filter(workItemHasContent).filter(w => !w.owner.trim()).length ? 'text-amber-700' : 'text-slate-800'}`}>{workItems.filter(workItemHasContent).filter(w => !w.owner.trim()).length}</div></div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">Missing due date</div><div className={`text-lg font-semibold ${workItems.filter(workItemHasContent).filter(w => !w.due_date).length ? 'text-amber-700' : 'text-slate-800'}`}>{workItems.filter(workItemHasContent).filter(w => !w.due_date).length}</div></div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">Subtasks to create</div><div className="text-lg font-semibold text-slate-800">{workItems.filter(workItemHasContent).reduce((n, w) => n + w.action_items.filter(a => a.task.trim()).length, 0)}</div></div>
+      </div>
       <TaskmanduPreview items={workItems} projects={projects} loaded={projectsLoaded} employeeNames={employees.map((e) => e.name)} />
     </div>}
     <ErrorNote message={error} />
