@@ -27,6 +27,8 @@ export default function TaskmanduActivityMinutes({ onCancel, onSaved, lastMeetin
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [carryBusy, setCarryBusy] = useState(false);
+  const [carryMsg, setCarryMsg] = useState<string | null>(null);
 
   async function build() {
     setLoading(true);
@@ -46,6 +48,33 @@ export default function TaskmanduActivityMinutes({ onCancel, onSaved, lastMeetin
 
   const updateItem = (index: number, patch: Partial<MeetingWorkItem>) =>
     setItems((current) => current.map((item, i) => i === index ? { ...item, ...patch } : item));
+
+  const normName = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+  /** Same list the manual Work Items step offers — unfinished items from the last meeting plus overdue /
+   *  blocked / stuck board tasks. Added here too so you don't have to leave this screen to get them. */
+  async function carryOver() {
+    setCarryBusy(true);
+    setCarryMsg(null);
+    try {
+      const { data } = await pmApi.minutesCarryOver();
+      const have = new Set(items.map((w) => `${normName(w.requirement)}|${normName(w.project)}`));
+      const fresh = data.work_items.filter((w) => !have.has(`${normName(w.requirement)}|${normName(w.project)}`));
+      if (!fresh.length) {
+        setCarryMsg(data.work_items.length ? 'Those items are already in this meeting.' : 'Nothing to carry over: the last meeting is finished and nothing on the board is overdue, blocked or stuck.');
+        return;
+      }
+      const start = items.length;
+      setItems((current) => [...current, ...fresh]);
+      // Carried-over work is real follow-up, not just background context, so default it to "create task".
+      setCreateTask((current) => { const next = { ...current }; fresh.forEach((_, j) => { next[start + j] = true; }); return next; });
+      setCarryMsg(`Added ${fresh.length} Work Item${fresh.length === 1 ? '' : 's'}${data.from ? ` (${data.from_meeting} unfinished from “${data.from.title}”, ${data.from_board} from the board)` : ' from the board'}.`);
+    } catch (e) {
+      setCarryMsg(err(e, "Couldn't load carry-over items."));
+    } finally {
+      setCarryBusy(false);
+    }
+  }
 
   async function save() {
     if (!draft) return;
@@ -100,6 +129,11 @@ export default function TaskmanduActivityMinutes({ onCancel, onSaved, lastMeetin
               <p className="text-sm text-slate-500">Detected team members: {draft.attendees.length ? draft.attendees.join(', ') : 'No comment authors found in this period'}.</p>
               {items.length === 0 && <EmptyState title="No activity found for this period">Run Sync now in PM Agent after the team has commented or changed statuses. Existing comments may be imported on sync; status history starts from deployment.</EmptyState>}
               <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-900">These are updates to tasks that already exist on the Taskmandu board. They will be saved into the meeting discussion, not recreated as new tasks. Select “Create new task” only when the activity reveals genuinely new work.</div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-medium text-slate-500">Still missing anything unfinished from last time?</span>
+                <button onClick={carryOver} disabled={carryBusy} title="Unfinished items from the last meeting, plus overdue, blocked and stuck tasks from the board" className={ghostBtn}>{carryBusy ? 'Loading…' : '↩ Carry over from last meeting'}</button>
+              </div>
+              {carryMsg && <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">{carryMsg}</div>}
               {items.map((item, i) => (
                 <div key={i} className={`rounded-lg border p-3 ${createTask[i] ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200'}`}>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="text-sm font-semibold">Existing task update {i + 1}</span><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{createTask[i] ? 'Will create task' : 'Minutes only'}</span></div><button onClick={() => { setItems((all) => all.filter((_, j) => j !== i)); setCreateTask((all) => Object.fromEntries(Object.entries(all).filter(([k]) => Number(k) !== i).map(([k, v]) => [Number(k) > i ? Number(k) - 1 : Number(k), v]))); }} className="text-xs text-slate-500 hover:text-red-600">Remove</button></div>
