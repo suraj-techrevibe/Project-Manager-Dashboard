@@ -58,7 +58,7 @@ export default function StructuredMeetingMinutesPanel() {
   }
   const visible = useMemo(() => { const q = query.trim().toLowerCase(); return minutes.filter(m => !q || m.title.toLowerCase().includes(q) || m.attendees.some(a => a.toLowerCase().includes(q))); }, [minutes, query]);
 
-  if (activityBuilderOpen) return <TaskmanduActivityMinutes onCancel={() => setActivityBuilderOpen(false)} onSaved={(m) => { setActivityBuilderOpen(false); saved(m); void load(); }} lastMeetingDate={minutes.map(m => m.meeting_date).sort().at(-1) ?? null} />;
+  if (activityBuilderOpen) return <TaskmanduActivityMinutes onCancel={() => setActivityBuilderOpen(false)} onSaved={(m) => { setActivityBuilderOpen(false); saved(m); void load(); }} lastMeetingDate={[...minutes.map(m => m.meeting_date)].sort().pop() ?? null} />;
   if (editing) return <WorkItemWizard initial={editing.minute} copy={editing.copy} startPaste={!!editing.paste} onCancel={() => setEditing(null)} onSaved={saved} />;
 
   return <div className="flex flex-col gap-4">
