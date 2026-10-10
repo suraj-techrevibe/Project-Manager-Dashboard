@@ -11,7 +11,8 @@ export type FollowUpState='blocked'|'overdue'|'subtasks_incomplete'|'stuck'|'not
 export interface FollowUpItem { requirement:string; owner:string|null; assignee:string|null; project:string|null; state:FollowUpState; detail:string; due:string|null; subtasks:{done:number;total:number}|null; url:string|null; card_id:number|null; }
 export interface MeetingFollowUp { meeting:{id:number;title:string;meeting_date:string|null;days_ago:number|null}; items:FollowUpItem[]; counts:Record<FollowUpState|'total',number>; }
 export interface CarryOver { from:MeetingFollowUp['meeting']|null; work_items:MeetingWorkItem[]; from_meeting:number; from_board:number; }
-export interface TaskmanduActivityDraft { from:string; to:string; activity_count:number; work_items:MeetingWorkItem[]; attendees:string[]; title:string; summary:{comments:number;task_status_changes:number;subtask_status_changes:number}; }
+export type ActivityDraftSection = 'completed'|'progress'|'in_progress'|'due'|'blocked'|'new_work';
+export interface TaskmanduActivityDraft { from:string; to:string; activity_count:number; sections:Record<ActivityDraftSection, MeetingWorkItem[]>; attendees:string[]; title:string; summary:{comments:number;task_status_changes:number;subtask_status_changes:number}; }
 export interface TodayData { flags:PmFlag[]; metrics:PmMetrics; workload:WorkloadRow[]; subtasks:SubtaskFlag[]; subtask_summary:{total:number;completed:number;remaining:number;progress:number}; staff:Employee[]; since:SinceSummary; lastSyncedAt:string|null; meeting_followup?:MeetingFollowUp|null; }
 export interface DigestPreview { text:string; channels:{slack:boolean;email:boolean}; }
 export interface DraftTicket { title:string; description:string; level:'senior dev'|'intern'|string; estimate_hours:number; }
