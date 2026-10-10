@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import TaskmanduActivityMinutes from './TaskmanduActivityMinutes';
 import { pmApi } from '../../lib/pmApi';
 import { localISO } from '../../lib/meetingNotes';
 import { splitProjectNames, workItemHasContent, workItemTitle, workItemWarnings, workItemsToText } from '../../lib/minutesFormat';
@@ -27,6 +28,7 @@ export default function StructuredMeetingMinutesPanel() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<MeetingMinutesFull | null>(null);
   const [query, setQuery] = useState('');
+  const [activityBuilderOpen, setActivityBuilderOpen] = useState(false);
 
   async function load() {
     setLoading(true); setError(null);
@@ -56,10 +58,11 @@ export default function StructuredMeetingMinutesPanel() {
   }
   const visible = useMemo(() => { const q = query.trim().toLowerCase(); return minutes.filter(m => !q || m.title.toLowerCase().includes(q) || m.attendees.some(a => a.toLowerCase().includes(q))); }, [minutes, query]);
 
+  if (activityBuilderOpen) return <TaskmanduActivityMinutes onCancel={() => setActivityBuilderOpen(false)} onSaved={(m) => { setActivityBuilderOpen(false); saved(m); void load(); }} lastMeetingDate={minutes.map(m => m.meeting_date).sort().at(-1) ?? null} />;
   if (editing) return <WorkItemWizard initial={editing.minute} copy={editing.copy} startPaste={!!editing.paste} onCancel={() => setEditing(null)} onSaved={saved} />;
 
   return <div className="flex flex-col gap-4">
-    <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-medium text-slate-700">Meeting minutes</h3><p className="text-xs text-slate-400">Use Work Items for anything that should become a Taskmandu task.</p></div><div className="flex gap-2"><button onClick={() => setEditing({ minute: null, copy: false, paste: true })} className={ghostBtn} title="Paste your meeting notes and fill the work items automatically">Paste notes</button><button onClick={() => setEditing({ minute: null, copy: false })} className={primaryBtn}>New meeting</button></div></div>
+    <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-medium text-slate-700">Meeting minutes</h3><p className="text-xs text-slate-400">Use Work Items for anything that should become a Taskmandu task.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => setActivityBuilderOpen(true)} className={ghostBtn}>Build from Taskmandu activity</button><button onClick={() => setEditing({ minute: null, copy: false, paste: true })} className={ghostBtn} title="Paste your meeting notes and fill the work items automatically">Paste notes</button><button onClick={() => setEditing({ minute: null, copy: false })} className={primaryBtn}>New meeting</button></div></div>
     <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search meetings…" className={inputCls} />
     <ErrorNote message={error} />
     {loading && <p className="text-sm text-slate-500">Loading…</p>}
