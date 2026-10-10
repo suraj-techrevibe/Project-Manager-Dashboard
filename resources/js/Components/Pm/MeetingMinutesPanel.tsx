@@ -16,6 +16,7 @@ import {
   topicsFor,
 } from '../../lib/minutesFormat';
 import EmailModal from './EmailModal';
+import TaskmanduActivityMinutes from './TaskmanduActivityMinutes';
 import { EmptyState, JumpNav, PageHeader, Section, StatTile, btnChip, btnPrimary } from './ui/kit';
 import type { ActionItem, MeetingMinutesFull, MeetingMinutesSummary, MinutesStatus, MinutesTopic, Project } from '../../types/pm';
 import {
@@ -52,6 +53,7 @@ export default function MeetingMinutesPanel() {
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [filter, setFilter] = useState<'all' | MinutesStatus>('all');
   const [query, setQuery] = useState('');
+  const [activityBuilderOpen, setActivityBuilderOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -145,6 +147,10 @@ export default function MeetingMinutesPanel() {
     return out;
   }, [visible]);
 
+  if (activityBuilderOpen) {
+    return <TaskmanduActivityMinutes onCancel={() => setActivityBuilderOpen(false)} onSaved={(m) => { setActivityBuilderOpen(false); onSaved(m); }} lastMeetingDate={minutes[0]?.meeting_date ?? null} />;
+  }
+
   if (editing) {
     return (
       <MinutesWizard
@@ -169,9 +175,10 @@ export default function MeetingMinutesPanel() {
         description="Record decisions and action items, then turn them into tasks."
         status={minutes.length ? `${minutes.length} meeting${minutes.length === 1 ? '' : 's'} · ${drafts} draft${drafts === 1 ? '' : 's'}` : undefined}
         actions={
-          <button onClick={() => setEditing({ minute: null, copy: false })} className={btnPrimary}>
-            + New meeting
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setActivityBuilderOpen(true)} className={ghostBtn}>Build from Taskmandu activity</button>
+            <button onClick={() => setEditing({ minute: null, copy: false })} className={btnPrimary}>+ New meeting</button>
+          </div>
         }
         links={[
           { label: 'Brief to tickets', tab: 'brief' },
@@ -327,6 +334,20 @@ function MinutesDetail({
           {t.decision && <p className="mt-0.5 text-sm text-slate-700"><span className="font-medium">Decision:</span> {t.decision}</p>}
         </div>
       ))}
+
+      {minute.work_items && minute.work_items.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Work items from Taskmandu activity</div>
+          {minute.work_items.map((w, i) => (
+            <div key={i} className="rounded-lg border border-slate-200 p-3">
+              <div className="font-medium text-slate-800">{i + 1}. {w.requirement || 'Untitled work item'}</div>
+              <div className="mt-1 text-xs text-slate-500">{w.owner || 'Unassigned'} · {w.project || 'No project'}{w.due_date ? ' · Due ' + shortDate(w.due_date) : ''}</div>
+              {w.discussion && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{w.discussion}</p>}
+              {w.action_items?.length > 0 && <ul className="mt-2 list-inside list-disc text-sm text-slate-700">{w.action_items.map((a, ai) => <li key={ai}>{a.task}{a.due_date ? ' — due ' + shortDate(a.due_date) : ''}</li>)}</ul>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {minute.action_items.length > 0 && (
         <div>
@@ -505,6 +526,7 @@ function MinutesWizard({
   const [actionItems, setActionItems] = useState<ActionItem[]>(
     initial && !copy ? initial.action_items.map((a) => ({ ...a, task: a.task ?? '', owner: a.owner ?? '' })) : [],
   );
+  const [workItems] = useState<MeetingWorkItem[]>(initial && !copy ? initial.work_items ?? [] : []);
 
   useEffect(() => {
     pmApi.projects().then(({ data }) => setProjects(data.projects)).catch(() => {});
@@ -561,7 +583,7 @@ function MinutesWizard({
       discussion: f.discussion,
       decisions: f.decisions,
       action_items: f.action_items,
-        work_items: [],
+        work_items: workItems,
     };
     try {
       const { data } = isEdit ? await pmApi.minutesUpdate(initial!.id, payload) : await pmApi.minutesCreate(payload);

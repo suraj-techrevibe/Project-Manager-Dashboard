@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\MeetingMinutes;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\MeetingFollowUpService;
+use App\Services\Pm\TaskmanduActivityMinutesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -31,6 +32,16 @@ class MeetingMinutesController extends Controller
     }
 
     /** Work Items to start a new meeting's minutes with: unfinished ones from the last meeting + stuck board tasks. */
+    public function activityDraft(Request $r, TaskmanduActivityMinutesService $activity): JsonResponse
+    {
+        $data = $r->validate([
+            'from' => 'required|date_format:Y-m-d',
+            'to' => 'required|date_format:Y-m-d|after_or_equal:from',
+        ]);
+
+        return response()->json($activity->build($data['from'], $data['to']));
+    }
+
     public function carryOver(MeetingFollowUpService $followUp): JsonResponse
     {
         return response()->json($followUp->carryOver());

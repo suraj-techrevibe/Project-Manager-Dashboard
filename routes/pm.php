@@ -58,6 +58,7 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm/api')->name('pm.')->gro
     Route::post('minutes', [MeetingMinutesController::class, 'store'])->name('minutes.store');
     Route::post('minutes/draft', [MeetingMinutesController::class, 'draft'])->name('minutes.draft');
     Route::get('minutes/carry-over', [MeetingMinutesController::class, 'carryOver'])->name('minutes.carry-over');
+    Route::post('minutes/activity-draft', [MeetingMinutesController::class, 'activityDraft'])->name('minutes.activity-draft');
     Route::get('minutes/{minute}', [MeetingMinutesController::class, 'show'])->name('minutes.show');
     Route::post('minutes/{minute}/push', [MeetingMinutesController::class, 'pushToTaskmandu'])->name('minutes.push');
     Route::patch('minutes/{minute}', [MeetingMinutesController::class, 'update'])->name('minutes.update');
