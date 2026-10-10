@@ -91,10 +91,14 @@ class MeetingFollowUpService
                 $workItems[] = [
                     'owner' => trim((string) ($w['owner'] ?? '')),
                     'project' => trim((string) ($w['project'] ?? '')),
-                    'project_id' => null,
+                    // Kept when the carried item matched a live card, so pushing it again updates that
+                    // task instead of name-matching a project and risking a duplicate.
+                    'project_id' => $r['card']?->project_id ?? ($w['project_id'] ?? null),
                     'requirement' => trim((string) $w['requirement']),
                     'discussion' => (string) ($w['discussion'] ?? ''),
-                    'due_date' => $this->future($w['due_date'] ?? null, $today),
+                    // The item's own due date is carried as-is, past or not: an overdue task must keep its
+                    // due date so it stays flagged overdue, not go blank until someone re-enters it.
+                    'due_date' => $w['due_date'] ?? null,
                     'action_items' => $actions,
                     'note' => 'From “'.$minute->title.'”: '.$r['item']['detail'],
                 ];
@@ -119,7 +123,7 @@ class MeetingFollowUpService
                 // exact employee names, so a joined string matches nothing and shows up as if no owner carried.
                 'owner' => $this->firstName($card->assignee),
                 'project' => (string) ($card->project_name ?? ''),
-                'project_id' => null,
+                'project_id' => $card->project_id,
                 'requirement' => $card->title,
                 'discussion' => (string) ($card->description ?? ''),
                 'due_date' => $card->due_at?->toDateString(),
