@@ -4,7 +4,8 @@ import { BRIEF_MAX_CHARS, MAX_TICKETS, autoAssign, blankTicket, findExisting, ke
 import { localISO, parseMeetingNotes } from '../../lib/meetingNotes';
 import { TASK_PRIORITIES } from '../../types/pm';
 import type { BriefContext, Project, PushTicket } from '../../types/pm';
-import MeetingPicker from './MeetingPicker';
+import MeetingPicker, { buildTicketsFromMeeting } from './MeetingPicker';
+import { visitPm } from '../../lib/pmNav';
 import { EmptyState, PageHeader, Section, btnPrimary, btnSecondary } from './ui/kit';
 
 const inputCls = 'rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
@@ -24,6 +25,7 @@ export default function BriefDrafter() {
   const [ctx, setCtx] = useState<BriefContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -35,7 +37,24 @@ export default function BriefDrafter() {
   const [meeting, setMeeting] = useState<{ id: number; title: string; meeting_date: string; minutes: string } | null>(null);
 
   const loadContext = () => pmApi.briefContext().then(({ data }) => { setCtx(data); setCtxError(null); }).catch((e) => setCtxError(errorText(e, "Couldn't load employees — Taskmandu may be unreachable.")));
-  useEffect(() => { loadContext(); pmApi.projects().then(({ data }) => setProjects(data.projects)).catch(() => {}); }, []);
+  useEffect(() => {
+    loadContext();
+    pmApi.projects().then(({ data }) => setProjects(data.projects)).catch(() => {}).finally(() => setProjectsLoaded(true));
+  }, []);
+
+  // Jumped here from a meeting's "Push N tickets to Taskmandu" button (?meeting=<id>) — load that
+  // meeting's Work Items once the team/project lists are ready, same as picking it by hand.
+  useEffect(() => {
+    if (!ctx || !projectsLoaded) return;
+    const id = new URLSearchParams(window.location.search).get('meeting');
+    if (!id) return;
+    visitPm('brief', {}, { replace: true }); // consume the param so a refresh doesn't reload it
+    pmApi.minutesShow(Number(id)).then(({ data }) => {
+      const { tickets, notice, meeting } = buildTicketsFromMeeting(data.minute, ctx.employees, projects);
+      loadDrafts(tickets); setMeeting(meeting); setNotice(notice);
+    }).catch(() => setDraftError("Couldn't load that meeting."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx, projectsLoaded]);
 
   const employees = ctx?.employees ?? [];
   const pending = tickets.filter((t) => t.state !== 'pushed');

@@ -10,6 +10,7 @@ import { localISO, matchEmployee } from '../../lib/meetingNotes';
 import { shortDate, workItemHasContent, workItemTitle } from '../../lib/minutesFormat';
 import type {
   Employee,
+  MeetingMinutesFull,
   MeetingMinutesSummary,
   MeetingWorkItem,
   Project,
@@ -48,64 +49,21 @@ function descriptionFor(w: MeetingWorkItem): string {
   return w.discussion?.trim() ?? '';
 }
 
-export default function MeetingPicker({
-  employees,
-  projects,
-  disabled,
-  onLoad,
-  onError,
-}: {
-  employees: Employee[];
-  projects: Project[];
-  disabled?: boolean;
-  onLoad: (
-    tickets: EditableTicket[],
-    notice: string,
-    meeting: {
-      id: number;
-      title: string;
-      meeting_date: string;
-      minutes: string;
-    }
-  ) => void;
-  onError: (message: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [list, setList] =
-    useState<MeetingMinutesSummary[] | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function toggle() {
-    if (open) return setOpen(false);
-
-    setOpen(true);
-    setBusy(true);
-
-    try {
-      const { data } = await pmApi.minutesList();
-
-      setList(
-        data.minutes.filter(
-          (m) =>
-            (m.work_items?.length ?? 0) > 0 ||
-            m.action_items.length > 0
-        )
-      );
-    } catch {
-      onError("Couldn't load your saved meetings.");
-      setOpen(false);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function pick(id: number) {
-    setBusy(true);
-
-    try {
-      const { data } = await pmApi.minutesShow(id);
-      const m = data.minute;
-
+/**
+ * Turn a saved meeting's Work Items (or, for a legacy meeting with none, its Action Items) into
+ * Brief-to-tickets EditableTickets: resolve each owner name against the team list, each project
+ * name/id against the live project list, and drop any due date that's already in the past.
+ * Shared by MeetingPicker's own list and by jumping here straight from a meeting's detail view.
+ */
+export function buildTicketsFromMeeting(
+  m: MeetingMinutesFull,
+  employees: Employee[],
+  projects: Project[]
+): {
+  tickets: EditableTicket[];
+  notice: string;
+  meeting: { id: number; title: string; meeting_date: string; minutes: string };
+} {
       const now = localISO(new Date());
       const unmatched: string[] = [];
       const missingProjects: string[] = [];
@@ -298,12 +256,10 @@ export default function MeetingPicker({
         'Meeting title/date/attendees stay context only.'
       );
 
-      setOpen(false);
-
-      onLoad(
+      return {
         tickets,
-        bits.join(' '),
-        {
+        notice: bits.join(' '),
+        meeting: {
           id: m.id,
           title: m.title,
           meeting_date: m.meeting_date,
@@ -312,8 +268,69 @@ export default function MeetingPicker({
               m.action_items ??
               []
           ),
-        }
+        },
+      };
+}
+
+export default function MeetingPicker({
+  employees,
+  projects,
+  disabled,
+  onLoad,
+  onError,
+}: {
+  employees: Employee[];
+  projects: Project[];
+  disabled?: boolean;
+  onLoad: (
+    tickets: EditableTicket[],
+    notice: string,
+    meeting: {
+      id: number;
+      title: string;
+      meeting_date: string;
+      minutes: string;
+    }
+  ) => void;
+  onError: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [list, setList] =
+    useState<MeetingMinutesSummary[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    if (open) return setOpen(false);
+
+    setOpen(true);
+    setBusy(true);
+
+    try {
+      const { data } = await pmApi.minutesList();
+
+      setList(
+        data.minutes.filter(
+          (m) =>
+            (m.work_items?.length ?? 0) > 0 ||
+            m.action_items.length > 0
+        )
       );
+    } catch {
+      onError("Couldn't load your saved meetings.");
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pick(id: number) {
+    setBusy(true);
+
+    try {
+      const { data } = await pmApi.minutesShow(id);
+      const { tickets, notice, meeting } = buildTicketsFromMeeting(data.minute, employees, projects);
+      setOpen(false);
+      onLoad(tickets, notice, meeting);
     } catch {
       onError("Couldn't load that meeting.");
     } finally {
