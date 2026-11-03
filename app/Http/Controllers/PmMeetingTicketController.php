@@ -20,6 +20,16 @@ class PmMeetingTicketController extends Controller
         $data = Validator::make($request->all(), [
             'tickets'=>'required|array|min:1|max:30','tickets.*.title'=>'required|string|max:200','tickets.*.description'=>'nullable|string|max:3000','tickets.*.level'=>'nullable|string|max:30','tickets.*.estimate_hours'=>'nullable|numeric|min:0|max:1000','tickets.*.priority'=>['nullable',Rule::in(['Low','Medium','High','Critical'])],'tickets.*.assignee_employee_id'=>'required|string|max:100','tickets.*.due_date'=>'nullable|date_format:Y-m-d','tickets.*.project_id'=>['nullable','regex:/^[0-9a-fA-F]{24}$/'],'tickets.*.project_confirmed'=>'boolean','tickets.*.subtasks'=>'nullable|array|max:50','tickets.*.subtasks.*.title'=>'required|string|max:300','tickets.*.subtasks.*.assignee_employee_id'=>'required|string|max:100','tickets.*.subtasks.*.due_date'=>'nullable|date_format:Y-m-d',
         ])->validate();
+
+        // Taskmandu identifies people by database id, not by the EMP-### code.
+        $data['tickets'] = array_map(function ($t) {
+            $t['assignee_employee_id'] = $this->taskmandu->mongoIdFor($t['assignee_employee_id']);
+            foreach ($t['subtasks'] ?? [] as $k => $s) {
+                $t['subtasks'][$k]['assignee_employee_id'] = $this->taskmandu->mongoIdFor($s['assignee_employee_id']);
+            }
+            return $t;
+        }, $data['tickets']);
+
         $employees=$this->taskmandu->employeeMap(); $results=[];
         foreach($data['tickets'] as $i=>$ticket){try{$results[]=['index'=>$i]+$this->pushOne($ticket,$employees,(string)$request->user()?->name);}catch(RuntimeException $e){$results[]=['index'=>$i,'ok'=>false,'error'=>$e->getMessage()];}}
         $ok=collect($results)->where('ok',true); $updated=$ok->where('action','updated')->count(); $newlyCreated=$ok->where('action','created')->count(); return response()->json(['results'=>$results,'created'=>$ok->count(),'newly_created'=>$newlyCreated,'updated'=>$updated,'failed'=>count($results)-$ok->count()]);
