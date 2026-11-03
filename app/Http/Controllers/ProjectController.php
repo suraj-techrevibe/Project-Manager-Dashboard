@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Pm\TaskmanduClient;
+use App\Services\Pm\TaskmanduSync;
 use App\Services\Pm\TaskmanduUploadClient;
 use App\Models\PmSubtask;
 use Illuminate\Http\JsonResponse;
@@ -140,7 +141,7 @@ class ProjectController extends Controller
             return $this->fail($e);
         }
 
-        try { $this->sync->run(); } catch (\\Throwable $e) { report($e); }
+        try { $this->sync->run(); } catch (\Throwable $e) { report($e); }
 
         return response()->json(['deleted' => true]);
     }
@@ -476,7 +477,7 @@ class ProjectController extends Controller
             // Taskmandu accepted the write; refresh the PM mirror immediately so
             // Today, reports and Project views observe the same remote state.
             $this->sync->run();
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             report($e);
             $syncError = 'Taskmandu saved the change, but the PM mirror refresh failed. Use Sync now to retry.';
         }
