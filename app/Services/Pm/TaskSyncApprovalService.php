@@ -1,11 +1,11 @@
 <?php
 
-namespace App\\Services\\Pm;
+namespace App\Services\Pm;
 
-use App\\Models\\PmTaskSyncRequest;
-use Illuminate\\Support\\Facades\\DB;
-use Illuminate\\Validation\\ValidationException;
-use Illuminate\\Support\\Str;
+use App\Models\PmTaskSyncRequest;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class TaskSyncApprovalService
 {
