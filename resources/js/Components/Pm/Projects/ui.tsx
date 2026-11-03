@@ -202,6 +202,51 @@ export function AssigneePicker({
   value: string[];
   onChange: (ids: string[]) => void;
 }) {
+  // Taskmandu identifies people by Mongo _id, but older tasks may hold the EMP-### code.
+  // A person counts as selected if either form is present, and we always write the Mongo id back.
+  const matches = (e: Employee, id: string) => id === e.employeeId || (!!e.id && id === e.id);
+  const canon = (e: Employee) => e.id || e.employeeId;
+  const isOn = (e: Employee) => value.some((id) => matches(e, id));
+
+  const toggle = (e: Employee) => {
+    const rest = value.filter((id) => !matches(e, id));
+    const others = rest.map((id) => {
+      const o = employees.find((x) => matches(x, id));
+      return o ? canon(o) : id;
+    });
+    onChange(isOn(e) ? others : [...others, canon(e)]);
+  };
+
+  // Ids that match nobody in the employee list stay on the task and are shown, so saving never drops them.
+  const known = new Set(employees.flatMap((e) => [e.employeeId, e.id].filter(Boolean) as string[]));
+  const unknown = employees.length > 0 ? value.filter((id) => !known.has(id)) : [];
+
+  return (
+    <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded-md border border-slate-200 p-2">
+      {employees.length === 0 && <span className="text-xs text-slate-400">No employees loaded.</span>}
+      {employees.map((e) => (
+        <label key={e.employeeId} className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isOn(e)} onChange={() => toggle(e)} />
+          {e.name}
+        </label>
+      ))}
+      {unknown.map((id) => (
+        <label key={id} className="flex items-center gap-2 text-sm text-slate-400" title="Not in the current employee list">
+          <input type="checkbox" checked onChange={() => onChange(value.filter((x) => x !== id))} />
+          Unknown user ({id.slice(0, 6)}…)
+        </label>
+      ))}
+    </div>
+  );
+}({
+  employees,
+  value,
+  onChange,
+}: {
+  employees: Employee[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
 
   return (
