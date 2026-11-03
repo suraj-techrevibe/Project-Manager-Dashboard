@@ -40,6 +40,7 @@ class ProjectController extends Controller
     public function __construct(
         private TaskmanduClient $taskmandu,
         private TaskmanduUploadClient $uploads,
+        private TaskmanduSync $sync,
     ) {}
 
     /* ------------------------------------------------------------------ */
@@ -138,6 +139,8 @@ class ProjectController extends Controller
         } catch (RuntimeException $e) {
             return $this->fail($e);
         }
+
+        try { $this->sync->run(); } catch (\\Throwable $e) { report($e); }
 
         return response()->json(['deleted' => true]);
     }
@@ -468,7 +471,20 @@ class ProjectController extends Controller
             return $this->fail($e);
         }
 
-        return response()->json(['project' => $this->present($res['data'] ?? null)], $status);
+        $syncError = null;
+        try {
+            // Taskmandu accepted the write; refresh the PM mirror immediately so
+            // Today, reports and Project views observe the same remote state.
+            $this->sync->run();
+        } catch (\\Throwable $e) {
+            report($e);
+            $syncError = 'Taskmandu saved the change, but the PM mirror refresh failed. Use Sync now to retry.';
+        }
+
+        return response()->json([
+            'project' => $this->present($res['data'] ?? null),
+            'sync_warning' => $syncError,
+        ], $status);
     }
 
     private function fail(RuntimeException $e): JsonResponse
