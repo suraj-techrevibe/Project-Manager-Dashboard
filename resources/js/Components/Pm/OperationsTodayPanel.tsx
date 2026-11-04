@@ -3,6 +3,7 @@ import type { OperationsTodaySummary, PmIntakeStatus } from '../../types/pm';
 interface Props {
   summary: OperationsTodaySummary;
   onNavigate: (tab: string) => void;
+  onCapture: (kind: 'request' | 'idea') => void;
 }
 
 const STATUS_LABELS: Record<PmIntakeStatus, string> = {
@@ -35,24 +36,40 @@ function Metric({ label, value, hint, tone }: { label: string; value: number; hi
   );
 }
 
-export default function OperationsTodayPanel({ summary, onNavigate }: Props) {
+export default function OperationsTodayPanel({ summary, onNavigate, onCapture }: Props) {
   const { counts } = summary;
 
   return (
     <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 p-4 shadow-sm sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="text-xs font-semibold uppercase tracking-widest text-indigo-600">Company operations</div>
-          <h2 className="mt-1 text-2xl font-bold text-slate-950">Operations overview</h2>
-          <p className="mt-1 text-sm text-slate-600">The business requests, decisions and ideas that need your coordination.</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-950">Your company at a glance</h2>
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">Capture incoming work, make decisions visible and see which businesses need coordination.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => onNavigate('operations')}
-          className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
-        >
-          Open Requests & Ideas →
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onCapture('request')}
+            className="rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+          >
+            + New request
+          </button>
+          <button
+            type="button"
+            onClick={() => onCapture('idea')}
+            className="rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+          >
+            + New idea
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('operations')}
+            className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Open workflow →
+          </button>
+        </div>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
