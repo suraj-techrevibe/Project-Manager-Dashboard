@@ -186,8 +186,8 @@ class PmController extends Controller
 
 
     /**
-     * Local company-operations records for Today. These are deliberately separate
-     * from Taskmandu task metrics: intake records are not delivery tasks.
+     * Request and idea records remain local. Delivery progress is aggregated from
+     * the Taskmandu task mirror, grouped by its authoritative project ID.
      */
     private function operationsTodaySummary(): array
     {
