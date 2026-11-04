@@ -15,4 +15,9 @@ class PmIntakeTaskLink extends Model
     {
         return $this->belongsTo(PmIntake::class, 'intake_id');
     }
+
+    public function card(): BelongsTo
+    {
+        return $this->belongsTo(PmCard::class, 'card_id');
+    }
 }
