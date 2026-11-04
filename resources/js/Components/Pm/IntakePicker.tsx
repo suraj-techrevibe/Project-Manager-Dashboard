@@ -162,7 +162,7 @@ export default function IntakePicker({
                     <span className="min-w-0 truncate text-sm font-medium text-slate-800">{item.title}</span>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${item.kind === 'request' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}>{item.kind}</span>
                   </span>
-                  <span className="text-xs text-slate-500">{item.linked_project_name ?? 'No Taskmandu project'} · {item.status.replaceAll('_', ' ')}</span>
+                  <span className="text-xs text-slate-500">{item.linked_project_name ?? 'No Taskmandu project'} · {item.status.replace(/_/g, ' ')}</span>
                   {reason
                     ? <span className="text-[11px] text-amber-700">{reason}</span>
                     : <span className="text-[11px] text-emerald-700">{item.task_links?.length ? `${item.task_links.length} Task(s) already linked · add more` : 'Ready to load as a Task'}</span>}
