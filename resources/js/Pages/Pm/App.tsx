@@ -245,7 +245,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       <Head title={`${current.label} · Company Operations`} />
 
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
-        <nav aria-label="PM agent sections" className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <nav aria-label="Company operations sections" className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PM_PAGES.map((p) => {
               const on = p.key === page;
