@@ -27,7 +27,7 @@ function Metric({ label, value, hint, tone }: { label: string; value: number; hi
   };
 
   return (
-    <div className={\`rounded-2xl border p-4 \${styles[tone]}\`}>
+    <div className={`rounded-2xl border p-4 ${styles[tone]}`}>
       <div className="text-xs font-semibold uppercase tracking-wide opacity-65">{label}</div>
       <div className="mt-1 text-3xl font-bold tabular-nums">{value}</div>
       <div className="mt-1 text-xs opacity-70">{hint}</div>
@@ -56,11 +56,11 @@ export default function OperationsTodayPanel({ summary, onNavigate }: Props) {
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        <Metric label="Open requests" value={counts.open_requests} hint="Not closed or planned" tone="slate" />
+        <Metric label="Open requests" value={counts.open_requests} hint="Received or under review" tone="slate" />
         <Metric label="Awaiting decision" value={counts.requests_for_decision} hint="Requests in review" tone="amber" />
         <Metric label="Ideas to review" value={counts.ideas_for_review} hint="Under review" tone="indigo" />
         <Metric label="Overdue requests" value={counts.overdue_requests} hint="Past requested date" tone="rose" />
-        <Metric label="Active businesses" value={counts.active_businesses} hint={\`\${counts.businesses} registered in total\`} tone="slate" />
+        <Metric label="Active businesses" value={counts.active_businesses} hint={`${counts.businesses} registered in total`} tone="slate" />
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
@@ -77,7 +77,7 @@ export default function OperationsTodayPanel({ summary, onNavigate }: Props) {
                     <div className="truncate text-sm font-medium text-slate-800">{business.name}</div>
                     <div className="text-xs text-slate-500">{business.project_count} linked Taskmandu project{business.project_count === 1 ? '' : 's'}</div>
                   </div>
-                  <span className={\`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold \${business.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}\`}>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${business.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                     {business.status === 'active' ? 'Active' : 'Paused'}
                   </span>
                 </div>
@@ -100,12 +100,12 @@ export default function OperationsTodayPanel({ summary, onNavigate }: Props) {
           {summary.recent_items.length ? (
             <div className="mt-3 divide-y divide-slate-100">
               {summary.recent_items.map((item) => (
-                <div key={\`\${item.kind}-\${item.id}\`} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div key={`${item.kind}-${item.id}`} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-slate-800">{item.title}</div>
                     <div className="mt-0.5 text-xs text-slate-500">
                       {item.business_name || 'Company-wide'} · {item.kind === 'request' ? 'Request' : 'Idea'}
-                      {item.requested_due_at ? \` · Requested by \${new Date(\`\${item.requested_due_at}T00:00:00\`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}\` : ''}
+                      {item.requested_due_at ? ` · Due ${new Date(`${item.requested_due_at}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
