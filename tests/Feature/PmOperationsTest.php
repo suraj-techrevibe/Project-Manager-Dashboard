@@ -215,7 +215,40 @@ class PmOperationsTest extends TestCase
         ])->assertUnprocessable()
             ->assertJsonPath('message', 'The project cannot be changed after tasks have been linked to this request.');
 
+        $this->patchJson('/pm/api/intakes/'.$intakeId, ['status' => 'approved'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This item is already in delivery. Update the linked Tasks in Taskmandu instead.');
+
         $this->assertSame(2, PmIntakeTaskLink::where('intake_id', $intakeId)->count());
+    }
+
+    public function test_tasks_from_an_intake_must_use_its_matched_taskmandu_project(): void
+    {
+        $user = User::factory()->create();
+        $projectId = str_repeat('b', 24);
+        $otherProjectId = str_repeat('c', 24);
+
+        $intakeId = $this->actingAs($user)->postJson('/pm/api/intakes', [
+            'kind' => 'request',
+            'title' => 'Update the checkout experience',
+            'linked_project_id' => $projectId,
+            'linked_project_name' => 'AdEvent Website',
+        ])->assertCreated()->json('intake.id');
+
+        $this->patchJson('/pm/api/intakes/'.$intakeId, ['status' => 'approved'])->assertOk();
+
+        $this->postJson('/pm/api/brief/push', [
+            'intake_id' => $intakeId,
+            'tickets' => [[
+                'title' => 'Improve payment confirmation',
+                'assignee_employee_id' => 'employee-1',
+                'project_id' => $otherProjectId,
+                'project_confirmed' => true,
+            ]],
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Every task from this request must stay in its matched Taskmandu project.');
+
+        $this->assertSame(0, PmIntakeTaskLink::where('intake_id', $intakeId)->count());
     }
 
     public function test_invalid_taskmandu_project_identifiers_are_rejected_for_business_links(): void
