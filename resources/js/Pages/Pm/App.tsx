@@ -10,16 +10,18 @@ import MeetingMinutesPanel from '@/Components/Pm/StructuredMeetingMinutesPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
+import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
 import { Icon } from '@/Components/Pm/ui/kit';
 import { pmApi } from '@/lib/pmApi';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { PmFlag, TaskFocus, TodayData, Project } from '@/types/pm';
 
 /** Tabs whose data is loaded on mount; they are re-mounted every time you come back so they never show stale data. Their place (open project / meeting) lives in the URL, so nothing is lost. */
-const REFETCH_ON_OPEN: PmPage[] = ['projects', 'minutes', 'reports'];
+const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'reports'];
 
 const LOOK: Record<PmPage, { icon: string; short: string }> = {
   today: { icon: 'sun', short: 'Today' },
+  operations: { icon: 'inbox', short: 'Requests' },
   projects: { icon: 'folder', short: 'Projects' },
   minutes: { icon: 'notes', short: 'Minutes' },
   brief: { icon: 'list', short: 'Brief' },
@@ -370,6 +372,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           </Pane>
         )}
 
+        {mounted('operations') && <Pane show={page === 'operations'}><RequestsIdeasPanel key={gen.operations ?? 0} /></Pane>}
         {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}

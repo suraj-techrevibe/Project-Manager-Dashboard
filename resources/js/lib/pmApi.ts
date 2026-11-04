@@ -27,6 +27,10 @@ import type {
   MeetingMinutesFull,
   MinutesDraft,
   MinutesInput,
+  PmBusiness,
+  PmIntake,
+  PmIntakeInput,
+  PmIntakeKind,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
 
@@ -88,6 +92,32 @@ export const pmApi = {
   undoPush: (activityId: number) => api.post(`/brief/pushes/${activityId}/undo`),
 
   projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
+
+  // ---- Company operations (local records; no Taskmandu writes) -----------
+  businesses: () => api.get<{ businesses: PmBusiness[] }>('/businesses'),
+
+  createBusiness: (data: { name: string; description?: string }) =>
+    api.post<{ business: PmBusiness }>('/businesses', data),
+
+  updateBusiness: (id: number, data: { name?: string; description?: string | null; status?: 'active' | 'paused' }) =>
+    api.patch<{ business: PmBusiness }>(`/businesses/${id}`, data),
+
+  linkBusinessProject: (businessId: number, data: { project_id: string; project_name: string; is_primary?: boolean }) =>
+    api.post<{ project_link: PmBusiness['project_links'][number] }>(`/businesses/${businessId}/projects`, data),
+
+  unlinkBusinessProject: (businessId: number, projectId: string) =>
+    api.delete<{ deleted: true }>(`/businesses/${businessId}/projects/${projectId}`),
+
+  intakes: (kind?: PmIntakeKind) =>
+    api.get<{ intakes: PmIntake[] }>('/intakes', { params: kind ? { kind } : undefined }),
+
+  createIntake: (data: PmIntakeInput) =>
+    api.post<{ intake: PmIntake }>('/intakes', data),
+
+  updateIntake: (id: number, data: Partial<PmIntakeInput> & { status?: PmIntake['status']; clarification?: string | null; decision_notes?: string | null }) =>
+    api.patch<{ intake: PmIntake }>(`/intakes/${id}`, data),
+
+  deleteIntake: (id: number) => api.delete<{ deleted: true }>(`/intakes/${id}`),
 
   /** Per-ticket assignee/due date; pass projectId to push onto that project's board. */
   pushTickets: (tickets: PushTicket[], projectId?: string) =>

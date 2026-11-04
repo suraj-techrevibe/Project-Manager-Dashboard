@@ -6,13 +6,15 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * One real page per PM tab (Projects, Meeting minutes, Brief to tickets,
- * Reports, Scope check, Git). Each page loads its own data from the JSON API
- * under /pm/api, so opening one never loads the others. Today is still
- * PmController::index because it needs the flag payload up front.
+ * Each PM tab has a real URL and loads its own data from the JSON API.
  */
 class PmPageController extends Controller
 {
+    public function operations(): Response
+    {
+        return Inertia::render('Pm/App', ['page' => 'operations']);
+    }
+
     public function projects(): Response
     {
         return Inertia::render('Pm/App', ['page' => 'projects']);
