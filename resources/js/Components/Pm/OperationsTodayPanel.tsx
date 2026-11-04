@@ -1,4 +1,6 @@
-import type { OperationsTodaySummary, PmIntakeStatus } from '../../types/pm';
+import { useEffect, useState } from 'react';
+import { pmApi } from '../../lib/pmApi';
+import type { OperationsTodaySummary, PmIntakeStatus, Project } from '../../types/pm';
 
 interface Props {
   summary: OperationsTodaySummary;
@@ -38,6 +40,16 @@ function Metric({ label, value, hint, tone }: { label: string; value: number; hi
 
 export default function OperationsTodayPanel({ summary, onNavigate, onCapture }: Props) {
   const { counts } = summary;
+  const [projects, setProjects] = useState<Project[]>([]);
+  useEffect(() => {
+    let active = true;
+    pmApi.projects()
+      .then(({ data }) => { if (active) setProjects(data.projects); })
+      .catch(() => { if (active) setProjects([]); });
+    return () => { active = false; };
+  }, []);
+  const today = new Date().toISOString().slice(0, 10);
+  const activeProjects = projects.filter((project) => project.status !== 'Completed').length;
 
   return (
     <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 p-4 shadow-sm sm:p-6">
@@ -45,7 +57,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
         <div>
           <div className="text-xs font-semibold uppercase tracking-widest text-indigo-600">Company operations</div>
           <h2 className="mt-1 text-2xl font-bold text-slate-950">Your company at a glance</h2>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">Capture incoming work, make decisions visible and see which businesses need coordination.</p>
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">Capture incoming work, match it to a Taskmandu project and track delivery against that project.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -77,32 +89,45 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
         <Metric label="Awaiting decision" value={counts.requests_for_decision} hint="Requests in review" tone="amber" />
         <Metric label="Ideas to review" value={counts.ideas_for_review} hint="Under review" tone="indigo" />
         <Metric label="Overdue requests" value={counts.overdue_requests} hint="Past requested date" tone="rose" />
-        <Metric label="Active businesses" value={counts.active_businesses} hint={`${counts.businesses} registered in total`} tone="slate" />
+        <Metric label="Taskmandu projects" value={projects.length} hint={`${activeProjects} active / in progress`} tone="slate" />
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="font-semibold text-slate-900">Business portfolio</h3>
-            <span className="text-xs text-slate-500">{counts.businesses} registered</span>
+            <h3 className="font-semibold text-slate-900">Taskmandu project portfolio</h3>
+            <button type="button" onClick={() => onNavigate('projects')} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">View projects →</button>
           </div>
-          {summary.businesses.length ? (
-            <div className="mt-3 space-y-2">
-              {summary.businesses.map((business) => (
-                <div key={business.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-slate-800">{business.name}</div>
-                    <div className="text-xs text-slate-500">{business.project_count} linked Taskmandu project{business.project_count === 1 ? '' : 's'}</div>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${business.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                    {business.status === 'active' ? 'Active' : 'Paused'}
-                  </span>
-                </div>
-              ))}
+          {projects.length ? (
+            <div className="mt-3 space-y-3">
+              {projects.slice(0, 7).map((project) => {
+                const tasks = project.tasks ?? [];
+                const completed = tasks.filter((task) => task.status === 'Completed').length;
+                const open = tasks.filter((task) => !['Completed', 'Cancelled'].includes(task.status)).length;
+                const blocked = tasks.filter((task) => task.status === 'Blocked').length;
+                const overdue = tasks.filter((task) => task.dueDate && task.dueDate < today && !['Completed', 'Cancelled'].includes(task.status)).length;
+                const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+                return (
+                  <button key={project._id} type="button" onClick={() => onNavigate('projects')} className="block w-full rounded-xl bg-slate-50 px-3 py-3 text-left hover:bg-indigo-50">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-semibold text-slate-800">{project.name}</span>
+                      <span className="shrink-0 text-xs text-slate-500">{project.status}</span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full rounded-full bg-indigo-600" style={{ width: `${progress}%` }} />
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                      <span>{completed}/{tasks.length} completed</span><span>{open} open</span>
+                      {blocked > 0 && <span className="font-medium text-rose-700">{blocked} blocked</span>}
+                      {overdue > 0 && <span className="font-medium text-amber-700">{overdue} overdue</span>}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-sm text-slate-500">
-              No businesses registered yet. Add your businesses in Requests & Ideas → Businesses.
+              Taskmandu projects could not be loaded. Check the Taskmandu connection and refresh.
             </div>
           )}
         </div>
@@ -121,7 +146,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-slate-800">{item.title}</div>
                     <div className="mt-0.5 text-xs text-slate-500">
-                      {item.business_name || 'Company-wide'} · {item.kind === 'request' ? 'Request' : 'Idea'}
+                      {item.project_name || item.business_name || 'No project matched'} · {item.kind === 'request' ? 'Request' : 'Idea'}
                       {item.requested_due_at ? ` · Due ${new Date(`${item.requested_due_at}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}
                     </div>
                   </div>
@@ -138,7 +163,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
           )}
         </div>
       </div>
-      <p className="mt-4 text-xs text-slate-500">Operational records are stored separately from Taskmandu tasks. Counts above come from saved businesses and intake records.</p>
+      <p className="mt-4 text-xs text-slate-500">A Taskmandu project is the business record. Progress above is calculated from the project’s real Tasks; request and idea records remain separate until work is pushed.</p>
     </section>
   );
 }
