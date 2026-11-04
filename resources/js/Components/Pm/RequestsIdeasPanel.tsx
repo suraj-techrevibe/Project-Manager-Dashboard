@@ -112,6 +112,7 @@ export default function RequestsIdeasPanel() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingIntakeId, setEditingIntakeId] = useState<number | null>(null);
   const [form, setForm] = useState<IntakeForm>(blankForm());
   const [projectSelection, setProjectSelection] = useState<Record<number, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -224,6 +225,7 @@ export default function RequestsIdeasPanel() {
 
   function startNewIntake(kind: PmIntakeKind) {
     setSection(kind === 'request' ? 'requests' : 'ideas');
+    setEditingIntakeId(null);
     setForm(blankForm());
     setProjectMatchMode('auto');
     setFormOpen(true);
@@ -231,30 +233,47 @@ export default function RequestsIdeasPanel() {
     setNotice(null);
   }
 
-  async function createIntake(event: FormEvent<HTMLFormElement>) {
+  function startEditIntake(item: PmIntake) {
+    setSection(item.kind === 'request' ? 'requests' : 'ideas');
+    setEditingIntakeId(item.id);
+    setForm({ title: item.title, linked_project_id: item.linked_project_id, linked_project_name: item.linked_project_name, description: item.description ?? '', source_type: item.source_type, source_name: item.source_name ?? '', priority: item.priority, requested_due_at: item.requested_due_at ?? '' });
+    setProjectMatchMode('manual');
+    setFormOpen(true);
+    setError(null);
+    setNotice(null);
+  }
+
+  function closeForm() {
+    setFormOpen(false);
+    setEditingIntakeId(null);
+    setForm(blankForm());
+  }
+
+  async function saveIntake(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const payload: PmIntakeInput = {
-        kind: currentKind,
-        title: form.title.trim(),
-        linked_project_id: form.linked_project_id,
-        linked_project_name: form.linked_project_name,
-        description: form.description.trim() || null,
-        source_type: form.source_type,
-        source_name: form.source_name.trim() || null,
-        priority: form.priority,
-        requested_due_at: form.requested_due_at || null,
+      const fields = {
+        title: form.title.trim(), linked_project_id: form.linked_project_id, linked_project_name: form.linked_project_name,
+        description: form.description.trim() || null, source_type: form.source_type, source_name: form.source_name.trim() || null,
+        priority: form.priority, requested_due_at: form.requested_due_at || null,
       };
-      const { data } = await pmApi.createIntake(payload);
-      setIntakes((items) => [data.intake, ...items]);
-      setForm(blankForm());
-      setFormOpen(false);
-      setNotice(currentKind === 'request'
-        ? `Request saved${data.intake.linked_project_name ? ` and matched to ${data.intake.linked_project_name}` : ''}. Approve it to plan and assign Taskmandu tasks.`
-        : `Idea saved${data.intake.linked_project_name ? ` and matched to ${data.intake.linked_project_name}` : ''}. Accept it to plan and assign Taskmandu tasks.`);
+      if (editingIntakeId !== null) {
+        const id = editingIntakeId;
+        const { data } = await pmApi.updateIntake(id, fields);
+        setIntakes((items) => items.map((item) => item.id === id ? data.intake : item));
+        setNotice(`${currentKind === 'request' ? 'Request' : 'Idea'} updated.`);
+      } else {
+        const payload: PmIntakeInput = { kind: currentKind, ...fields };
+        const { data } = await pmApi.createIntake(payload);
+        setIntakes((items) => [data.intake, ...items]);
+        setNotice(currentKind === 'request'
+          ? `Request saved${data.intake.linked_project_name ? ` and matched to ${data.intake.linked_project_name}` : ''}. Approve it to plan and assign Taskmandu tasks.`
+          : `Idea saved${data.intake.linked_project_name ? ` and matched to ${data.intake.linked_project_name}` : ''}. Accept it to plan and assign Taskmandu tasks.`);
+      }
+      closeForm();
     } catch (e) {
       setError(errorMessage(e, 'Could not save this item.'));
     } finally {
@@ -352,12 +371,12 @@ export default function RequestsIdeasPanel() {
       </header>
 
       <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => { setSection('requests'); setFormOpen(false); }} className={'rounded-xl border px-3 py-3 text-left ' + tabClass('requests')}>
+        <button type="button" onClick={() => { setSection('requests'); closeForm(); }} className={'rounded-xl border px-3 py-3 text-left ' + tabClass('requests')}>
           <span className="block text-xs opacity-75">Incoming work</span>
           <span className="mt-1 block text-2xl font-semibold">{requestCount}</span>
           <span className="block text-sm font-medium">Requests</span>
         </button>
-        <button type="button" onClick={() => { setSection('ideas'); setFormOpen(false); }} className={'rounded-xl border px-3 py-3 text-left ' + tabClass('ideas')}>
+        <button type="button" onClick={() => { setSection('ideas'); closeForm(); }} className={'rounded-xl border px-3 py-3 text-left ' + tabClass('ideas')}>
           <span className="block text-xs opacity-75">Future opportunities</span>
           <span className="mt-1 block text-2xl font-semibold">{ideaCount}</span>
           <span className="block text-sm font-medium">Ideas</span>
@@ -383,7 +402,7 @@ export default function RequestsIdeasPanel() {
           </div>
 
           {formOpen && (
-            <form onSubmit={createIntake} className="mt-4 grid gap-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+            <form onSubmit={saveIntake} className="mt-4 grid gap-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
                   Title *
@@ -391,7 +410,7 @@ export default function RequestsIdeasPanel() {
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                   Taskmandu project / business
-                  <select value={form.linked_project_id ?? ''} onChange={(e) => chooseProject(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <select value={form.linked_project_id ?? ''} onChange={(e) => chooseProject(e.target.value)} disabled={Boolean(editingIntakeId !== null && intakes.find((item) => item.id === editingIntakeId)?.task_links?.length)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
                     <option value="">No confident match — choose later</option>
                     {projects.map((project) => <option key={project._id} value={project._id}>{project.name}</option>)}
                   </select>
@@ -438,12 +457,12 @@ export default function RequestsIdeasPanel() {
                 </label>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={() => setFormOpen(false)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">Cancel</button>
+                <button type="button" onClick={closeForm} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">Cancel</button>
                 <button type="submit" disabled={saving} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-                  {saving ? 'Saving…' : 'Save locally'}
+                  {saving ? 'Saving…' : editingIntakeId !== null ? 'Save changes' : 'Create record'}
                 </button>
               </div>
-              <p className="text-xs text-slate-500">This saves the request locally. After approval, “Plan & assign tasks” creates real Tasks inside the selected Taskmandu project.</p>
+              <p className="text-xs text-slate-500">{editingIntakeId !== null ? 'Update the saved request or idea. Existing linked Taskmandu Tasks are not changed.' : 'Save a request or idea here. Once approved or accepted, it can be turned into Taskmandu Tasks.'}</p>
             </form>
           )}
 
@@ -592,6 +611,7 @@ export default function RequestsIdeasPanel() {
                       </button>
                     )}
                     {canPlan && !item.linked_project_id && <span className="max-w-48 text-right text-xs text-amber-700">Select a Taskmandu project before planning.</span>}
+                    <button type="button" onClick={() => startEditIntake(item)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-indigo-200 hover:text-indigo-700">Edit</button>
                     <button type="button" onClick={() => void deleteIntake(item)} className="px-2 py-1 text-xs text-slate-400 hover:text-rose-600">Delete</button>
                   </div>
                   {item.task_links?.length > 0 && (
