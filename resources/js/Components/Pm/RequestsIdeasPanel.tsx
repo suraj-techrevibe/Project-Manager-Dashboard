@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { pmApi } from '../../lib/pmApi';
+import { visitPm } from '../../lib/pmNav';
 import type {
-  PmBusiness,
   PmIntake,
   PmIntakeInput,
   PmIntakeKind,
@@ -9,10 +9,11 @@ import type {
   Project,
 } from '../../types/pm';
 
-type Section = 'requests' | 'ideas' | 'businesses';
-type IntakeForm = Omit<PmIntakeInput, 'kind'> & {
+type Section = 'requests' | 'ideas';
+type IntakeForm = Omit<PmIntakeInput, 'kind' | 'business_id'> & {
   title: string;
-  business_id: number | null;
+  linked_project_id: string | null;
+  linked_project_name: string | null;
   description: string;
   source_type: NonNullable<PmIntakeInput['source_type']>;
   source_name: string;
@@ -43,13 +44,40 @@ const STATUS_LABELS: Record<PmIntakeStatus, string> = {
 function blankForm(): IntakeForm {
   return {
     title: '',
-    business_id: null,
+    linked_project_id: null,
+    linked_project_name: null,
     description: '',
     source_type: 'other',
     source_name: '',
     priority: 'medium',
     requested_due_at: '',
   };
+}
+
+const PROJECT_STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'for', 'in', 'on', 'with', 'from', 'new', 'add', 'fix', 'update', 'improve', 'build', 'create', 'make', 'implement', 'feature', 'project', 'business']);
+
+function projectTokens(value: string): string[] {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(/\\s+/)
+    .filter((word) => word.length > 2 && !PROJECT_STOP_WORDS.has(word));
+}
+
+function detectTaskmanduProject(title: string, description: string, projects: Project[]): Project | null {
+  const combined = `${title} ${description}`.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!combined) return null;
+  const input = new Set(projectTokens(combined));
+  const ranked = projects.map((project) => {
+    const normalizedName = project.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const nameTokens = projectTokens(project.name);
+    const hits = nameTokens.filter((token) => input.has(token)).length;
+    const exact = normalizedName.length > 2 && combined.includes(normalizedName);
+    const coverage = nameTokens.length ? hits / nameTokens.length : 0;
+    return { project, hits, exact, coverage, score: exact ? 1 : coverage };
+  }).sort((a, b) => b.score - a.score || b.hits - a.hits);
+  const best = ranked[0];
+  const runnerUp = ranked[1];
+  if (!best || (!best.exact && !(best.hits >= 2 && best.coverage >= 0.66) && !(best.hits === 1 && projectTokens(best.project.name).length === 1))) return null;
+  if (runnerUp && !best.exact && best.score - runnerUp.score < 0.16) return null;
+  return best.project;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -76,8 +104,8 @@ function priorityTone(priority: PmIntake['priority']): string {
 
 export default function RequestsIdeasPanel() {
   const [section, setSection] = useState<Section>('requests');
-  const [businesses, setBusinesses] = useState<PmBusiness[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectMatchMode, setProjectMatchMode] = useState<'auto' | 'manual'>('auto');
   const [intakes, setIntakes] = useState<PmIntake[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,13 +113,10 @@ export default function RequestsIdeasPanel() {
   const [notice, setNotice] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<IntakeForm>(blankForm());
-  const [businessName, setBusinessName] = useState('');
-  const [businessDescription, setBusinessDescription] = useState('');
-  const [businessSaving, setBusinessSaving] = useState(false);
   const [projectSelection, setProjectSelection] = useState<Record<number, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'needs_attention' | PmIntakeStatus>('all');
-  const [businessFilter, setBusinessFilter] = useState('all');
+  const [projectFilter, setProjectFilter] = useState('all');
   const [editingContextId, setEditingContextId] = useState<number | null>(null);
   const [contextDraft, setContextDraft] = useState({ clarification: '', decision_notes: '' });
   const [contextSaving, setContextSaving] = useState(false);
@@ -100,17 +125,13 @@ export default function RequestsIdeasPanel() {
     setLoading(true);
     setError(null);
     try {
-      const [businessResult, requestResult, ideaResult] = await Promise.all([
-        pmApi.businesses(),
+      const [requestResult, ideaResult, projectResult] = await Promise.all([
         pmApi.intakes('request'),
         pmApi.intakes('idea'),
+        pmApi.projects().catch(() => null),
       ]);
-      setBusinesses(businessResult.data.businesses);
       setIntakes([...requestResult.data.intakes, ...ideaResult.data.intakes]
         .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')));
-
-      // Project linking is useful but must not prevent local operations records from loading.
-      const projectResult = await pmApi.projects().catch(() => null);
       setProjects(projectResult?.data.projects ?? []);
     } catch (e) {
       setError(errorMessage(e, "Couldn't load Requests & Ideas."));
@@ -154,6 +175,7 @@ export default function RequestsIdeasPanel() {
         item.description,
         item.source_name,
         item.source_type,
+        item.linked_project_name,
         item.business?.name,
       ].filter(Boolean).join(' ').toLowerCase();
       const matchesSearch = !query || searchable.includes(query);
@@ -161,20 +183,41 @@ export default function RequestsIdeasPanel() {
         || (statusFilter === 'needs_attention'
           ? ['received', 'needs_clarification', 'in_review', 'captured', 'under_review'].includes(item.status)
           : item.status === statusFilter);
-      const matchesBusiness = businessFilter === 'all' || String(item.business_id ?? '') === businessFilter;
-      return matchesSearch && matchesStatus && matchesBusiness;
+      const matchesProject = projectFilter === 'all' || String(item.linked_project_id ?? '') === projectFilter;
+      return matchesSearch && matchesStatus && matchesProject;
     });
-  }, [visibleIntakes, searchQuery, statusFilter, businessFilter]);
+  }, [visibleIntakes, searchQuery, statusFilter, projectFilter]);
   const requestCount = intakes.filter((item) => item.kind === 'request').length;
   const ideaCount = intakes.filter((item) => item.kind === 'idea').length;
 
   function updateForm<K extends keyof IntakeForm>(key: K, value: IntakeForm[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if ((key === 'title' || key === 'description') && projectMatchMode === 'auto') {
+        const match = detectTaskmanduProject(next.title, next.description, projects);
+        next.linked_project_id = match?._id ?? null;
+        next.linked_project_name = match?.name ?? null;
+      }
+      return next;
+    });
+  }
+
+  function chooseProject(projectId: string) {
+    const project = projects.find((item) => item._id === projectId);
+    setProjectMatchMode('manual');
+    setForm((current) => ({ ...current, linked_project_id: project?._id ?? null, linked_project_name: project?.name ?? null }));
+  }
+
+  function autoDetectProject() {
+    const match = detectTaskmanduProject(form.title, form.description, projects);
+    setProjectMatchMode('auto');
+    setForm((current) => ({ ...current, linked_project_id: match?._id ?? null, linked_project_name: match?.name ?? null }));
   }
 
   function startNewIntake(kind: PmIntakeKind) {
     setSection(kind === 'request' ? 'requests' : 'ideas');
     setForm(blankForm());
+    setProjectMatchMode('auto');
     setFormOpen(true);
     setError(null);
     setNotice(null);
@@ -189,7 +232,8 @@ export default function RequestsIdeasPanel() {
       const payload: PmIntakeInput = {
         kind: currentKind,
         title: form.title.trim(),
-        business_id: form.business_id,
+        linked_project_id: form.linked_project_id,
+        linked_project_name: form.linked_project_name,
         description: form.description.trim() || null,
         source_type: form.source_type,
         source_name: form.source_name.trim() || null,
@@ -201,8 +245,8 @@ export default function RequestsIdeasPanel() {
       setForm(blankForm());
       setFormOpen(false);
       setNotice(currentKind === 'request'
-        ? 'Request saved. Nothing has been sent to Taskmandu.'
-        : 'Idea saved. Nothing has been sent to Taskmandu.');
+        ? `Request saved${data.intake.linked_project_name ? ` and matched to ${data.intake.linked_project_name}` : ''}. Approve it to plan and assign Taskmandu tasks.`
+        : `Idea saved${data.intake.linked_project_name ? ` and matched to ${data.intake.linked_project_name}` : ''}. Accept it to plan and assign Taskmandu tasks.`);
     } catch (e) {
       setError(errorMessage(e, 'Could not save this item.'));
     } finally {
@@ -250,7 +294,7 @@ export default function RequestsIdeasPanel() {
   }
 
   async function deleteIntake(item: PmIntake) {
-    if (!window.confirm('Delete this local request/idea record? This does not change Taskmandu.')) return;
+    if (!window.confirm('Delete this request/idea record and its local links? Existing Taskmandu tasks will not be deleted.')) return;
     setError(null);
     try {
       await pmApi.deleteIntake(item.id);
@@ -260,63 +304,18 @@ export default function RequestsIdeasPanel() {
     }
   }
 
-  async function createBusiness(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusinessSaving(true);
-    setError(null);
-    try {
-      const { data } = await pmApi.createBusiness({
-        name: businessName.trim(),
-        description: businessDescription.trim() || undefined,
-      });
-      setBusinesses((items) => [...items, data.business].sort((a, b) => a.name.localeCompare(b.name)));
-      setBusinessName('');
-      setBusinessDescription('');
-      setNotice('Business added. No Taskmandu project was created.');
-    } catch (e) {
-      setError(errorMessage(e, 'Could not create the business.'));
-    } finally {
-      setBusinessSaving(false);
-    }
-  }
-
-  async function toggleBusinessStatus(business: PmBusiness) {
-    setError(null);
-    try {
-      const status = business.status === 'active' ? 'paused' : 'active';
-      const { data } = await pmApi.updateBusiness(business.id, { status });
-      setBusinesses((items) => items.map((item) => item.id === business.id ? data.business : item));
-    } catch (e) {
-      setError(errorMessage(e, 'Could not update the business.'));
-    }
-  }
-
-  async function linkProject(business: PmBusiness) {
-    const projectId = projectSelection[business.id];
-    const project = projects.find((item) => item._id === projectId);
+  async function saveProjectMatch(item: PmIntake) {
+    const projectId = projectSelection[item.id] ?? item.linked_project_id ?? '';
+    const project = projects.find((candidate) => candidate._id === projectId);
     if (!project) return;
-
     setError(null);
     try {
-      await pmApi.linkBusinessProject(business.id, {
-        project_id: project._id,
-        project_name: project.name,
-        is_primary: business.project_links.length === 0,
-      });
-      setProjectSelection((current) => ({ ...current, [business.id]: '' }));
-      await load();
+      const { data } = await pmApi.updateIntake(item.id, { linked_project_id: project._id, linked_project_name: project.name });
+      setIntakes((items) => items.map((current) => current.id === item.id ? data.intake : current));
+      setProjectSelection((current) => ({ ...current, [item.id]: '' }));
+      setNotice(`Matched to Taskmandu project: ${project.name}.`);
     } catch (e) {
-      setError(errorMessage(e, 'Could not link this Taskmandu project.'));
-    }
-  }
-
-  async function unlinkProject(business: PmBusiness, projectId: string) {
-    setError(null);
-    try {
-      await pmApi.unlinkBusinessProject(business.id, projectId);
-      await load();
-    } catch (e) {
-      setError(errorMessage(e, 'Could not remove this project link.'));
+      setError(errorMessage(e, 'Could not save the Taskmandu project match.'));
     }
   }
 
@@ -331,7 +330,7 @@ export default function RequestsIdeasPanel() {
           <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Company operations</div>
           <h2 className="mt-1 text-2xl font-semibold text-slate-900">Requests & Ideas</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Capture business needs before they become planned work. These records stay in this app until you explicitly move them into the delivery workflow.
+            Capture requests and ideas, match them to an existing Taskmandu project, then convert approved work into assigned Tasks.
           </p>
         </div>
         <button
@@ -344,7 +343,7 @@ export default function RequestsIdeasPanel() {
         </button>
       </header>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={() => { setSection('requests'); setFormOpen(false); }} className={'rounded-xl border px-3 py-3 text-left ' + tabClass('requests')}>
           <span className="block text-xs opacity-75">Incoming work</span>
           <span className="mt-1 block text-2xl font-semibold">{requestCount}</span>
@@ -355,25 +354,20 @@ export default function RequestsIdeasPanel() {
           <span className="mt-1 block text-2xl font-semibold">{ideaCount}</span>
           <span className="block text-sm font-medium">Ideas</span>
         </button>
-        <button type="button" onClick={() => { setSection('businesses'); setFormOpen(false); }} className={'rounded-xl border px-3 py-3 text-left ' + tabClass('businesses')}>
-          <span className="block text-xs opacity-75">Company directory</span>
-          <span className="mt-1 block text-2xl font-semibold">{businesses.length}</span>
-          <span className="block text-sm font-medium">Businesses</span>
-        </button>
       </div>
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div>}
 
-      {section !== 'businesses' && (
+      {(
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold text-slate-900">{section === 'requests' ? 'Incoming requests' : 'Ideas backlog'}</h3>
               <p className="mt-0.5 text-sm text-slate-500">
                 {section === 'requests'
-                  ? 'Record who asked, which business it affects and what needs clarification.'
-                  : 'Keep opportunities visible without turning them into assigned work.'}
+                  ? 'Record who asked, which Taskmandu project it belongs to and what needs clarification.'
+                  : 'Keep opportunities visible; accepted ideas can become Tasks in their matched project.'}
               </p>
             </div>
             <button type="button" onClick={() => startNewIntake(currentKind)} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
@@ -389,11 +383,18 @@ export default function RequestsIdeasPanel() {
                   <input required maxLength={200} value={form.title} onChange={(e) => updateForm('title', e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="What is needed?" />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
-                  Business
-                  <select value={form.business_id ?? ''} onChange={(e) => updateForm('business_id', e.target.value ? Number(e.target.value) : null)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                    <option value="">Not assigned to a business</option>
-                    {businesses.filter((b) => b.status === 'active').map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
+                  Taskmandu project / business
+                  <select value={form.linked_project_id ?? ''} onChange={(e) => chooseProject(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                    <option value="">No confident match — choose later</option>
+                    {projects.map((project) => <option key={project._id} value={project._id}>{project.name}</option>)}
                   </select>
+                  <span className="mt-1 block text-xs font-normal text-slate-500">
+                    {projectMatchMode === 'auto'
+                      ? (form.linked_project_name ? `Auto-matched: ${form.linked_project_name}` : 'No confident automatic match. Select the correct Taskmandu project.')
+                      : 'Project selected manually.'}
+                    {' '}
+                    <button type="button" onClick={autoDetectProject} className="font-semibold text-indigo-700">Auto-detect</button>
+                  </span>
                 </label>
               </div>
               <label className="block text-sm font-medium text-slate-700">
@@ -435,7 +436,7 @@ export default function RequestsIdeasPanel() {
                   {saving ? 'Saving…' : 'Save locally'}
                 </button>
               </div>
-              <p className="text-xs text-slate-500">Saving here creates only a local operations record. It does not create or update a Taskmandu task.</p>
+              <p className="text-xs text-slate-500">This saves the request locally. After approval, “Plan & assign tasks” creates real Tasks inside the selected Taskmandu project.</p>
             </form>
           )}
 
@@ -446,7 +447,7 @@ export default function RequestsIdeasPanel() {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search title, details, source or business…"
+                placeholder="Search title, details, source or project…"
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800"
               />
             </label>
@@ -465,22 +466,22 @@ export default function RequestsIdeasPanel() {
               </select>
             </label>
             <label className="block text-xs font-semibold text-slate-600">
-              Business
+              Taskmandu project
               <select
-                value={businessFilter}
-                onChange={(e) => setBusinessFilter(e.target.value)}
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-normal text-slate-800"
               >
-                <option value="all">All businesses</option>
-                <option value="">Company-wide / unassigned</option>
-                {businesses.map((business) => <option key={business.id} value={String(business.id)}>{business.name}</option>)}
+                <option value="all">All projects</option>
+                <option value="">No project matched</option>
+                {projects.map((project) => <option key={project._id} value={project._id}>{project.name}</option>)}
               </select>
             </label>
           </div>
           <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
             <span>{filteredIntakes.length} of {visibleIntakes.length} {section}</span>
-            {(searchQuery || statusFilter !== 'all' || businessFilter !== 'all') && (
-              <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setBusinessFilter('all'); }} className="font-semibold text-indigo-700 hover:text-indigo-900">
+            {(searchQuery || statusFilter !== 'all' || projectFilter !== 'all') && (
+              <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setProjectFilter('all'); }} className="font-semibold text-indigo-700 hover:text-indigo-900">
                 Clear filters
               </button>
             )}
@@ -522,7 +523,7 @@ export default function RequestsIdeasPanel() {
                     </div>
                     <p className="mt-1 text-sm text-slate-600">{item.description || 'No description provided.'}</p>
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                      <span>{item.business?.name || 'No business assigned'}</span>
+                      <span>{item.linked_project_name || item.business?.name || 'No Taskmandu project matched'}</span>
                       <span>Source: {item.source_name || item.source_type}</span>
                       {item.requested_due_at && <span className={overdue ? 'font-semibold text-rose-700' : ''}>Requested due: {item.requested_due_at}</span>}
                     </div>
@@ -571,91 +572,53 @@ export default function RequestsIdeasPanel() {
                       className="max-w-48 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs"
                     >
                       {statuses.map((status) => (
-                        <option key={status} value={status} disabled={status === 'planned' && !accepted && item.status !== 'planned'}>
-                          {STATUS_LABELS[status]}
+                        <option key={status} value={status} disabled={status === 'planned'}>
+                          {status === 'planned' ? 'In delivery (set after Taskmandu push)' : STATUS_LABELS[status]}
                         </option>
                       ))}
                     </select>
+                    {accepted && item.linked_project_id && (
+                      <button type="button" onClick={() => visitPm('brief', { intake: String(item.id) })} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700">
+                        {item.task_links?.length ? 'Add / assign tasks' : 'Plan & assign tasks'}
+                      </button>
+                    )}
+                    {accepted && !item.linked_project_id && <span className="max-w-48 text-right text-xs text-amber-700">Select a Taskmandu project before planning.</span>}
                     <button type="button" onClick={() => void deleteIntake(item)} className="px-2 py-1 text-xs text-slate-400 hover:text-rose-600">Delete</button>
                   </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {section === 'businesses' && (
-        <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">Business registry</h3>
-            <p className="mt-1 text-sm text-slate-500">Create local business records, then associate existing Taskmandu projects. This never creates a project in Taskmandu.</p>
-          </div>
-
-          <form onSubmit={createBusiness} className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_2fr_auto]">
-            <input required maxLength={160} value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Business name" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
-            <input maxLength={3000} value={businessDescription} onChange={(e) => setBusinessDescription(e.target.value)} placeholder="Short description (optional)" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
-            <button type="submit" disabled={businessSaving} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
-              {businessSaving ? 'Adding…' : 'Add business'}
-            </button>
-          </form>
-
-          {projects.length === 0 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Taskmandu projects could not be loaded. Business records still work; project linking will be available when Taskmandu is reachable.</p>}
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            {businesses.map((business) => {
-              const linkedIds = new Set(business.project_links.map((link) => link.project_id));
-              const available = projects.filter((project) => !linkedIds.has(project._id));
-              return (
-                <article key={business.id} className="rounded-xl border border-slate-200 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h4 className="font-semibold text-slate-900">{business.name}</h4>
-                      <p className="mt-0.5 text-xs text-slate-500">{business.description || business.slug}</p>
-                    </div>
-                    <button type="button" onClick={() => void toggleBusinessStatus(business)} className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50">
-                      {business.status === 'active' ? 'Active · Pause' : 'Paused · Activate'}
-                    </button>
-                  </div>
-                  <div className="mt-4">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Linked Taskmandu projects</div>
-                    {business.project_links.length === 0 && <p className="text-sm text-slate-400">No projects linked yet.</p>}
-                    <div className="flex flex-col gap-2">
-                      {business.project_links.map((link) => (
-                        <div key={link.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                          <span className="min-w-0 truncate text-sm text-slate-700">
-                            {link.project_name}
-                            {link.is_primary && <span className="ml-2 text-xs text-indigo-600">Primary</span>}
-                          </span>
-                          <button type="button" onClick={() => void unlinkProject(business, link.project_id)} className="text-xs text-slate-400 hover:text-rose-600">Unlink</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  {available.length > 0 && (
-                    <div className="mt-3 flex gap-2">
-                      <select
-                        aria-label={'Choose project for ' + business.name}
-                        value={projectSelection[business.id] || ''}
-                        onChange={(e) => setProjectSelection((current) => ({ ...current, [business.id]: e.target.value }))}
-                        className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs"
-                      >
-                        <option value="">Link an existing project…</option>
-                        {available.map((project) => <option key={project._id} value={project._id}>{project.name}</option>)}
-                      </select>
-                      <button type="button" onClick={() => void linkProject(business)} disabled={!projectSelection[business.id]} className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-medium text-indigo-700 disabled:opacity-40">Link</button>
+                  {item.task_links?.length > 0 && (
+                    <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-3 py-2">
+                      <div className="mb-1 text-xs font-semibold text-indigo-900">Tasks linked in Taskmandu ({item.task_links.length})</div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        {item.task_links.map((task) => (
+                          task.url
+                            ? <a key={task.id} href={task.url} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-700 underline">{task.title}</a>
+                            : <span key={task.id} className="text-xs text-slate-600">{task.title}</span>
+                        ))}
+                      </div>
                     </div>
                   )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      aria-label={'Taskmandu project for ' + item.title}
+                      value={projectSelection[item.id] ?? item.linked_project_id ?? ''}
+                      onChange={(e) => setProjectSelection((current) => ({ ...current, [item.id]: e.target.value }))}
+                      disabled={Boolean(item.task_links?.length)}
+                      className="max-w-xs rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs disabled:bg-slate-100"
+                    >
+                      <option value="">Choose Taskmandu project…</option>
+                      {projects.map((project) => <option key={project._id} value={project._id}>{project.name}</option>)}
+                    </select>
+                    <button type="button" onClick={() => void saveProjectMatch(item)} disabled={Boolean(item.task_links?.length) || !(projectSelection[item.id] ?? item.linked_project_id)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 disabled:opacity-40">Save project match</button>
+                  </div>
                 </article>
               );
             })}
           </div>
-          {!loading && businesses.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No businesses registered yet.</p>}
         </section>
       )}
 
       <footer className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
-        <strong className="text-slate-700">Workflow boundary:</strong> Requests and ideas are stored locally. Marking a request approved or an idea accepted records a decision; marking it planned means it is ready for planning. No action on this screen creates, edits or deletes a Taskmandu task.
+        <strong className="text-slate-700">Workflow:</strong> Capture a request or idea → auto-match it to a Taskmandu project → approve / accept it → plan and assign Tasks → follow progress in that project. The Taskmandu project is the business record; there is no duplicate business directory.
       </footer>
     </div>
   );
