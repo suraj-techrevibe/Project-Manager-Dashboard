@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\PmActivity;
-use App\Models\PmBusiness;
 use App\Models\PmIntake;
 use App\Models\PmCard;
 use App\Models\PmSubtask;
@@ -187,8 +186,8 @@ class PmController extends Controller
 
 
     /**
-     * Local company-operations records for Today. These are deliberately separate
-     * from Taskmandu task metrics: intake records are not delivery tasks.
+     * Request and idea records remain local. Delivery progress is aggregated from
+     * the Taskmandu task mirror, grouped by its authoritative project ID.
      */
     private function operationsTodaySummary(): array
     {
@@ -206,16 +205,34 @@ class PmController extends Controller
             ->where('kind', 'idea')
             ->where('status', 'under_review');
 
-        $businesses = PmBusiness::query()
-            ->withCount('projectLinks')
-            ->orderBy('name')
-            ->get()
-            ->map(fn (PmBusiness $business) => [
-                'id' => $business->id,
-                'name' => $business->name,
-                'status' => $business->status,
-                'project_count' => $business->project_links_count,
-            ])
+        $projects = PmCard::query()
+            ->whereNotNull('project_id')
+            ->whereNotNull('task_id')
+            ->get(['project_id', 'project_name', 'status', 'due_at'])
+            ->groupBy('project_id')
+            ->map(function ($cards, $projectId) {
+                // Cancelled work should not drag down the project's completion percentage.
+                $activeCards = $cards->reject(fn ($card) => $card->status === 'Cancelled');
+                $total = $activeCards->count();
+                $completed = $activeCards->where('status', 'Completed')->count();
+                $open = $activeCards->whereNotIn('status', ['Completed', 'Cancelled'])->count();
+                $blocked = $activeCards->where('status', 'Blocked')->count();
+                $overdue = $activeCards->filter(fn ($card) => $card->due_at
+                    && $card->due_at->toDateString() < today()->toDateString()
+                    && ! in_array($card->status, ['Completed', 'Cancelled'], true))->count();
+
+                return [
+                    'id' => (string) $projectId,
+                    'name' => $cards->first()->project_name ?: 'Taskmandu project',
+                    'task_count' => $total,
+                    'completed' => $completed,
+                    'open' => $open,
+                    'blocked' => $blocked,
+                    'overdue' => $overdue,
+                    'progress' => $total > 0 ? (int) round(($completed / $total) * 100) : 0,
+                ];
+            })
+            ->sortBy('name')
             ->values();
 
         $recentItems = PmIntake::query()
@@ -236,18 +253,17 @@ class PmController extends Controller
                 'status' => $item->status,
                 'priority' => $item->priority,
                 'title' => $item->title,
-                'business_name' => $item->business?->name,
+                'project_name' => $item->linked_project_name ?? $item->business?->name,
                 'requested_due_at' => $item->requested_due_at?->toDateString(),
                 'updated_at' => $item->updated_at?->toIso8601String(),
             ])
             ->values();
 
         return [
-            'businesses' => $businesses,
+            'projects' => $projects,
             'recent_items' => $recentItems,
             'counts' => [
-                'businesses' => $businesses->count(),
-                'active_businesses' => $businesses->where('status', 'active')->count(),
+                'projects_with_tasks' => $projects->count(),
                 'open_requests' => (clone $openRequests)->count(),
                 'requests_for_decision' => (clone $requestsForDecision)->count(),
                 'ideas_for_review' => (clone $ideasForReview)->count(),

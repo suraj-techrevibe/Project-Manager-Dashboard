@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\PmBusiness;
 use App\Models\PmBusinessProjectLink;
+use App\Models\PmCard;
 use App\Models\PmIntake;
+use App\Models\PmIntakeTaskLink;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -139,8 +141,8 @@ class PmOperationsTest extends TestCase
             ->assertJsonPath('intake.status', 'approved');
 
         $this->patchJson('/pm/api/intakes/'.$requestId, ['status' => 'planned'])
-            ->assertOk()
-            ->assertJsonPath('intake.status', 'planned');
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This status is set automatically after tasks have been created in Taskmandu.');
 
         $ideaId = $this->postJson('/pm/api/intakes', [
             'kind' => 'idea',
@@ -153,6 +155,100 @@ class PmOperationsTest extends TestCase
         $this->patchJson('/pm/api/intakes/'.$ideaId, ['status' => 'accepted'])
             ->assertOk()
             ->assertJsonPath('intake.status', 'accepted');
+    }
+
+    public function test_intake_can_be_matched_to_a_taskmandu_project_and_linked_to_multiple_tasks(): void
+    {
+        $user = User::factory()->create();
+        $projectId = str_repeat('b', 24);
+
+        $intakeId = $this->actingAs($user)->postJson('/pm/api/intakes', [
+            'kind' => 'request',
+            'title' => 'Improve the checkout flow',
+            'linked_project_id' => $projectId,
+            'linked_project_name' => 'AdEvent Website',
+        ])->assertCreated()
+            ->assertJsonPath('intake.linked_project_id', $projectId)
+            ->assertJsonPath('intake.linked_project_name', 'AdEvent Website')
+            ->assertJsonCount(0, 'intake.task_links')
+            ->json('intake.id');
+
+        $intake = PmIntake::findOrFail($intakeId);
+        $intake->update(['status' => 'approved']);
+
+        $taskCard = PmCard::create([
+            'title' => 'Repair checkout validation',
+            'project_id' => $projectId,
+            'project_name' => 'AdEvent Website',
+            'task_id' => str_repeat('1', 24),
+            'status' => 'In Progress',
+            'assignee' => 'Developer One',
+        ]);
+
+        PmIntakeTaskLink::create([
+            'intake_id' => $intakeId,
+            'project_id' => $projectId,
+            'project_name' => 'AdEvent Website',
+            'task_id' => str_repeat('1', 24),
+            'card_id' => $taskCard->id,
+            'title' => 'Repair checkout validation',
+            'url' => 'https://taskmandu.test/projects/'.$projectId,
+        ]);
+        PmIntakeTaskLink::create([
+            'intake_id' => $intakeId,
+            'project_id' => $projectId,
+            'project_name' => 'AdEvent Website',
+            'task_id' => str_repeat('2', 24),
+            'title' => 'Improve payment confirmation UI',
+        ]);
+
+        $this->getJson('/pm/api/intakes?kind=request')
+            ->assertOk()
+            ->assertJsonCount(2, 'intakes.0.task_links')
+            ->assertJsonPath('intakes.0.task_links.0.project_id', $projectId)
+            ->assertJsonPath('intakes.0.task_links.0.status', 'In Progress')
+            ->assertJsonPath('intakes.0.task_links.0.assignee', 'Developer One');
+
+        $this->patchJson('/pm/api/intakes/'.$intakeId, [
+            'linked_project_id' => str_repeat('c', 24),
+            'linked_project_name' => 'Another project',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'The project cannot be changed after tasks have been linked to this request.');
+
+        $this->patchJson('/pm/api/intakes/'.$intakeId, ['status' => 'approved'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This item is already in delivery. Update the linked Tasks in Taskmandu instead.');
+
+        $this->assertSame(2, PmIntakeTaskLink::where('intake_id', $intakeId)->count());
+    }
+
+    public function test_tasks_from_an_intake_must_use_its_matched_taskmandu_project(): void
+    {
+        $user = User::factory()->create();
+        $projectId = str_repeat('b', 24);
+        $otherProjectId = str_repeat('c', 24);
+
+        $intakeId = $this->actingAs($user)->postJson('/pm/api/intakes', [
+            'kind' => 'request',
+            'title' => 'Update the checkout experience',
+            'linked_project_id' => $projectId,
+            'linked_project_name' => 'AdEvent Website',
+        ])->assertCreated()->json('intake.id');
+
+        $this->patchJson('/pm/api/intakes/'.$intakeId, ['status' => 'approved'])->assertOk();
+
+        $this->postJson('/pm/api/brief/push', [
+            'intake_id' => $intakeId,
+            'tickets' => [[
+                'title' => 'Improve payment confirmation',
+                'assignee_employee_id' => 'employee-1',
+                'project_id' => $otherProjectId,
+                'project_confirmed' => true,
+            ]],
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Every task from this request must stay in its matched Taskmandu project.');
+
+        $this->assertSame(0, PmIntakeTaskLink::where('intake_id', $intakeId)->count());
     }
 
     public function test_invalid_taskmandu_project_identifiers_are_rejected_for_business_links(): void
@@ -174,7 +270,7 @@ class PmOperationsTest extends TestCase
         $this->assertSame(0, PmBusinessProjectLink::count());
     }
 
-    public function test_today_includes_real_business_and_intake_attention_without_counting_closed_items(): void
+    public function test_today_includes_taskmandu_project_progress_and_intake_attention(): void
     {
         $business = PmBusiness::create([
             'name' => 'Techmandu',
@@ -215,11 +311,48 @@ class PmOperationsTest extends TestCase
             'title' => 'Old deferred request',
         ]);
 
+        $projectId = str_repeat('d', 24);
+        PmCard::create([
+            'title' => 'Completed checkout work',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('1', 24),
+            'status' => 'Completed',
+        ]);
+        PmCard::create([
+            'title' => 'Blocked payment fix',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('2', 24),
+            'status' => 'Blocked',
+            'due_at' => now()->subDay()->toDateString(),
+        ]);
+        PmCard::create([
+            'title' => 'In progress checkout update',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('3', 24),
+            'status' => 'In Progress',
+        ]);
+
+        PmCard::create([
+            'title' => 'Cancelled legacy task',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('4', 24),
+            'status' => 'Cancelled',
+        ]);
+
         $this->actingAs(User::factory()->create())
             ->getJson('/pm/api/today')
             ->assertOk()
-            ->assertJsonPath('operations_summary.counts.businesses', 1)
-            ->assertJsonPath('operations_summary.counts.active_businesses', 1)
+            ->assertJsonPath('operations_summary.counts.projects_with_tasks', 1)
+            ->assertJsonPath('operations_summary.projects.0.name', 'Techmandu Store')
+            ->assertJsonPath('operations_summary.projects.0.task_count', 3)
+            ->assertJsonPath('operations_summary.projects.0.completed', 1)
+            ->assertJsonPath('operations_summary.projects.0.open', 2)
+            ->assertJsonPath('operations_summary.projects.0.blocked', 1)
+            ->assertJsonPath('operations_summary.projects.0.overdue', 1)
             ->assertJsonPath('operations_summary.counts.open_requests', 2)
             ->assertJsonPath('operations_summary.counts.requests_for_decision', 1)
             ->assertJsonPath('operations_summary.counts.ideas_for_review', 1)
