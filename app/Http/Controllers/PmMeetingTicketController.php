@@ -88,9 +88,10 @@ class PmMeetingTicketController extends Controller
             'updated'=>$updated,
             'failed'=>count($results)-$ok->count(),
             'intake_status' => $intake?->fresh()->status,
-            'intake_task_links' => $intake?->fresh()->taskLinks->map(fn (PmIntakeTaskLink $link) => [
+            'intake_task_links' => $intake?->fresh()->load('taskLinks.card')->taskLinks->map(fn (PmIntakeTaskLink $link) => [
                 'id' => $link->id, 'project_id' => $link->project_id, 'project_name' => $link->project_name,
                 'task_id' => $link->task_id, 'card_id' => $link->card_id, 'title' => $link->title, 'url' => $link->url,
+                'status' => $link->card?->status, 'assignee' => $link->card?->assignee, 'due_at' => $link->card?->due_at?->toDateString(),
             ])->values(),
         ]);
     }
