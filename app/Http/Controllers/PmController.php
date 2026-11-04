@@ -211,11 +211,13 @@ class PmController extends Controller
             ->get(['project_id', 'project_name', 'status', 'due_at'])
             ->groupBy('project_id')
             ->map(function ($cards, $projectId) {
-                $total = $cards->count();
-                $completed = $cards->where('status', 'Completed')->count();
-                $open = $cards->whereNotIn('status', ['Completed', 'Cancelled'])->count();
-                $blocked = $cards->where('status', 'Blocked')->count();
-                $overdue = $cards->filter(fn ($card) => $card->due_at
+                // Cancelled work should not drag down the project's completion percentage.
+                $activeCards = $cards->reject(fn ($card) => $card->status === 'Cancelled');
+                $total = $activeCards->count();
+                $completed = $activeCards->where('status', 'Completed')->count();
+                $open = $activeCards->whereNotIn('status', ['Completed', 'Cancelled'])->count();
+                $blocked = $activeCards->where('status', 'Blocked')->count();
+                $overdue = $activeCards->filter(fn ($card) => $card->due_at
                     && $card->due_at->toDateString() < today()->toDateString()
                     && ! in_array($card->status, ['Completed', 'Cancelled'], true))->count();
 
