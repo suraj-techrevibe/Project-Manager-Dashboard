@@ -236,7 +236,7 @@ class PmController extends Controller
                 'status' => $item->status,
                 'priority' => $item->priority,
                 'title' => $item->title,
-                'business_name' => $item->business?->name,
+                'project_name' => $item->linked_project_name ?? $item->business?->name,
                 'requested_due_at' => $item->requested_due_at?->toDateString(),
                 'updated_at' => $item->updated_at?->toIso8601String(),
             ])
