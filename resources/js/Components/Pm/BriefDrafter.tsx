@@ -3,7 +3,7 @@ import { pmApi } from '../../lib/pmApi';
 import { BRIEF_MAX_CHARS, MAX_TICKETS, autoAssign, blankTicket, findExisting, keywordQuestions, questionsEmail, sameTitle, splitBrief, type EditableTicket } from '../../lib/briefHeuristics';
 import { localISO, parseMeetingNotes } from '../../lib/meetingNotes';
 import { TASK_PRIORITIES } from '../../types/pm';
-import type { BriefContext, Project, PushTicket } from '../../types/pm';
+import type { BriefContext, PmIntake, Project, PushTicket } from '../../types/pm';
 import MeetingPicker, { buildTicketsFromMeeting } from './MeetingPicker';
 import { visitPm } from '../../lib/pmNav';
 import { EmptyState, PageHeader, Section, btnPrimary, btnSecondary } from './ui/kit';
@@ -35,6 +35,7 @@ export default function BriefDrafter() {
   const [copied, setCopied] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [meeting, setMeeting] = useState<{ id: number; title: string; meeting_date: string; minutes: string } | null>(null);
+  const [activeIntake, setActiveIntake] = useState<PmIntake | null>(null);
 
   const loadContext = () => pmApi.briefContext().then(({ data }) => { setCtx(data); setCtxError(null); }).catch((e) => setCtxError(errorText(e, "Couldn't load employees — Taskmandu may be unreachable.")));
   useEffect(() => {
@@ -46,6 +47,23 @@ export default function BriefDrafter() {
   // meeting's Work Items once the team/project lists are ready, same as picking it by hand.
   useEffect(() => {
     if (!ctx || !projectsLoaded) return;
+    const intakeId = new URLSearchParams(window.location.search).get('intake');
+    if (intakeId) {
+      visitPm('brief', {}, { replace: true });
+      pmApi.intakes().then(({ data }) => {
+        const intake = data.intakes.find((item) => String(item.id) === intakeId);
+        if (!intake) throw new Error('The source request could not be found.');
+        const accepted = intake.kind === 'request' ? intake.status === 'approved' : intake.status === 'accepted';
+        if (!accepted && intake.status !== 'planned') throw new Error('Approve this request or accept this idea before planning tasks.');
+        if (!intake.linked_project_id) throw new Error('Choose a Taskmandu project for this request before planning tasks.');
+        const project = projects.find((item) => item._id === intake.linked_project_id);
+        if (!project) throw new Error('The matched Taskmandu project is not available. Refresh Taskmandu projects and select a valid project.');
+        setActiveIntake(intake);
+        setBrief([intake.title, intake.description, intake.clarification ? `Clarification: ${intake.clarification}` : null, intake.decision_notes ? `Decision: ${intake.decision_notes}` : null].filter(Boolean).join('\n\n'));
+        setNotice(`Planning work for ${intake.title} in Taskmandu project ${project.name}. Every Task in this batch will be created inside that project.`);
+      }).catch((e) => setDraftError(errorText(e, 'Could not load the source request.')));
+      return;
+    }
     const id = new URLSearchParams(window.location.search).get('meeting');
     if (!id) return;
     visitPm('brief', {}, { replace: true }); // consume the param so a refresh doesn't reload it
@@ -73,7 +91,16 @@ export default function BriefDrafter() {
   }, [tickets, ctx]);
 
   function loadDrafts(fresh: EditableTicket[]) {
-    setTickets((prev) => [...prev.filter((t) => t.state === 'pushed'), ...fresh].slice(0, MAX_TICKETS));
+    const scoped = activeIntake?.linked_project_id
+      ? fresh.map((ticket) => ({
+          ...ticket,
+          projectId: activeIntake.linked_project_id!,
+          projectName: activeIntake.linked_project_name ?? projects.find((p) => p._id === activeIntake.linked_project_id)?.name ?? '',
+          projectNeedsConfirmation: false,
+          projectConfirmed: true,
+        }))
+      : fresh;
+    setTickets((prev) => [...prev.filter((t) => t.state === 'pushed'), ...scoped].slice(0, MAX_TICKETS));
     setAttempted(false); setPushError(null); setPushSummary(null);
   }
   function update(uid: string, patch: Partial<EditableTicket>) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, ...patch, state: t.state === 'failed' ? 'draft' : t.state } : t)); }
@@ -111,11 +138,16 @@ export default function BriefDrafter() {
     }));
     setPushing(true);
     try {
-      const { data } = await pmApi.pushTickets(payload);
+      const { data } = await pmApi.pushTickets(payload, undefined, activeIntake?.id);
       const byUid = new Map(data.results.map((r) => [list[r.index].uid, r]));
       setTickets((prev) => prev.map((t) => { const r = byUid.get(t.uid); if (!r) return t; return r.ok ? { ...t, state: 'pushed', error: undefined } : { ...t, state: 'failed', error: r.error ?? 'Failed' }; }));
       const subCount = data.results.reduce((n, r) => n + (r.subtasks_created ?? 0), 0);
-      setPushSummary(`${data.created} Task${data.created === 1 ? '' : 's'} pushed${subCount ? ` with ${subCount} Subtask${subCount === 1 ? '' : 's'}` : ''}${data.failed ? `; ${data.failed} failed.` : '.'}`);
+      setPushSummary(`${data.created} Task${data.created === 1 ? '' : 's'} pushed${subCount ? ` with ${subCount} Subtask${subCount === 1 ? '' : 's'}` : ''}${data.failed ? `; ${data.failed} failed.` : '.'}${activeIntake && data.intake_task_links ? ` Linked back to “${activeIntake.title}”.` : ''}`);
+      if (activeIntake) {
+        const latest = await pmApi.intakes();
+        const refreshed = latest.data.intakes.find((item) => item.id === activeIntake.id);
+        if (refreshed) setActiveIntake(refreshed);
+      }
       loadContext();
     } catch (e) { setPushError(errorText(e, "Couldn't push to Taskmandu. Check Taskmandu before retrying.")); } finally { setPushing(false); }
   }
@@ -124,7 +156,15 @@ export default function BriefDrafter() {
 
   return <div className="flex flex-col gap-4">
     <PageHeader icon="list" title="Brief to tickets" description="Turn a client brief or saved Meeting Work Items into deterministic Tasks and Subtasks." status={tickets.length ? `${tickets.length} tickets · ${tickets.filter((t) => t.state === 'pushed').length} pushed · ${pending.length} waiting` : undefined} />
-    <Section id="brief-input" title="1 · Brief" subtitle="Paste a brief or use a saved meeting">
+    {activeIntake && (
+      <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Source request / idea</div>
+        <div className="mt-1 font-semibold text-slate-900">{activeIntake.title}</div>
+        <div className="mt-1 text-sm text-slate-600">Business = Taskmandu project: <strong>{activeIntake.linked_project_name}</strong></div>
+        <div className="mt-1 text-xs text-slate-500">{activeIntake.task_links?.length ?? 0} Task(s) already linked. New tasks in this planner stay in the same project.</div>
+      </div>
+    )}
+    <Section id="brief-input" title="1 · Brief" subtitle={activeIntake ? 'The request context is preloaded. Draft or split it into Tasks for the matched Taskmandu project.' : 'Paste a brief or use a saved meeting'}>
       <textarea value={brief} onChange={(e) => { setBrief(e.target.value); setDraftError(null); }} className="min-h-40 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Paste brief or meeting minutes…" />
       <div className="mt-2 flex flex-wrap gap-2">
         <button className={btnSecondary} onClick={splitLocally} disabled={loading}>Split without AI</button>
@@ -142,7 +182,7 @@ export default function BriefDrafter() {
       <div className="space-y-3">{tickets.map((t, i) => <article key={t.uid} className="rounded-xl border border-slate-200 p-3">
         <div className="flex gap-2"><span className="pt-2 text-xs text-slate-400">#{i + 1}</span><input className={`${inputCls} flex-1`} value={t.title} onChange={(e) => update(t.uid, { title: e.target.value })} placeholder="Task title / Requirement" /><button className="text-red-600" onClick={() => remove(t.uid)}>Remove</button></div>
         <textarea className={`${inputCls} mt-2 w-full`} value={t.description} onChange={(e) => update(t.uid, { description: e.target.value })} placeholder="Discussion / description" />
-        <div className="mt-2 grid gap-2 md:grid-cols-4"><select className={inputCls} value={t.assigneeId} onChange={(e) => update(t.uid, { assigneeId: e.target.value })}><option value="">Owner…</option>{employees.map((e) => <option key={e.employeeId} value={e.employeeId}>{e.name}</option>)}</select><select className={inputCls} value={t.projectId} onChange={(e) => { const p = projects.find((x) => x._id === e.target.value); update(t.uid, { projectId: e.target.value, projectName: p?.name ?? '', projectConfirmed: Boolean(p), projectNeedsConfirmation: false }); }}><option value="">Standalone</option>{projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select><select className={inputCls} value={t.priority} onChange={(e) => update(t.uid, { priority: e.target.value as EditableTicket['priority'] })}>{TASK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select><input className={inputCls} type="date" min={today} value={t.dueDate} onChange={(e) => update(t.uid, { dueDate: e.target.value })} /></div>
+        <div className="mt-2 grid gap-2 md:grid-cols-4"><select className={inputCls} value={t.assigneeId} onChange={(e) => update(t.uid, { assigneeId: e.target.value })}><option value="">Owner…</option>{employees.map((e) => <option key={e.employeeId} value={e.employeeId}>{e.name}</option>)}</select><select className={inputCls} value={t.projectId} disabled={Boolean(activeIntake)} onChange={(e) => { const p = projects.find((x) => x._id === e.target.value); update(t.uid, { projectId: e.target.value, projectName: p?.name ?? '', projectConfirmed: Boolean(p), projectNeedsConfirmation: false }); }}><option value="">Standalone</option>{projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}</select><select className={inputCls} value={t.priority} onChange={(e) => update(t.uid, { priority: e.target.value as EditableTicket['priority'] })}>{TASK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select><input className={inputCls} type="date" min={today} value={t.dueDate} onChange={(e) => update(t.uid, { dueDate: e.target.value })} /></div>
         {t.projectNeedsConfirmation && !t.projectConfirmed && <p className="mt-2 text-xs text-amber-700">New project “{t.projectName}” requires confirmation before push.</p>}
         {duplicates[t.uid] && <p className="mt-2 text-xs text-amber-700">⚠ {duplicates[t.uid]}</p>}
         <div className="mt-3 rounded-lg bg-slate-50 p-3"><div className="mb-2 flex justify-between"><strong className="text-sm">Subtasks ({t.subtasks.length})</strong><button className="text-sm text-indigo-600" onClick={() => addSubtask(t.uid)}>+ Add Subtask</button></div>{t.subtasks.map((s, si) => <div key={s.uid} className="mb-2 grid gap-2 md:grid-cols-[1fr_180px_140px_auto]"><input className={inputCls} value={s.title} onChange={(e) => updateSubtask(t.uid, si, { title: e.target.value })} placeholder="Action Item" /><select className={inputCls} value={s.assigneeId || t.assigneeId} onChange={(e) => updateSubtask(t.uid, si, { assigneeId: e.target.value })}><option value="">Owner…</option>{employees.map((e) => <option key={e.employeeId} value={e.employeeId}>{e.name}</option>)}</select><input className={inputCls} type="date" min={today} value={s.dueDate} onChange={(e) => updateSubtask(t.uid, si, { dueDate: e.target.value })} /><button className="text-red-600" onClick={() => removeSubtask(t.uid, si)}>Remove</button></div>)}</div>
@@ -150,8 +190,9 @@ export default function BriefDrafter() {
       </article>)}</div>
     </Section> : <EmptyState title="No tickets yet">Load a saved meeting or paste a brief above.</EmptyState>}
 
-    {tickets.length > 0 && <Section id="brief-push" title="3 · Push to Taskmandu" subtitle={meeting ? `Source meeting: ${meeting.title} · ${meeting.meeting_date}` : 'Review every owner and project before pushing.'}>
+    {tickets.length > 0 && <Section id="brief-push" title="3 · Push to Taskmandu" subtitle={activeIntake ? `Source: ${activeIntake.title} · Project: ${activeIntake.linked_project_name}` : meeting ? `Source meeting: ${meeting.title} · ${meeting.meeting_date}` : 'Review every owner and project before pushing.'}>
       {pushError && <p className="mb-2 text-sm text-red-600">{pushError}</p>}{pushSummary && <p className="mb-2 text-sm text-green-700">{pushSummary}</p>}
+      {activeIntake && activeIntake.task_links?.length > 0 && <p className="mb-2 text-xs text-slate-500">This request now has {activeIntake.task_links.length} linked Taskmandu Tasks. Their live status is tracked in the Taskmandu project.</p>}
       <button className={btnPrimary} disabled={pushing || pending.length === 0} onClick={() => pushList(pending)}>{pushing ? 'Pushing…' : `Push ${pending.length} to Taskmandu`}</button>
       {attempted && !pending.length && <p className="mt-2 text-xs text-slate-500">All Tasks in this batch have been pushed.</p>}
     </Section>}
