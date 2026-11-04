@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\PmActivity;
+use App\Models\PmBusiness;
+use App\Models\PmIntake;
 use App\Models\PmCard;
 use App\Models\PmSubtask;
 use App\Services\Pm\ClaudeClient;
@@ -178,7 +180,82 @@ class PmController extends Controller
             'staff' => $this->staff(),
             'since' => $this->flags->sinceLastWorkday($workload),
             'meeting_followup' => $this->followUp->latest(),
+            'operations_summary' => $this->operationsTodaySummary(),
             'lastSyncedAt' => Cache::get('pm.last_synced_at'),
+        ];
+    }
+
+
+    /**
+     * Local company-operations records for Today. These are deliberately separate
+     * from Taskmandu task metrics: intake records are not delivery tasks.
+     */
+    private function operationsTodaySummary(): array
+    {
+        $terminal = ['rejected', 'deferred', 'planned'];
+
+        $openRequests = PmIntake::query()
+            ->where('kind', 'request')
+            ->whereNotIn('status', $terminal);
+
+        $requestsForDecision = PmIntake::query()
+            ->where('kind', 'request')
+            ->where('status', 'in_review');
+
+        $ideasForReview = PmIntake::query()
+            ->where('kind', 'idea')
+            ->where('status', 'under_review');
+
+        $businesses = PmBusiness::query()
+            ->withCount('projectLinks')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (PmBusiness $business) => [
+                'id' => $business->id,
+                'name' => $business->name,
+                'status' => $business->status,
+                'project_count' => $business->project_links_count,
+            ])
+            ->values();
+
+        $recentItems = PmIntake::query()
+            ->with('business:id,name')
+            ->where(function ($query) use ($terminal) {
+                $query->where(function ($requests) use ($terminal) {
+                    $requests->where('kind', 'request')->whereNotIn('status', $terminal);
+                })->orWhere(function ($ideas) use ($terminal) {
+                    $ideas->where('kind', 'idea')->whereNotIn('status', $terminal);
+                });
+            })
+            ->latest('updated_at')
+            ->limit(8)
+            ->get()
+            ->map(fn (PmIntake $item) => [
+                'id' => $item->id,
+                'kind' => $item->kind,
+                'status' => $item->status,
+                'priority' => $item->priority,
+                'title' => $item->title,
+                'business_name' => $item->business?->name,
+                'requested_due_at' => $item->requested_due_at?->toDateString(),
+                'updated_at' => $item->updated_at?->toIso8601String(),
+            ])
+            ->values();
+
+        return [
+            'businesses' => $businesses,
+            'recent_items' => $recentItems,
+            'counts' => [
+                'businesses' => $businesses->count(),
+                'active_businesses' => $businesses->where('status', 'active')->count(),
+                'open_requests' => (clone $openRequests)->count(),
+                'requests_for_decision' => (clone $requestsForDecision)->count(),
+                'ideas_for_review' => (clone $ideasForReview)->count(),
+                'overdue_requests' => (clone $openRequests)
+                    ->whereNotNull('requested_due_at')
+                    ->whereDate('requested_due_at', '<', today())
+                    ->count(),
+            ],
         ];
     }
 

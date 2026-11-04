@@ -11,6 +11,7 @@ import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
+import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
 import { Icon } from '@/Components/Pm/ui/kit';
 import { pmApi } from '@/lib/pmApi';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
@@ -285,6 +286,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           <Pane show={page === 'today'}>
             {today ? (
               <div className="flex flex-col gap-4">
+                <OperationsTodayPanel summary={today.operations_summary} onNavigate={(tab) => visitPm(tab as PmPage)} />
                 <TodayCommandCenter
                   counts={counts}
                   workload={today.workload}
