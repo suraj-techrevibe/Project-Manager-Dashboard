@@ -126,6 +126,14 @@ class PmOperationsTest extends TestCase
         $this->patchJson('/pm/api/intakes/'.$requestId, ['status' => 'planned'])
             ->assertUnprocessable();
 
+        $this->patchJson('/pm/api/intakes/'.$requestId, [
+            'clarification' => 'Confirm which delivery events should be visible.',
+            'decision_notes' => 'Approved for planning by management.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('intake.clarification', 'Confirm which delivery events should be visible.')
+            ->assertJsonPath('intake.decision_notes', 'Approved for planning by management.');
+
         $this->patchJson('/pm/api/intakes/'.$requestId, ['status' => 'approved'])
             ->assertOk()
             ->assertJsonPath('intake.status', 'approved');

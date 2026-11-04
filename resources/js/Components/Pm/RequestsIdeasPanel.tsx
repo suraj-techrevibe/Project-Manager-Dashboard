@@ -379,7 +379,7 @@ export default function RequestsIdeasPanel() {
               const statuses = item.kind === 'request' ? REQUEST_STATUSES : IDEA_STATUSES;
               const accepted = item.kind === 'request' ? item.status === 'approved' : item.status === 'accepted';
               return (
-                <article key={item.id} className="flex flex-col gap-3 py-4 first:pt-2 sm:flex-row sm:items-start">
+                <article key={item.id} className="flex flex-col gap-3 py-4 first:pt-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="font-semibold text-slate-900">{item.title}</h4>
