@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\PmActivity;
 use App\Models\PmCard;
+use App\Models\PmIntake;
+use App\Models\PmIntakeTaskLink;
 use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,8 +20,23 @@ class PmMeetingTicketController extends Controller
     public function push(Request $request): JsonResponse
     {
         $data = Validator::make($request->all(), [
-            'tickets'=>'required|array|min:1|max:30','tickets.*.title'=>'required|string|max:200','tickets.*.description'=>'nullable|string|max:3000','tickets.*.level'=>'nullable|string|max:30','tickets.*.estimate_hours'=>'nullable|numeric|min:0|max:1000','tickets.*.priority'=>['nullable',Rule::in(['Low','Medium','High','Critical'])],'tickets.*.assignee_employee_id'=>'required|string|max:100','tickets.*.due_date'=>'nullable|date_format:Y-m-d','tickets.*.project_id'=>['nullable','regex:/^[0-9a-fA-F]{24}$/'],'tickets.*.project_confirmed'=>'boolean','tickets.*.subtasks'=>'nullable|array|max:50','tickets.*.subtasks.*.title'=>'required|string|max:300','tickets.*.subtasks.*.assignee_employee_id'=>'required|string|max:100','tickets.*.subtasks.*.due_date'=>'nullable|date_format:Y-m-d',
+            'intake_id'=>'nullable|integer|exists:pm_intakes,id',
+            'tickets'=>'required|array|min:1|max:30','tickets.*.title'=>'required|string|max:200','tickets.*.description'=>'nullable|string|max:3000','tickets.*.level'=>'nullable|string|max:30','tickets.*.estimate_hours'=>'nullable|numeric|min:0|max:1000','tickets.*.priority'=>['nullable',Rule::in(['Low','Medium','High','Critical'])],'tickets.*.assignee_employee_id'=>'required|string|max:100','tickets.*.due_date'=>'nullable|date_format:Y-m-d','tickets.*.project_id'=>['nullable','regex:/^[0-9a-fA-F]{24}$/'],'tickets.*.project_name'=>'nullable|string|max:200','tickets.*.project_confirmed'=>'boolean','tickets.*.subtasks'=>'nullable|array|max:50','tickets.*.subtasks.*.title'=>'required|string|max:300','tickets.*.subtasks.*.assignee_employee_id'=>'required|string|max:100','tickets.*.subtasks.*.due_date'=>'nullable|date_format:Y-m-d',
         ])->validate();
+
+        $intake = ! empty($data['intake_id']) ? PmIntake::query()->with('taskLinks')->findOrFail($data['intake_id']) : null;
+        if ($intake) {
+            $acceptedStatus = $intake->kind === 'request' ? 'approved' : 'accepted';
+            abort_unless(in_array($intake->status, [$acceptedStatus, 'planned'], true), 422, 'Approve or accept this item before creating Taskmandu tasks.');
+            abort_unless($intake->linked_project_id, 422, 'Choose a Taskmandu project for this request before creating tasks.');
+            foreach ($data['tickets'] as $ticket) {
+                abort_unless(
+                    ($ticket['project_id'] ?? null) === $intake->linked_project_id && ! empty($ticket['project_confirmed']),
+                    422,
+                    'Every task from this request must stay in its matched Taskmandu project.',
+                );
+            }
+        }
 
         // Taskmandu identifies people by database id, not by the EMP-### code.
         $data['tickets'] = array_map(function ($t) {
@@ -32,7 +49,50 @@ class PmMeetingTicketController extends Controller
 
         $employees=$this->taskmandu->employeeMap(); $results=[];
         foreach($data['tickets'] as $i=>$ticket){try{$results[]=['index'=>$i]+$this->pushOne($ticket,$employees,(string)$request->user()?->name);}catch(RuntimeException $e){$results[]=['index'=>$i,'ok'=>false,'error'=>$e->getMessage()];}}
-        $ok=collect($results)->where('ok',true); $updated=$ok->where('action','updated')->count(); $newlyCreated=$ok->where('action','created')->count(); return response()->json(['results'=>$results,'created'=>$ok->count(),'newly_created'=>$newlyCreated,'updated'=>$updated,'failed'=>count($results)-$ok->count()]);
+        $ok=collect($results)->where('ok',true);
+
+        if ($intake && $ok->isNotEmpty()) {
+            foreach ($ok as $result) {
+                $ticket = $data['tickets'][$result['index']];
+                $taskId = (string) ($result['task_id'] ?? '');
+                if ($taskId === '') {
+                    continue;
+                }
+                $projectId = (string) $ticket['project_id'];
+                $card = ! empty($result['card_id']) ? PmCard::query()->find($result['card_id']) : null;
+                PmIntakeTaskLink::query()->updateOrCreate(
+                    ['intake_id' => $intake->id, 'task_id' => $taskId],
+                    [
+                        'project_id' => $projectId,
+                        'project_name' => $card?->project_name ?? ($ticket['project_name'] ?? $intake->linked_project_name),
+                        'card_id' => $card?->id,
+                        'title' => $ticket['title'],
+                        'url' => $card?->url,
+                    ],
+                );
+            }
+
+            $firstLink = $intake->taskLinks()->first();
+            $intake->update([
+                'status' => 'planned',
+                'linked_task_id' => $firstLink?->task_id ?? $ok->first()['task_id'] ?? null,
+                'updated_by' => $request->user()?->id,
+            ]);
+        }
+
+        $updated=$ok->where('action','updated')->count(); $newlyCreated=$ok->where('action','created')->count();
+        return response()->json([
+            'results'=>$results,
+            'created'=>$ok->count(),
+            'newly_created'=>$newlyCreated,
+            'updated'=>$updated,
+            'failed'=>count($results)-$ok->count(),
+            'intake_status' => $intake?->fresh()->status,
+            'intake_task_links' => $intake?->fresh()->taskLinks->map(fn (PmIntakeTaskLink $link) => [
+                'id' => $link->id, 'project_id' => $link->project_id, 'project_name' => $link->project_name,
+                'task_id' => $link->task_id, 'card_id' => $link->card_id, 'title' => $link->title, 'url' => $link->url,
+            ])->values(),
+        ]);
     }
 
     private function pushOne(array $ticket,array $employees,string $assignedBy):array
