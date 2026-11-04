@@ -128,6 +128,9 @@ export interface PmIntakeTaskLink {
   card_id: number | null;
   title: string;
   url: string | null;
+  status: string | null;
+  assignee: string | null;
+  due_at: string | null;
 }
 
 export interface PmIntake {
