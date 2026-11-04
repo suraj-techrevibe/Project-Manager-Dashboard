@@ -195,11 +195,17 @@ class PmOperationsController extends Controller
             'status' => ['sometimes', Rule::in($statuses)],
         ]);
 
+        $hasLinkedTasks = $intake->taskLinks()->exists();
+
         if (($data['status'] ?? null) === 'planned' && $intake->status !== 'planned') {
             abort(422, 'This status is set automatically after tasks have been created in Taskmandu.');
         }
 
-        if ($intake->taskLinks()->exists()
+        if ($hasLinkedTasks && array_key_exists('status', $data) && $data['status'] !== 'planned') {
+            abort(422, 'This item is already in delivery. Update the linked Tasks in Taskmandu instead.');
+        }
+
+        if ($hasLinkedTasks
             && array_key_exists('linked_project_id', $data)
             && $data['linked_project_id'] !== $intake->linked_project_id) {
             abort(422, 'The project cannot be changed after tasks have been linked to this request.');
