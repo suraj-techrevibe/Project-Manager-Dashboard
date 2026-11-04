@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\PmBusiness;
 use App\Models\PmBusinessProjectLink;
 use App\Models\PmIntake;
+use App\Models\PmIntakeTaskLink;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -139,8 +140,8 @@ class PmOperationsTest extends TestCase
             ->assertJsonPath('intake.status', 'approved');
 
         $this->patchJson('/pm/api/intakes/'.$requestId, ['status' => 'planned'])
-            ->assertOk()
-            ->assertJsonPath('intake.status', 'planned');
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This status is set automatically after tasks have been created in Taskmandu.');
 
         $ideaId = $this->postJson('/pm/api/intakes', [
             'kind' => 'idea',
@@ -153,6 +154,55 @@ class PmOperationsTest extends TestCase
         $this->patchJson('/pm/api/intakes/'.$ideaId, ['status' => 'accepted'])
             ->assertOk()
             ->assertJsonPath('intake.status', 'accepted');
+    }
+
+    public function test_intake_can_be_matched_to_a_taskmandu_project_and_linked_to_multiple_tasks(): void
+    {
+        $user = User::factory()->create();
+        $projectId = str_repeat('b', 24);
+
+        $intakeId = $this->actingAs($user)->postJson('/pm/api/intakes', [
+            'kind' => 'request',
+            'title' => 'Improve the checkout flow',
+            'linked_project_id' => $projectId,
+            'linked_project_name' => 'AdEvent Website',
+        ])->assertCreated()
+            ->assertJsonPath('intake.linked_project_id', $projectId)
+            ->assertJsonPath('intake.linked_project_name', 'AdEvent Website')
+            ->assertJsonCount(0, 'intake.task_links')
+            ->json('intake.id');
+
+        $intake = PmIntake::findOrFail($intakeId);
+        $intake->update(['status' => 'approved']);
+
+        PmIntakeTaskLink::create([
+            'intake_id' => $intakeId,
+            'project_id' => $projectId,
+            'project_name' => 'AdEvent Website',
+            'task_id' => str_repeat('1', 24),
+            'title' => 'Repair checkout validation',
+            'url' => 'https://taskmandu.test/projects/'.$projectId,
+        ]);
+        PmIntakeTaskLink::create([
+            'intake_id' => $intakeId,
+            'project_id' => $projectId,
+            'project_name' => 'AdEvent Website',
+            'task_id' => str_repeat('2', 24),
+            'title' => 'Improve payment confirmation UI',
+        ]);
+
+        $this->getJson('/pm/api/intakes?kind=request')
+            ->assertOk()
+            ->assertJsonCount(2, 'intakes.0.task_links')
+            ->assertJsonPath('intakes.0.task_links.0.project_id', $projectId);
+
+        $this->patchJson('/pm/api/intakes/'.$intakeId, [
+            'linked_project_id' => str_repeat('c', 24),
+            'linked_project_name' => 'Another project',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'The project cannot be changed after tasks have been linked to this request.');
+
+        $this->assertSame(2, PmIntakeTaskLink::where('intake_id', $intakeId)->count());
     }
 
     public function test_invalid_taskmandu_project_identifiers_are_rejected_for_business_links(): void
