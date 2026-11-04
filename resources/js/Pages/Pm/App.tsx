@@ -22,7 +22,7 @@ const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'reports
 
 const LOOK: Record<PmPage, { icon: string; short: string }> = {
   today: { icon: 'sun', short: 'Today' },
-  operations: { icon: 'inbox', short: 'Requests' },
+  operations: { icon: 'inbox', short: 'Ops' },
   projects: { icon: 'folder', short: 'Projects' },
   minutes: { icon: 'notes', short: 'Minutes' },
   brief: { icon: 'list', short: 'Brief' },
@@ -241,11 +241,11 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
 
   return (
-    <AuthenticatedLayout header={<h2 className="text-lg font-semibold text-slate-800">PM agent</h2>}>
-      <Head title={`${current.label} · PM agent`} />
+    <AuthenticatedLayout header={<h2 className="text-lg font-semibold text-slate-800">Company Operations</h2>}>
+      <Head title={`${current.label} · Company Operations`} />
 
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
-        <nav aria-label="PM agent sections" className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <nav aria-label="Company operations sections" className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PM_PAGES.map((p) => {
               const on = p.key === page;
@@ -286,7 +286,11 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           <Pane show={page === 'today'}>
             {today ? (
               <div className="flex flex-col gap-4">
-                <OperationsTodayPanel summary={today.operations_summary} onNavigate={(tab) => visitPm(tab as PmPage)} />
+                <OperationsTodayPanel
+                  summary={today.operations_summary}
+                  onNavigate={(tab) => visitPm(tab as PmPage)}
+                  onCapture={(kind) => visitPm('operations', { new: kind })}
+                />
                 <TodayCommandCenter
                   counts={counts}
                   workload={today.workload}
