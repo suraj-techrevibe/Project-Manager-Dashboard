@@ -146,6 +146,14 @@ export default function RequestsIdeasPanel() {
 
   // Dashboard quick-capture links reopen this panel directly in the requested form.
   useEffect(() => {
+    if (!formOpen || projectMatchMode !== 'auto' || !projects.length || !form.title.trim()) return;
+    const match = detectTaskmanduProject(form.title, form.description, projects);
+    if (match?._id !== form.linked_project_id) {
+      setForm((current) => ({ ...current, linked_project_id: match?._id ?? null, linked_project_name: match?.name ?? null }));
+    }
+  }, [formOpen, projectMatchMode, projects, form.title, form.description]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const capture = params.get('new');
     if (capture === 'request' || capture === 'idea') {
