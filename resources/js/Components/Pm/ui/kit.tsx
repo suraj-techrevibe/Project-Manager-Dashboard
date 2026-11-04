@@ -57,6 +57,7 @@ const ICONS: Record<string, string> = {
   folder: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z',
   notes: 'M7 3h7l5 5v13H7V3zM14 3v5h5M10 13h6M10 17h6',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  inbox: 'M4 4h16v12h-4l-2 3h-4l-2-3H4V4zM4 11h5l1.5 2h3L15 11h5',
   chart: 'M4 20h16M7 20v-9M12 20V5M17 20v-6',
   target: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 16a4 4 0 100-8 4 4 0 000 8z',
   branch: 'M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9',
