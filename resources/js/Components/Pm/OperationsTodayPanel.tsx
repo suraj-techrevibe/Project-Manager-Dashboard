@@ -73,7 +73,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        <Metric label="Open requests" value={counts.open_requests} hint="Received or under review" tone="slate" />
+        <Metric label="Open requests" value={counts.open_requests} hint="Not yet planned or closed" tone="slate" />
         <Metric label="Awaiting decision" value={counts.requests_for_decision} hint="Requests in review" tone="amber" />
         <Metric label="Ideas to review" value={counts.ideas_for_review} hint="Under review" tone="indigo" />
         <Metric label="Overdue requests" value={counts.overdue_requests} hint="Past requested date" tone="rose" />
