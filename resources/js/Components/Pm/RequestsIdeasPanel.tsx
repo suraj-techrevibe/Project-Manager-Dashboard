@@ -503,6 +503,7 @@ export default function RequestsIdeasPanel() {
             {!loading && filteredIntakes.map((item) => {
               const statuses = item.kind === 'request' ? REQUEST_STATUSES : IDEA_STATUSES;
               const accepted = item.kind === 'request' ? item.status === 'approved' : item.status === 'accepted';
+              const canPlan = accepted || item.status === 'planned';
               const overdue = Boolean(
                 item.kind === 'request'
                 && item.requested_due_at
@@ -569,7 +570,8 @@ export default function RequestsIdeasPanel() {
                       aria-label={'Status for ' + item.title}
                       value={item.status}
                       onChange={(e) => void updateStatus(item, e.target.value as PmIntakeStatus)}
-                      className="max-w-48 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs"
+                      disabled={item.status === 'planned'}
+                      className="max-w-48 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs disabled:bg-slate-100"
                     >
                       {statuses.map((status) => (
                         <option key={status} value={status} disabled={status === 'planned'}>
@@ -577,12 +579,12 @@ export default function RequestsIdeasPanel() {
                         </option>
                       ))}
                     </select>
-                    {accepted && item.linked_project_id && (
+                    {canPlan && item.linked_project_id && (
                       <button type="button" onClick={() => visitPm('brief', { intake: String(item.id) })} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700">
                         {item.task_links?.length ? 'Add / assign tasks' : 'Plan & assign tasks'}
                       </button>
                     )}
-                    {accepted && !item.linked_project_id && <span className="max-w-48 text-right text-xs text-amber-700">Select a Taskmandu project before planning.</span>}
+                    {canPlan && !item.linked_project_id && <span className="max-w-48 text-right text-xs text-amber-700">Select a Taskmandu project before planning.</span>}
                     <button type="button" onClick={() => void deleteIntake(item)} className="px-2 py-1 text-xs text-slate-400 hover:text-rose-600">Delete</button>
                   </div>
                   {item.task_links?.length > 0 && (
