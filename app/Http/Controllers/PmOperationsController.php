@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PmBusiness;
 use App\Models\PmBusinessProjectLink;
 use App\Models\PmIntake;
+use App\Models\PmIntakeTaskLink;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -132,7 +133,7 @@ class PmOperationsController extends Controller
         ]);
 
         $query = PmIntake::query()
-            ->with(['business:id,name,slug', 'taskLinks'])
+            ->with(['business:id,name,slug', 'taskLinks.card'])
             ->latest('updated_at')
             ->limit(200);
 
@@ -170,7 +171,7 @@ class PmOperationsController extends Controller
         $data['created_by'] = $request->user()?->id;
         $data['updated_by'] = $request->user()?->id;
 
-        $intake = PmIntake::create($data)->load(['business:id,name,slug', 'taskLinks']);
+        $intake = PmIntake::create($data)->load(['business:id,name,slug', 'taskLinks.card']);
 
         return response()->json(['intake' => $this->presentIntake($intake)], 201);
     }
@@ -212,7 +213,7 @@ class PmOperationsController extends Controller
         $intake->fill($data)->save();
 
         return response()->json([
-            'intake' => $this->presentIntake($intake->fresh()->load(['business:id,name,slug', 'taskLinks'])),
+            'intake' => $this->presentIntake($intake->fresh()->load(['business:id,name,slug', 'taskLinks.card'])),
         ]);
     }
 
@@ -279,6 +280,9 @@ class PmOperationsController extends Controller
                     'card_id' => $link->card_id,
                     'title' => $link->title,
                     'url' => $link->url,
+                    'status' => $link->card?->status,
+                    'assignee' => $link->card?->assignee,
+                    'due_at' => $link->card?->due_at?->toDateString(),
                 ])
                 ->values(),
             'created_at' => $intake->created_at?->toIso8601String(),
