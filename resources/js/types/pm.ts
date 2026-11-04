@@ -13,7 +13,28 @@ export interface MeetingFollowUp { meeting:{id:number;title:string;meeting_date:
 export interface CarryOver { from:MeetingFollowUp['meeting']|null; work_items:MeetingWorkItem[]; from_meeting:number; from_board:number; }
 export type ActivityDraftSection = 'completed'|'progress'|'in_progress'|'due'|'blocked'|'new_work';
 export interface TaskmanduActivityDraft { from:string; to:string; activity_count:number; sections:Record<ActivityDraftSection, MeetingWorkItem[]>; attendees:string[]; title:string; summary:{comments:number;task_status_changes:number;subtask_status_changes:number}; }
-export interface TodayData { flags:PmFlag[]; metrics:PmMetrics; workload:WorkloadRow[]; subtasks:SubtaskFlag[]; subtask_summary:{total:number;completed:number;remaining:number;progress:number}; staff:Employee[]; since:SinceSummary; lastSyncedAt:string|null; meeting_followup?:MeetingFollowUp|null; }
+export interface OperationsTodaySummary {
+  businesses: { id: number; name: string; status: 'active' | 'paused'; project_count: number }[];
+  recent_items: {
+    id: number;
+    kind: 'request' | 'idea';
+    status: PmIntakeStatus;
+    priority: PmIntakePriority;
+    title: string;
+    business_name: string | null;
+    requested_due_at: string | null;
+    updated_at: string | null;
+  }[];
+  counts: {
+    businesses: number;
+    active_businesses: number;
+    open_requests: number;
+    requests_for_decision: number;
+    ideas_for_review: number;
+    overdue_requests: number;
+  };
+}
+export interface TodayData { flags:PmFlag[]; metrics:PmMetrics; workload:WorkloadRow[]; subtasks:SubtaskFlag[]; subtask_summary:{total:number;completed:number;remaining:number;progress:number}; staff:Employee[]; since:SinceSummary; lastSyncedAt:string|null; meeting_followup?:MeetingFollowUp|null; operations_summary:OperationsTodaySummary; }
 export interface DigestPreview { text:string; channels:{slack:boolean;email:boolean}; }
 export interface DraftTicket { title:string; description:string; level:'senior dev'|'intern'|string; estimate_hours:number; }
 export interface PushSubtask { title:string; description?:string; assignee_employee_id:string; due_date:string|null; }
