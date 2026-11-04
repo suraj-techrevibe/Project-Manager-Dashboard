@@ -173,4 +173,59 @@ class PmOperationsTest extends TestCase
 
         $this->assertSame(0, PmBusinessProjectLink::count());
     }
+
+    public function test_today_includes_real_business_and_intake_attention_without_counting_closed_items(): void
+    {
+        $business = PmBusiness::create([
+            'name' => 'Techmandu',
+            'slug' => 'techmandu',
+            'status' => 'active',
+        ]);
+
+        PmIntake::create([
+            'business_id' => $business->id,
+            'kind' => 'request',
+            'status' => 'received',
+            'priority' => 'high',
+            'title' => 'Checkout issue',
+            'requested_due_at' => now()->subDay()->toDateString(),
+        ]);
+
+        PmIntake::create([
+            'business_id' => $business->id,
+            'kind' => 'request',
+            'status' => 'in_review',
+            'priority' => 'medium',
+            'title' => 'Bulk order request',
+        ]);
+
+        PmIntake::create([
+            'business_id' => $business->id,
+            'kind' => 'idea',
+            'status' => 'under_review',
+            'priority' => 'low',
+            'title' => 'Loyalty programme',
+        ]);
+
+        PmIntake::create([
+            'business_id' => $business->id,
+            'kind' => 'request',
+            'status' => 'deferred',
+            'priority' => 'low',
+            'title' => 'Old deferred request',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->getJson('/pm/api/today')
+            ->assertOk()
+            ->assertJsonPath('operations_summary.counts.businesses', 1)
+            ->assertJsonPath('operations_summary.counts.active_businesses', 1)
+            ->assertJsonPath('operations_summary.counts.open_requests', 2)
+            ->assertJsonPath('operations_summary.counts.requests_for_decision', 1)
+            ->assertJsonPath('operations_summary.counts.ideas_for_review', 1)
+            ->assertJsonPath('operations_summary.counts.overdue_requests', 1)
+            ->assertJsonCount(3, 'operations_summary.recent_items');
+    }
+
+
 }
