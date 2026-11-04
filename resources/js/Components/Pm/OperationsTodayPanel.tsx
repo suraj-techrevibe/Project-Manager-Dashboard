@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { pmApi } from '../../lib/pmApi';
-import type { OperationsTodaySummary, PmIntakeStatus, Project } from '../../types/pm';
+import { visitPm } from '../../lib/pmNav';
+import type { OperationsTodaySummary, PmIntakeStatus } from '../../types/pm';
 
 interface Props {
   summary: OperationsTodaySummary;
@@ -18,7 +18,7 @@ const STATUS_LABELS: Record<PmIntakeStatus, string> = {
   accepted: 'Accepted',
   rejected: 'Rejected',
   deferred: 'Deferred',
-  planned: 'Planned',
+  planned: 'In delivery',
 };
 
 function Metric({ label, value, hint, tone }: { label: string; value: number; hint: string; tone: 'slate' | 'amber' | 'rose' | 'indigo' }) {
@@ -40,16 +40,7 @@ function Metric({ label, value, hint, tone }: { label: string; value: number; hi
 
 export default function OperationsTodayPanel({ summary, onNavigate, onCapture }: Props) {
   const { counts } = summary;
-  const [projects, setProjects] = useState<Project[]>([]);
-  useEffect(() => {
-    let active = true;
-    pmApi.projects()
-      .then(({ data }) => { if (active) setProjects(data.projects); })
-      .catch(() => { if (active) setProjects([]); });
-    return () => { active = false; };
-  }, []);
-  const today = new Date().toISOString().slice(0, 10);
-  const activeProjects = projects.filter((project) => project.status !== 'Completed').length;
+  const projects = summary.projects;
 
   return (
     <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 p-4 shadow-sm sm:p-6">
@@ -89,7 +80,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
         <Metric label="Awaiting decision" value={counts.requests_for_decision} hint="Requests in review" tone="amber" />
         <Metric label="Ideas to review" value={counts.ideas_for_review} hint="Under review" tone="indigo" />
         <Metric label="Overdue requests" value={counts.overdue_requests} hint="Past requested date" tone="rose" />
-        <Metric label="Taskmandu projects" value={projects.length} hint={`${activeProjects} active / in progress`} tone="slate" />
+        <Metric label="Projects with tasks" value={counts.projects_with_tasks} hint="From the synced Taskmandu task board" tone="slate" />
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
@@ -100,30 +91,22 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
           </div>
           {projects.length ? (
             <div className="mt-3 space-y-3">
-              {projects.slice(0, 7).map((project) => {
-                const tasks = project.tasks ?? [];
-                const completed = tasks.filter((task) => task.status === 'Completed').length;
-                const open = tasks.filter((task) => !['Completed', 'Cancelled'].includes(task.status)).length;
-                const blocked = tasks.filter((task) => task.status === 'Blocked').length;
-                const overdue = tasks.filter((task) => task.dueDate && task.dueDate < today && !['Completed', 'Cancelled'].includes(task.status)).length;
-                const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
-                return (
-                  <button key={project._id} type="button" onClick={() => onNavigate('projects')} className="block w-full rounded-xl bg-slate-50 px-3 py-3 text-left hover:bg-indigo-50">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate text-sm font-semibold text-slate-800">{project.name}</span>
-                      <span className="shrink-0 text-xs text-slate-500">{project.status}</span>
-                    </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                      <div className="h-full rounded-full bg-indigo-600" style={{ width: `${progress}%` }} />
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                      <span>{completed}/{tasks.length} completed</span><span>{open} open</span>
-                      {blocked > 0 && <span className="font-medium text-rose-700">{blocked} blocked</span>}
-                      {overdue > 0 && <span className="font-medium text-amber-700">{overdue} overdue</span>}
-                    </div>
-                  </button>
-                );
-              })}
+              {projects.slice(0, 7).map((project) => (
+                <button key={project.id} type="button" onClick={() => visitPm('projects', { project: project.id })} className="block w-full rounded-xl bg-slate-50 px-3 py-3 text-left hover:bg-indigo-50">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-semibold text-slate-800">{project.name}</span>
+                    <span className="shrink-0 text-xs text-slate-500">{project.progress}%</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-indigo-600" style={{ width: `${project.progress}%` }} />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>{project.completed}/{project.task_count} completed</span><span>{project.open} open</span>
+                    {project.blocked > 0 && <span className="font-medium text-rose-700">{project.blocked} blocked</span>}
+                    {project.overdue > 0 && <span className="font-medium text-amber-700">{project.overdue} overdue</span>}
+                  </div>
+                </button>
+              ))}
             </div>
           ) : (
             <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-sm text-slate-500">
