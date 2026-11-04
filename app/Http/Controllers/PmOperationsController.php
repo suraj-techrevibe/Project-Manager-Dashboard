@@ -132,7 +132,7 @@ class PmOperationsController extends Controller
         ]);
 
         $query = PmIntake::query()
-            ->with('business:id,name,slug')
+            ->with(['business:id,name,slug', 'taskLinks'])
             ->latest('updated_at')
             ->limit(200);
 
@@ -156,16 +156,21 @@ class PmOperationsController extends Controller
             'source_name' => 'nullable|string|max:120',
             'priority' => ['sometimes', Rule::in(['low', 'medium', 'high', 'critical'])],
             'requested_due_at' => 'nullable|date_format:Y-m-d',
+            'linked_project_id' => ['nullable', 'regex:/^[0-9a-fA-F]{24}$/'],
+            'linked_project_name' => 'nullable|required_with:linked_project_id|string|max:200',
         ]);
 
         $data['title'] = trim($data['title']);
+        if (! empty($data['linked_project_name'])) {
+            $data['linked_project_name'] = trim($data['linked_project_name']);
+        }
         $data['status'] = $data['kind'] === 'request' ? 'received' : 'captured';
         $data['source_type'] = $data['source_type'] ?? 'other';
         $data['priority'] = $data['priority'] ?? 'medium';
         $data['created_by'] = $request->user()?->id;
         $data['updated_by'] = $request->user()?->id;
 
-        $intake = PmIntake::create($data)->load('business:id,name,slug');
+        $intake = PmIntake::create($data)->load(['business:id,name,slug', 'taskLinks']);
 
         return response()->json(['intake' => $this->presentIntake($intake)], 201);
     }
@@ -182,22 +187,32 @@ class PmOperationsController extends Controller
             'source_name' => 'sometimes|nullable|string|max:120',
             'priority' => ['sometimes', Rule::in(['low', 'medium', 'high', 'critical'])],
             'requested_due_at' => 'sometimes|nullable|date_format:Y-m-d',
+            'linked_project_id' => ['sometimes', 'nullable', 'regex:/^[0-9a-fA-F]{24}$/'],
+            'linked_project_name' => 'sometimes|nullable|required_with:linked_project_id|string|max:200',
             'clarification' => 'sometimes|nullable|string|max:5000',
             'decision_notes' => 'sometimes|nullable|string|max:5000',
             'status' => ['sometimes', Rule::in($statuses)],
         ]);
 
-        if (($data['status'] ?? null) === 'planned') {
-            $acceptedStatus = $intake->kind === 'request' ? 'approved' : 'accepted';
+        if (($data['status'] ?? null) === 'planned' && $intake->status !== 'planned') {
+            abort(422, 'This status is set automatically after tasks have been created in Taskmandu.');
+        }
 
-            abort_unless(in_array($intake->status, [$acceptedStatus, 'planned'], true), 422, 'Approve or accept this item before marking it planned.');
+        if ($intake->taskLinks()->exists()
+            && array_key_exists('linked_project_id', $data)
+            && $data['linked_project_id'] !== $intake->linked_project_id) {
+            abort(422, 'The project cannot be changed after tasks have been linked to this request.');
+        }
+
+        if (! empty($data['linked_project_name'])) {
+            $data['linked_project_name'] = trim($data['linked_project_name']);
         }
 
         $data['updated_by'] = $request->user()?->id;
         $intake->fill($data)->save();
 
         return response()->json([
-            'intake' => $this->presentIntake($intake->fresh()->load('business:id,name,slug')),
+            'intake' => $this->presentIntake($intake->fresh()->load(['business:id,name,slug', 'taskLinks'])),
         ]);
     }
 
@@ -255,6 +270,17 @@ class PmOperationsController extends Controller
             'linked_project_id' => $intake->linked_project_id,
             'linked_project_name' => $intake->linked_project_name,
             'linked_task_id' => $intake->linked_task_id,
+            'task_links' => $intake->taskLinks
+                ->map(fn (PmIntakeTaskLink $link) => [
+                    'id' => $link->id,
+                    'project_id' => $link->project_id,
+                    'project_name' => $link->project_name,
+                    'task_id' => $link->task_id,
+                    'card_id' => $link->card_id,
+                    'title' => $link->title,
+                    'url' => $link->url,
+                ])
+                ->values(),
             'created_at' => $intake->created_at?->toIso8601String(),
             'updated_at' => $intake->updated_at?->toIso8601String(),
         ];
