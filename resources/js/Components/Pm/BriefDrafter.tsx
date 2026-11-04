@@ -70,7 +70,7 @@ export default function BriefDrafter() {
     visitPm('brief', {}, { replace: true }); // consume the param so a refresh doesn't reload it
     pmApi.minutesShow(Number(id)).then(({ data }) => {
       const { tickets, notice, meeting } = buildTicketsFromMeeting(data.minute, ctx.employees, projects);
-      loadDrafts(tickets); setMeeting(meeting); setNotice(notice);
+      setActiveIntake(null); loadDrafts(tickets, null); setMeeting(meeting); setNotice(notice);
     }).catch(() => setDraftError("Couldn't load that meeting."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, projectsLoaded]);
@@ -104,7 +104,7 @@ export default function BriefDrafter() {
     setTickets((prev) => [...prev.filter((t) => t.state === 'pushed'), ...scoped].slice(0, MAX_TICKETS));
     setAttempted(false); setPushError(null); setPushSummary(null);
   }
-    function update(uid: string, patch: Partial<EditableTicket>) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, ...patch, state: t.state === 'failed' ? 'draft' : t.state } : t)); }
+  function update(uid: string, patch: Partial<EditableTicket>) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, ...patch, state: t.state === 'failed' ? 'draft' : t.state } : t)); }
   function updateSubtask(uid: string, index: number, patch: Partial<EditableTicket['subtasks'][number]>) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, subtasks: t.subtasks.map((s, i) => i === index ? { ...s, ...patch } : s) } : t)); }
   function addSubtask(uid: string) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, subtasks: [...t.subtasks, { uid: `${uid}-sub-${Date.now()}`, title: '', description: '', assigneeId: t.assigneeId, dueDate: '' }] } : t)); }
   function removeSubtask(uid: string, index: number) { setTickets((prev) => prev.map((t) => t.uid === uid ? { ...t, subtasks: t.subtasks.filter((_, i) => i !== index) } : t)); }
@@ -165,7 +165,7 @@ export default function BriefDrafter() {
         <div className="mt-1 text-xs text-slate-500">{activeIntake.task_links?.length ?? 0} Task(s) already linked. New tasks in this planner stay in the same project.</div>
       </div>
     )}
-    <Section id="brief-input" title="1 · Brief" subtitle={activeIntake ? 'The selected request or idea has been loaded as a Task for its matched Taskmandu project.' : 'Choose a saved meeting, an approved request or an accepted idea. You can also parse pasted meeting notes.'}>
+    <Section id="brief-input" title="1 · Choose a source" subtitle={activeIntake ? 'The selected request or idea has been loaded as a Task for its matched Taskmandu project.' : 'Choose a saved meeting, an approved request or an accepted idea. You can also parse pasted meeting notes.'}>
       <textarea value={brief} onChange={(e) => { setBrief(e.target.value); setDraftError(null); }} className="min-h-40 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Paste brief or meeting minutes…" />
       <div className="mt-2 flex flex-wrap gap-2">
         <button className={btnSecondary} onClick={fromMeetingNotes} disabled={pushing}>Parse meeting notes</button>
