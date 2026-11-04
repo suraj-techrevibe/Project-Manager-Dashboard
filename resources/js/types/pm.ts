@@ -14,7 +14,7 @@ export interface CarryOver { from:MeetingFollowUp['meeting']|null; work_items:Me
 export type ActivityDraftSection = 'completed'|'progress'|'in_progress'|'due'|'blocked'|'new_work';
 export interface TaskmanduActivityDraft { from:string; to:string; activity_count:number; sections:Record<ActivityDraftSection, MeetingWorkItem[]>; attendees:string[]; title:string; summary:{comments:number;task_status_changes:number;subtask_status_changes:number}; }
 export interface OperationsTodaySummary {
-  businesses: { id: number; name: string; status: 'active' | 'paused'; project_count: number }[];
+  projects: { id: string; name: string; task_count: number; completed: number; open: number; blocked: number; overdue: number; progress: number }[];
   recent_items: {
     id: number;
     kind: 'request' | 'idea';
@@ -27,8 +27,7 @@ export interface OperationsTodaySummary {
     updated_at: string | null;
   }[];
   counts: {
-    businesses: number;
-    active_businesses: number;
+    projects_with_tasks: number;
     open_requests: number;
     requests_for_decision: number;
     ideas_for_review: number;
