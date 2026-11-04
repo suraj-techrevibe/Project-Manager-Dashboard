@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\PmBusiness;
 use App\Models\PmBusinessProjectLink;
+use App\Models\PmCard;
 use App\Models\PmIntake;
 use App\Models\PmIntakeTaskLink;
 use App\Models\User;
@@ -224,7 +225,7 @@ class PmOperationsTest extends TestCase
         $this->assertSame(0, PmBusinessProjectLink::count());
     }
 
-    public function test_today_includes_real_business_and_intake_attention_without_counting_closed_items(): void
+    public function test_today_includes_taskmandu_project_progress_and_intake_attention(): void
     {
         $business = PmBusiness::create([
             'name' => 'Techmandu',
@@ -265,11 +266,40 @@ class PmOperationsTest extends TestCase
             'title' => 'Old deferred request',
         ]);
 
+        $projectId = str_repeat('d', 24);
+        PmCard::create([
+            'title' => 'Completed checkout work',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('1', 24),
+            'status' => 'Completed',
+        ]);
+        PmCard::create([
+            'title' => 'Blocked payment fix',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('2', 24),
+            'status' => 'Blocked',
+            'due_at' => now()->subDay()->toDateString(),
+        ]);
+        PmCard::create([
+            'title' => 'In progress checkout update',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('3', 24),
+            'status' => 'In Progress',
+        ]);
+
         $this->actingAs(User::factory()->create())
             ->getJson('/pm/api/today')
             ->assertOk()
-            ->assertJsonPath('operations_summary.counts.businesses', 1)
-            ->assertJsonPath('operations_summary.counts.active_businesses', 1)
+            ->assertJsonPath('operations_summary.counts.projects_with_tasks', 1)
+            ->assertJsonPath('operations_summary.projects.0.name', 'Techmandu Store')
+            ->assertJsonPath('operations_summary.projects.0.task_count', 3)
+            ->assertJsonPath('operations_summary.projects.0.completed', 1)
+            ->assertJsonPath('operations_summary.projects.0.open', 2)
+            ->assertJsonPath('operations_summary.projects.0.blocked', 1)
+            ->assertJsonPath('operations_summary.projects.0.overdue', 1)
             ->assertJsonPath('operations_summary.counts.open_requests', 2)
             ->assertJsonPath('operations_summary.counts.requests_for_decision', 1)
             ->assertJsonPath('operations_summary.counts.ideas_for_review', 1)
