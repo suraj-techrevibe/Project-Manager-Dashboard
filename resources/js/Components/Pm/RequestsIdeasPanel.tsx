@@ -89,6 +89,12 @@ export default function RequestsIdeasPanel() {
   const [businessDescription, setBusinessDescription] = useState('');
   const [businessSaving, setBusinessSaving] = useState(false);
   const [projectSelection, setProjectSelection] = useState<Record<number, string>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_attention' | PmIntakeStatus>('all');
+  const [businessFilter, setBusinessFilter] = useState('all');
+  const [editingContextId, setEditingContextId] = useState<number | null>(null);
+  const [contextDraft, setContextDraft] = useState({ clarification: '', decision_notes: '' });
+  const [contextSaving, setContextSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,11 +123,48 @@ export default function RequestsIdeasPanel() {
     void load();
   }, [load]);
 
+  // Dashboard quick-capture links reopen this panel directly in the requested form.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const capture = params.get('new');
+    if (capture === 'request' || capture === 'idea') {
+      setSection(capture === 'idea' ? 'ideas' : 'requests');
+      setForm(blankForm());
+      setFormOpen(true);
+      params.delete('new');
+      const query = params.toString();
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
+      );
+    }
+  }, []);
+
   const currentKind: PmIntakeKind = section === 'ideas' ? 'idea' : 'request';
   const visibleIntakes = useMemo(
     () => intakes.filter((item) => item.kind === currentKind),
     [currentKind, intakes],
   );
+  const filteredIntakes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return visibleIntakes.filter((item) => {
+      const searchable = [
+        item.title,
+        item.description,
+        item.source_name,
+        item.source_type,
+        item.business?.name,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const matchesSearch = !query || searchable.includes(query);
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'needs_attention'
+          ? ['received', 'needs_clarification', 'in_review', 'captured', 'under_review'].includes(item.status)
+          : item.status === statusFilter);
+      const matchesBusiness = businessFilter === 'all' || String(item.business_id ?? '') === businessFilter;
+      return matchesSearch && matchesStatus && matchesBusiness;
+    });
+  }, [visibleIntakes, searchQuery, statusFilter, businessFilter]);
   const requestCount = intakes.filter((item) => item.kind === 'request').length;
   const ideaCount = intakes.filter((item) => item.kind === 'idea').length;
 
@@ -174,6 +217,35 @@ export default function RequestsIdeasPanel() {
       setIntakes((items) => items.map((current) => current.id === item.id ? data.intake : current));
     } catch (e) {
       setError(errorMessage(e, 'Could not update the status.'));
+    }
+  }
+
+  function startContextEdit(item: PmIntake) {
+    setEditingContextId(item.id);
+    setContextDraft({
+      clarification: item.clarification ?? '',
+      decision_notes: item.decision_notes ?? '',
+    });
+    setError(null);
+    setNotice(null);
+  }
+
+  async function saveContext(item: PmIntake) {
+    setContextSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const { data } = await pmApi.updateIntake(item.id, {
+        clarification: contextDraft.clarification.trim() || null,
+        decision_notes: contextDraft.decision_notes.trim() || null,
+      });
+      setIntakes((items) => items.map((current) => current.id === item.id ? data.intake : current));
+      setEditingContextId(null);
+      setNotice('Coordination notes saved.');
+    } catch (e) {
+      setError(errorMessage(e, 'Could not save the coordination notes.'));
+    } finally {
+      setContextSaving(false);
     }
   }
 
@@ -367,7 +439,53 @@ export default function RequestsIdeasPanel() {
             </form>
           )}
 
-          <div className="mt-4 divide-y divide-slate-100">
+          <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_190px_190px]">
+            <label className="block text-xs font-semibold text-slate-600">
+              Search {section}
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search title, details, source or business…"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              Status
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-normal text-slate-800"
+              >
+                <option value="all">All statuses</option>
+                <option value="needs_attention">Needs attention</option>
+                {(section === 'ideas' ? IDEA_STATUSES : REQUEST_STATUSES).map((status) => (
+                  <option key={status} value={status}>{STATUS_LABELS[status]}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              Business
+              <select
+                value={businessFilter}
+                onChange={(e) => setBusinessFilter(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-normal text-slate-800"
+              >
+                <option value="all">All businesses</option>
+                <option value="">Company-wide / unassigned</option>
+                {businesses.map((business) => <option key={business.id} value={String(business.id)}>{business.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span>{filteredIntakes.length} of {visibleIntakes.length} {section}</span>
+            {(searchQuery || statusFilter !== 'all' || businessFilter !== 'all') && (
+              <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setBusinessFilter('all'); }} className="font-semibold text-indigo-700 hover:text-indigo-900">
+                Clear filters
+              </button>
+            )}
+          </div>
+          <div className="mt-2 divide-y divide-slate-100">
             {loading && <p className="py-8 text-center text-sm text-slate-400">Loading records…</p>}
             {!loading && visibleIntakes.length === 0 && (
               <div className="py-10 text-center">
@@ -375,9 +493,24 @@ export default function RequestsIdeasPanel() {
                 <p className="mt-1 text-sm text-slate-500">Capture the first one when it arrives.</p>
               </div>
             )}
-            {!loading && visibleIntakes.map((item) => {
+            {!loading && visibleIntakes.length > 0 && filteredIntakes.length === 0 && (
+              <div className="py-10 text-center">
+                <p className="text-sm font-medium text-slate-700">No matching {section}</p>
+                <p className="mt-1 text-sm text-slate-500">Try a different search or clear the filters.</p>
+              </div>
+            )}
+            {!loading && filteredIntakes.map((item) => {
               const statuses = item.kind === 'request' ? REQUEST_STATUSES : IDEA_STATUSES;
               const accepted = item.kind === 'request' ? item.status === 'approved' : item.status === 'accepted';
+              const overdue = Boolean(
+                item.kind === 'request'
+                && item.requested_due_at
+                && item.requested_due_at < (() => {
+                  const now = new Date();
+                  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                })()
+                && !['rejected', 'deferred', 'planned'].includes(item.status),
+              );
               return (
                 <article key={item.id} className="flex flex-col gap-3 py-4 first:pt-2">
                   <div className="min-w-0 flex-1">
@@ -385,15 +518,50 @@ export default function RequestsIdeasPanel() {
                       <h4 className="font-semibold text-slate-900">{item.title}</h4>
                       <span className={'rounded-full border px-2 py-0.5 text-xs font-medium ' + priorityTone(item.priority)}>{item.priority}</span>
                       <span className={'rounded-full border px-2 py-0.5 text-xs font-medium ' + statusTone(item.status)}>{STATUS_LABELS[item.status]}</span>
+                      {overdue && <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">Overdue</span>}
                     </div>
                     <p className="mt-1 text-sm text-slate-600">{item.description || 'No description provided.'}</p>
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                       <span>{item.business?.name || 'No business assigned'}</span>
                       <span>Source: {item.source_name || item.source_type}</span>
-                      {item.requested_due_at && <span>Requested by: {item.requested_due_at}</span>}
+                      {item.requested_due_at && <span className={overdue ? 'font-semibold text-rose-700' : ''}>Requested due: {item.requested_due_at}</span>}
                     </div>
                     {item.clarification && <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800">Clarification: {item.clarification}</p>}
                     {item.decision_notes && <p className="mt-2 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600">Decision: {item.decision_notes}</p>}
+                    {editingContextId === item.id ? (
+                      <div className="mt-3 grid gap-2 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Clarification needed / answer
+                          <textarea
+                            rows={2}
+                            maxLength={5000}
+                            value={contextDraft.clarification}
+                            onChange={(e) => setContextDraft((current) => ({ ...current, clarification: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal"
+                            placeholder="What needs to be clarified, and what answer was received?"
+                          />
+                        </label>
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Decision notes
+                          <textarea
+                            rows={2}
+                            maxLength={5000}
+                            value={contextDraft.decision_notes}
+                            onChange={(e) => setContextDraft((current) => ({ ...current, decision_notes: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal"
+                            placeholder="Record approval, rejection or deferral context."
+                          />
+                        </label>
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setEditingContextId(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">Cancel</button>
+                          <button type="button" onClick={() => void saveContext(item)} disabled={contextSaving} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{contextSaving ? 'Saving…' : 'Save notes'}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => startContextEdit(item)} className="mt-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-indigo-200 hover:text-indigo-700">
+                        {item.clarification || item.decision_notes ? 'Edit coordination notes' : '+ Add clarification / decision'}
+                      </button>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end">
                     <select
