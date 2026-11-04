@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { visitPm } from '../../lib/pmNav';
 import type { OperationsTodaySummary, PmIntakeStatus } from '../../types/pm';
 
