@@ -57,7 +57,7 @@ function blankForm(): IntakeForm {
 const PROJECT_STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'for', 'in', 'on', 'with', 'from', 'new', 'add', 'fix', 'update', 'improve', 'build', 'create', 'make', 'implement', 'feature', 'project', 'business']);
 
 function projectTokens(value: string): string[] {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(/\\s+/)
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(/\s+/)
     .filter((word) => word.length > 2 && !PROJECT_STOP_WORDS.has(word));
 }
 
