@@ -600,9 +600,14 @@ export default function RequestsIdeasPanel() {
                       <div className="mb-1 text-xs font-semibold text-indigo-900">Tasks linked in Taskmandu ({item.task_links.length})</div>
                       <div className="flex flex-wrap gap-x-3 gap-y-1">
                         {item.task_links.map((task) => (
-                          task.url
-                            ? <a key={task.id} href={task.url} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-700 underline">{task.title}</a>
-                            : <span key={task.id} className="text-xs text-slate-600">{task.title}</span>
+                          <span key={task.id} className="inline-flex flex-wrap items-center gap-1 text-xs">
+                            {task.url
+                              ? <a href={task.url} target="_blank" rel="noreferrer" className="font-medium text-indigo-700 underline">{task.title}</a>
+                              : <span className="text-slate-700">{task.title}</span>}
+                            {task.status && <span className="text-slate-500">· {task.status}</span>}
+                            {task.assignee && <span className="text-slate-500">· {task.assignee}</span>}
+                            {task.due_at && <span className="text-slate-500">· Due {task.due_at}</span>}
+                          </span>
                         ))}
                       </div>
                     </div>
