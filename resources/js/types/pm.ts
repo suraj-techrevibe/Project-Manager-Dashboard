@@ -21,7 +21,8 @@ export interface OperationsTodaySummary {
     status: PmIntakeStatus;
     priority: PmIntakePriority;
     title: string;
-    business_name: string | null;
+    project_name: string | null;
+    business_name?: string | null;
     requested_due_at: string | null;
     updated_at: string | null;
   }[];
@@ -120,6 +121,16 @@ export interface PmBusiness {
   project_links: PmBusinessProjectLink[];
 }
 
+export interface PmIntakeTaskLink {
+  id: number;
+  project_id: string;
+  project_name: string | null;
+  task_id: string;
+  card_id: number | null;
+  title: string;
+  url: string | null;
+}
+
 export interface PmIntake {
   id: number;
   kind: PmIntakeKind;
@@ -137,6 +148,7 @@ export interface PmIntake {
   linked_project_id: string | null;
   linked_project_name: string | null;
   linked_task_id: string | null;
+  task_links: PmIntakeTaskLink[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -144,6 +156,8 @@ export interface PmIntake {
 export interface PmIntakeInput {
   kind: PmIntakeKind;
   business_id?: number | null;
+  linked_project_id?: string | null;
+  linked_project_name?: string | null;
   title: string;
   description?: string | null;
   source_type?: PmIntakeSource;
