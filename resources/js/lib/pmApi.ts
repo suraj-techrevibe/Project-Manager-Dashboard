@@ -27,7 +27,6 @@ import type {
   MeetingMinutesFull,
   MinutesDraft,
   MinutesInput,
-  PmBusiness,
   PmIntake,
   PmIntakeInput,
   PmIntakeKind,
@@ -93,20 +92,7 @@ export const pmApi = {
 
   projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
 
-  // ---- Company operations (local records; no Taskmandu writes) -----------
-  businesses: () => api.get<{ businesses: PmBusiness[] }>('/businesses'),
-
-  createBusiness: (data: { name: string; description?: string }) =>
-    api.post<{ business: PmBusiness }>('/businesses', data),
-
-  updateBusiness: (id: number, data: { name?: string; description?: string | null; status?: 'active' | 'paused' }) =>
-    api.patch<{ business: PmBusiness }>(`/businesses/${id}`, data),
-
-  linkBusinessProject: (businessId: number, data: { project_id: string; project_name: string; is_primary?: boolean }) =>
-    api.post<{ project_link: PmBusiness['project_links'][number] }>(`/businesses/${businessId}/projects`, data),
-
-  unlinkBusinessProject: (businessId: number, projectId: string) =>
-    api.delete<{ deleted: true }>(`/businesses/${businessId}/projects/${projectId}`),
+  // Requests and ideas are local records; Taskmandu projects are their business identity.
 
   intakes: (kind?: PmIntakeKind) =>
     api.get<{ intakes: PmIntake[] }>('/intakes', { params: kind ? { kind } : undefined }),
@@ -119,11 +105,12 @@ export const pmApi = {
 
   deleteIntake: (id: number) => api.delete<{ deleted: true }>(`/intakes/${id}`),
 
-  /** Per-ticket assignee/due date; pass projectId to push onto that project's board. */
-  pushTickets: (tickets: PushTicket[], projectId?: string) =>
-    api.post<{ results: PushResult[]; created: number; failed: number }>('/brief/push', {
+  /** Push Tasks into Taskmandu and optionally link them back to their source request. */
+  pushTickets: (tickets: PushTicket[], projectId?: string, intakeId?: number) =>
+    api.post<{ results: PushResult[]; created: number; newly_created: number; updated: number; failed: number; intake_status?: PmIntake['status'] | null; intake_task_links?: PmIntake['task_links'] | null }>('/brief/push', {
       tickets,
       project_id: projectId || null,
+      intake_id: intakeId || null,
     }),
 
   reports: () => api.get<{ reports: Report[] }>('/reports'),
