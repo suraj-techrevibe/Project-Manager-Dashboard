@@ -335,6 +335,14 @@ class PmOperationsTest extends TestCase
             'status' => 'In Progress',
         ]);
 
+        PmCard::create([
+            'title' => 'Cancelled legacy task',
+            'project_id' => $projectId,
+            'project_name' => 'Techmandu Store',
+            'task_id' => str_repeat('4', 24),
+            'status' => 'Cancelled',
+        ]);
+
         $this->actingAs(User::factory()->create())
             ->getJson('/pm/api/today')
             ->assertOk()
