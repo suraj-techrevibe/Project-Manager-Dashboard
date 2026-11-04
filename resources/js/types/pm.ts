@@ -14,20 +14,20 @@ export interface CarryOver { from:MeetingFollowUp['meeting']|null; work_items:Me
 export type ActivityDraftSection = 'completed'|'progress'|'in_progress'|'due'|'blocked'|'new_work';
 export interface TaskmanduActivityDraft { from:string; to:string; activity_count:number; sections:Record<ActivityDraftSection, MeetingWorkItem[]>; attendees:string[]; title:string; summary:{comments:number;task_status_changes:number;subtask_status_changes:number}; }
 export interface OperationsTodaySummary {
-  businesses: { id: number; name: string; status: 'active' | 'paused'; project_count: number }[];
+  projects: { id: string; name: string; task_count: number; completed: number; open: number; blocked: number; overdue: number; progress: number }[];
   recent_items: {
     id: number;
     kind: 'request' | 'idea';
     status: PmIntakeStatus;
     priority: PmIntakePriority;
     title: string;
-    business_name: string | null;
+    project_name: string | null;
+    business_name?: string | null;
     requested_due_at: string | null;
     updated_at: string | null;
   }[];
   counts: {
-    businesses: number;
-    active_businesses: number;
+    projects_with_tasks: number;
     open_requests: number;
     requests_for_decision: number;
     ideas_for_review: number;
@@ -120,6 +120,19 @@ export interface PmBusiness {
   project_links: PmBusinessProjectLink[];
 }
 
+export interface PmIntakeTaskLink {
+  id: number;
+  project_id: string;
+  project_name: string | null;
+  task_id: string;
+  card_id: number | null;
+  title: string;
+  url: string | null;
+  status: string | null;
+  assignee: string | null;
+  due_at: string | null;
+}
+
 export interface PmIntake {
   id: number;
   kind: PmIntakeKind;
@@ -137,6 +150,7 @@ export interface PmIntake {
   linked_project_id: string | null;
   linked_project_name: string | null;
   linked_task_id: string | null;
+  task_links: PmIntakeTaskLink[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -144,6 +158,8 @@ export interface PmIntake {
 export interface PmIntakeInput {
   kind: PmIntakeKind;
   business_id?: number | null;
+  linked_project_id?: string | null;
+  linked_project_name?: string | null;
   title: string;
   description?: string | null;
   source_type?: PmIntakeSource;
