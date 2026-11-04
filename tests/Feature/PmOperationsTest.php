@@ -176,11 +176,21 @@ class PmOperationsTest extends TestCase
         $intake = PmIntake::findOrFail($intakeId);
         $intake->update(['status' => 'approved']);
 
+        $taskCard = PmCard::create([
+            'title' => 'Repair checkout validation',
+            'project_id' => $projectId,
+            'project_name' => 'AdEvent Website',
+            'task_id' => str_repeat('1', 24),
+            'status' => 'In Progress',
+            'assignee' => 'Developer One',
+        ]);
+
         PmIntakeTaskLink::create([
             'intake_id' => $intakeId,
             'project_id' => $projectId,
             'project_name' => 'AdEvent Website',
             'task_id' => str_repeat('1', 24),
+            'card_id' => $taskCard->id,
             'title' => 'Repair checkout validation',
             'url' => 'https://taskmandu.test/projects/'.$projectId,
         ]);
@@ -195,7 +205,9 @@ class PmOperationsTest extends TestCase
         $this->getJson('/pm/api/intakes?kind=request')
             ->assertOk()
             ->assertJsonCount(2, 'intakes.0.task_links')
-            ->assertJsonPath('intakes.0.task_links.0.project_id', $projectId);
+            ->assertJsonPath('intakes.0.task_links.0.project_id', $projectId)
+            ->assertJsonPath('intakes.0.task_links.0.status', 'In Progress')
+            ->assertJsonPath('intakes.0.task_links.0.assignee', 'Developer One');
 
         $this->patchJson('/pm/api/intakes/'.$intakeId, [
             'linked_project_id' => str_repeat('c', 24),
