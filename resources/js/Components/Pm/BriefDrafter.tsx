@@ -59,7 +59,7 @@ export default function BriefDrafter() {
         const project = projects.find((item) => item._id === intake.linked_project_id);
         if (!project) throw new Error('The matched Taskmandu project is not available. Refresh Taskmandu projects and select a valid project.');
         setActiveIntake(intake);
-        setBrief([intake.title, intake.description, intake.clarification ? `Clarification: ${intake.clarification}` : null, intake.decision_notes ? `Decision: ${intake.decision_notes}` : null].filter(Boolean).join('\\n\\n'));
+        setBrief([intake.title, intake.description, intake.clarification ? `Clarification: ${intake.clarification}` : null, intake.decision_notes ? `Decision: ${intake.decision_notes}` : null].filter(Boolean).join('\n\n'));
         setNotice(`Planning work for ${intake.title} in Taskmandu project ${project.name}. Every Task in this batch will be created inside that project.`);
       }).catch((e) => setDraftError(errorText(e, 'Could not load the source request.')));
       return;
