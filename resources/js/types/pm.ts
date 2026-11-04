@@ -66,3 +66,67 @@ export type ReportContent=DailyContent|WeeklyContent|LegacyContent;
 export interface Report { id:number; kind:'daily'|'weekly'; report_date:string; auto:boolean; generated_by:string|null; generated_at:string|null; notes:string|null; body:string; content:ReportContent; }
 export interface Contact { name:string; designation?:string|null; email:string; }
 export interface SendEmailInput { to:string[]; subject:string; body:string; card_id?:number; }
+
+
+export type PmIntakeKind = 'request' | 'idea';
+export type PmIntakePriority = 'low' | 'medium' | 'high' | 'critical';
+export type PmIntakeSource = 'boss' | 'client' | 'team' | 'self' | 'other';
+export type PmIntakeStatus =
+  | 'received'
+  | 'needs_clarification'
+  | 'in_review'
+  | 'approved'
+  | 'captured'
+  | 'under_review'
+  | 'accepted'
+  | 'rejected'
+  | 'deferred'
+  | 'planned';
+
+export interface PmBusinessProjectLink {
+  id: number;
+  project_id: string;
+  project_name: string;
+  is_primary: boolean;
+}
+
+export interface PmBusiness {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: 'active' | 'paused';
+  project_links: PmBusinessProjectLink[];
+}
+
+export interface PmIntake {
+  id: number;
+  kind: PmIntakeKind;
+  status: PmIntakeStatus;
+  priority: PmIntakePriority;
+  title: string;
+  description: string | null;
+  source_type: PmIntakeSource;
+  source_name: string | null;
+  business_id: number | null;
+  business: { id: number; name: string; slug: string } | null;
+  requested_due_at: string | null;
+  clarification: string | null;
+  decision_notes: string | null;
+  linked_project_id: string | null;
+  linked_project_name: string | null;
+  linked_task_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface PmIntakeInput {
+  kind: PmIntakeKind;
+  business_id?: number | null;
+  title: string;
+  description?: string | null;
+  source_type?: PmIntakeSource;
+  source_name?: string | null;
+  priority?: PmIntakePriority;
+  requested_due_at?: string | null;
+}

@@ -34,6 +34,7 @@ class PmPagesTest extends TestCase
     {
         return [
             'today' => ['/pm', 'Pm/App'],
+            'operations' => ['/pm/operations', 'Pm/App'],
             'projects' => ['/pm/projects', 'Pm/App'],
             'minutes' => ['/pm/minutes', 'Pm/App'],
             'brief' => ['/pm/brief', 'Pm/App'],

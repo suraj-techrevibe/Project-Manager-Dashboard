@@ -34,7 +34,7 @@ class PmController extends Controller
     ) {}
 
     /** Pages that used to be tabs inside this one page, now at /pm/{page}. */
-    private const PAGES = ['projects', 'minutes', 'brief', 'reports', 'scope', 'git'];
+    private const PAGES = ['operations', 'projects', 'minutes', 'brief', 'reports', 'scope', 'git'];
 
     public function index(Request $request): Response|RedirectResponse
     {

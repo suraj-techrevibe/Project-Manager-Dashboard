@@ -4,6 +4,7 @@ use App\Http\Controllers\EmailController;
 use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\PmPageController;
+use App\Http\Controllers\PmOperationsController;
 use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmDraftController;
 use App\Http\Controllers\PmMeetingTicketController;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Route;
 // Pages: one real URL per tab, so each opens on its own and Back/Forward/bookmarks work.
 Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('/', [PmController::class, 'index'])->name('index');
+    Route::get('operations', [PmPageController::class, 'operations'])->name('page.operations');
     Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
     Route::get('minutes', [PmPageController::class, 'minutes'])->name('page.minutes');
     Route::get('brief', [PmPageController::class, 'brief'])->name('page.brief');
@@ -42,6 +44,15 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm/api')->name('pm.')->gro
     Route::get('brief/pushes', [PmController::class, 'recentPushes'])->name('brief.pushes');
     Route::post('brief/pushes/{activity}/undo', [PmController::class, 'undoPush'])->name('brief.pushes.undo');
     Route::get('automation/health', [PmAutomationController::class, 'health'])->name('automation.health');
+    Route::get('businesses', [PmOperationsController::class, 'businesses'])->name('businesses.index');
+    Route::post('businesses', [PmOperationsController::class, 'storeBusiness'])->name('businesses.store');
+    Route::patch('businesses/{business}', [PmOperationsController::class, 'updateBusiness'])->name('businesses.update');
+    Route::post('businesses/{business}/projects', [PmOperationsController::class, 'attachProject'])->name('businesses.projects.store');
+    Route::delete('businesses/{business}/projects/{projectId}', [PmOperationsController::class, 'removeProject'])->where('projectId', '[0-9a-fA-F]{24}')->name('businesses.projects.destroy');
+    Route::get('intakes', [PmOperationsController::class, 'intakes'])->name('intakes.index');
+    Route::post('intakes', [PmOperationsController::class, 'storeIntake'])->name('intakes.store');
+    Route::patch('intakes/{intake}', [PmOperationsController::class, 'updateIntake'])->name('intakes.update');
+    Route::delete('intakes/{intake}', [PmOperationsController::class, 'deleteIntake'])->name('intakes.destroy');
     Route::get('employees', [PmController::class, 'employees'])->name('employees');
     Route::get('drafts', [PmDraftController::class, 'index'])->name('drafts.index');
     Route::post('drafts', [PmDraftController::class, 'store'])->name('drafts.store');
