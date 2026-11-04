@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PmIntake extends Model
 {
@@ -23,5 +24,10 @@ class PmIntake extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function taskLinks(): HasMany
+    {
+        return $this->hasMany(PmIntakeTaskLink::class, 'intake_id')->orderBy('id');
     }
 }
