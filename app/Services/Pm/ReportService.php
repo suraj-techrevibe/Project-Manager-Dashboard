@@ -3,6 +3,7 @@
 namespace App\Services\Pm;
 
 use App\Models\PmActivity;
+use App\Models\PmBusiness;
 use App\Models\PmCard;
 use App\Models\PmReport;
 use Illuminate\Support\Carbon;
@@ -295,6 +296,52 @@ class ReportService
         }
         $team = collect($rows)->sortBy([fn ($a, $b) => $b['completed'] <=> $a['completed'], fn ($a, $b) => $b['open'] <=> $a['open']])->values()->all();
 
+        // Business-wise view: map each Taskmandu project to the business that owns it.
+        // This is a reporting layer only; it does not change task assignment or Kanban workflow.
+        $businessSummary = [];
+        $completedByBusiness = [];
+        $assignedProjectIds = [];
+        $businesses = PmBusiness::query()->with('projectLinks')->orderBy('name')->get();
+
+        foreach ($businesses as $business) {
+            $projectIds = $business->projectLinks->pluck('project_id')->map(fn ($id) => (string) $id)->all();
+            $assignedProjectIds = array_merge($assignedProjectIds, $projectIds);
+            $businessCards = $cards->filter(fn ($card) => in_array((string) $card->project_id, $projectIds, true));
+            $businessOpen = $businessCards->reject(fn ($card) => in_array($card->status, self::OPEN_EXCLUDED, true));
+            $businessCompleted = $completed->values()
+                ->filter(fn ($item) => in_array((string) ($item['project_id'] ?? ''), $projectIds, true))
+                ->values();
+
+            $businessSummary[] = [
+                'business' => $business->name,
+                'completed' => $businessCompleted->count(),
+                'open' => $businessOpen->count(),
+                'in_progress' => $businessOpen->where('status', 'In Progress')->count(),
+                'blocked' => $businessOpen->where('status', 'Blocked')->count(),
+                'overdue' => $businessOpen->filter(fn ($card) => $card->due_at && $card->due_at->lt($asOf->copy()->startOfDay()))->count(),
+            ];
+
+            if ($businessCompleted->isNotEmpty()) {
+                $completedByBusiness[] = ['business' => $business->name, 'items' => $businessCompleted->all()];
+            }
+        }
+
+        // Keep work without a business/project link visible instead of silently dropping it.
+        $unassignedCompleted = $completed->values()
+            ->filter(fn ($item) => ! in_array((string) ($item['project_id'] ?? ''), $assignedProjectIds, true))
+            ->values();
+        if ($unassignedCompleted->isNotEmpty()) {
+            $completedByBusiness[] = ['business' => 'Unassigned / shared', 'items' => $unassignedCompleted->all()];
+            $businessSummary[] = [
+                'business' => 'Unassigned / shared',
+                'completed' => $unassignedCompleted->count(),
+                'open' => 0,
+                'in_progress' => 0,
+                'blocked' => 0,
+                'overdue' => 0,
+            ];
+        }
+
         // Next week.
         $nextStart = $start->copy()->addDays(7)->startOfDay();
         $nextEnd = $start->copy()->addDays(13)->endOfDay();
@@ -335,6 +382,8 @@ class ReportService
                 [$stats['blocked'], 'blocked', 'red'],
                 [$stats['overdue'], 'overdue', 'amber'],
             ]),
+            'business_summary' => $businessSummary,
+            'completed_by_business' => $completedByBusiness,
             'completed_by_project' => $byProject,
             'in_progress' => $inProgress,
             'blocked' => $ageing['blocked'],
@@ -456,6 +505,7 @@ class ReportService
         return [
             'title' => $c?->title ?? $title ?? 'Untitled task',
             'project' => $c?->project_name ?? ($meta['project'] ?? null),
+            'project_id' => $c?->project_id,
             'assignee' => $c?->assignee ?? ($meta['assignee'] ?? null),
         ] + $extra;
     }
@@ -659,10 +709,11 @@ class ReportService
         $out[] = $c['summary_text'];
         $out[] = '';
 
-        $out[] = 'COMPLETED THIS WEEK';
-        if ($c['completed_by_project']) {
-            foreach ($c['completed_by_project'] as $g) {
-                $out[] = $g['project'].' ('.count($g['items']).')';
+        $out[] = 'COMPLETED THIS WEEK BY BUSINESS';
+        $completedGroups = $c['completed_by_business'] ?? array_map(fn ($g) => ['business' => $g['project'], 'items' => $g['items']], $c['completed_by_project'] ?? []);
+        if ($completedGroups) {
+            foreach ($completedGroups as $g) {
+                $out[] = $g['business'].' ('.count($g['items']).')';
                 foreach ($g['items'] as $i) {
                     $out[] = '  • '.$i['title'].' — '.($i['assignee'] ?? 'unassigned');
                 }
@@ -671,6 +722,11 @@ class ReportService
             $out[] = 'Nothing completed.';
         }
         $out[] = '';
+
+        $this->section($out, 'Business-wise progress', array_map(
+            fn ($b) => $b['business'].' — '.$b['completed'].' completed | '.$b['in_progress'].' in progress | '.$b['blocked'].' blocked | '.$b['overdue'].' overdue',
+            $c['business_summary'] ?? []
+        ), 'No business-linked work found.');
 
         $this->section($out, 'Still in progress', array_map(fn ($x) => $t($x).(($x['days'] ?? null) !== null ? ' — '.$x['days'].'d in progress' : ''), $c['in_progress']));
         $this->section($out, 'Blocked', array_merge(array_map(fn ($x) => $t($x).$days($x).' blocked', $c['blocked']), $c['blocker_notes']), 'Nothing blocked.');
