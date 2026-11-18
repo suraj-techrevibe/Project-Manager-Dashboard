@@ -218,7 +218,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
       <Section title="Business-wise progress" count={c.business_summary?.length ?? 0}>
         {c.business_summary?.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-left text-sm">
+            <table className="w-full min-w-[48rem] text-left text-sm">
               <thead className="text-xs text-slate-400">
                 <tr>
                   <th className="pb-1 pr-3 font-normal">Business</th>
@@ -236,7 +236,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
                   <tr key={b.business} className="border-t border-slate-100">
                     <td className="py-1.5 pr-3 font-medium">{b.business}</td>
                     <td className="py-1.5 pr-3 text-right">{b.completed}</td>
-                    <td className={\`py-1.5 pr-3 text-right \${b.qa_pending ? 'text-amber-600 font-medium' : ''}\`}>{b.qa_pending}</td>
+                    <td className={`py-1.5 pr-3 text-right ${b.qa_pending ? 'text-amber-600 font-medium' : ''}`}>{b.qa_pending}</td>
                     <td className="py-1.5 pr-3 text-right">{b.qa_accepted}</td>
                     <td className="py-1.5 pr-3 text-right">{b.open}</td>
                     <td className="py-1.5 pr-3 text-right">{b.in_progress}</td>
