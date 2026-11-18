@@ -223,6 +223,8 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
                 <tr>
                   <th className="pb-1 pr-3 font-normal">Business</th>
                   <th className="pb-1 pr-3 text-right font-normal">Completed</th>
+                  <th className="pb-1 pr-3 text-right font-normal">QA pending</th>
+                  <th className="pb-1 pr-3 text-right font-normal">Accepted</th>
                   <th className="pb-1 pr-3 text-right font-normal">Open</th>
                   <th className="pb-1 pr-3 text-right font-normal">In progress</th>
                   <th className="pb-1 pr-3 text-right font-normal">Blocked</th>
@@ -234,6 +236,8 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
                   <tr key={b.business} className="border-t border-slate-100">
                     <td className="py-1.5 pr-3 font-medium">{b.business}</td>
                     <td className="py-1.5 pr-3 text-right">{b.completed}</td>
+                    <td className={\`py-1.5 pr-3 text-right \${b.qa_pending ? 'text-amber-600 font-medium' : ''}\`}>{b.qa_pending}</td>
+                    <td className="py-1.5 pr-3 text-right">{b.qa_accepted}</td>
                     <td className="py-1.5 pr-3 text-right">{b.open}</td>
                     <td className="py-1.5 pr-3 text-right">{b.in_progress}</td>
                     <td className={`py-1.5 pr-3 text-right ${b.blocked ? 'text-red-600 font-medium' : ''}`}>{b.blocked}</td>
