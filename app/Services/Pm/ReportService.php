@@ -315,6 +315,8 @@ class ReportService
             $businessSummary[] = [
                 'business' => $business->name,
                 'completed' => $businessCompleted->count(),
+                'qa_pending' => $businessCards->where('status', 'Completed')->filter(fn ($card) => ! $card->verified)->count(),
+                'qa_accepted' => $businessCards->where('status', 'Completed')->filter(fn ($card) => (bool) $card->verified)->count(),
                 'open' => $businessOpen->count(),
                 'in_progress' => $businessOpen->where('status', 'In Progress')->count(),
                 'blocked' => $businessOpen->where('status', 'Blocked')->count(),
@@ -335,6 +337,8 @@ class ReportService
             $businessSummary[] = [
                 'business' => 'Unassigned / shared',
                 'completed' => $unassignedCompleted->count(),
+                'qa_pending' => 0,
+                'qa_accepted' => 0,
                 'open' => 0,
                 'in_progress' => 0,
                 'blocked' => 0,
@@ -724,7 +728,7 @@ class ReportService
         $out[] = '';
 
         $this->section($out, 'Business-wise progress', array_map(
-            fn ($b) => $b['business'].' — '.$b['completed'].' completed | '.$b['in_progress'].' in progress | '.$b['blocked'].' blocked | '.$b['overdue'].' overdue',
+            fn ($b) => $b['business'].' — '.$b['completed'].' completed | '.$b['qa_pending'].' awaiting acceptance | '.$b['in_progress'].' in progress | '.$b['blocked'].' blocked | '.$b['overdue'].' overdue',
             $c['business_summary'] ?? []
         ), 'No business-linked work found.');
 
