@@ -60,7 +60,7 @@ function detailsText(c: Content): string {
   } else {
     out.push('THIS WEEK AT A GLANCE', c.summary_text, '');
     section(out, 'Business-wise progress', (c.business_summary ?? []).map((b) =>
-      `${b.business} — ${b.completed} completed | ${b.open} open | ${b.in_progress} in progress | ${b.blocked} blocked | ${b.overdue} overdue`
+      `${b.business} — ${b.completed} completed | ${b.qa_pending} awaiting acceptance | ${b.qa_accepted} accepted | ${b.open} open | ${b.in_progress} in progress | ${b.blocked} blocked | ${b.overdue} overdue`
     ), 'No business-to-project links are configured.');
     out.push('COMPLETED THIS WEEK BY BUSINESS');
     const completedGroups = c.completed_by_business ?? c.completed_by_project.map((g) => ({ business: g.project, items: g.items }));
