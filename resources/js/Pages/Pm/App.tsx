@@ -317,6 +317,9 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onCapture={(kind) => visitPm('operations', { new: kind })}
                 />
+                <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-800 marker:hidden">Detailed daily PM monitoring <span className="float-right text-slate-400 group-open:rotate-180">⌄</span><span className="mt-1 block text-xs font-normal text-slate-500">Workload, task flags, blockers, verification and team activity</span></summary>
+                  <div className="border-t border-slate-100 p-3 sm:p-4">
                 <TodayCommandCenter
                   counts={counts}
                   workload={today.workload}
@@ -380,7 +383,12 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onOpenProject={(id) => visitPm('projects', { project: id })}
                 />
-                <MeetingFollowUpCard data={today.meeting_followup} />
+                  </div>
+                </details>
+                <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">Meeting follow-ups</summary>
+                  <div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div>
+                </details>
                 <div id="task-list" className="scroll-mt-4">
                   <div className="mb-2 flex justify-end">
                     <button onClick={() => setShowAllTasks((v) => !v)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50">
