@@ -2,6 +2,7 @@ import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import PmShell from '@/Components/Pm/PmShell';
 import QuickSearch from '@/Components/Pm/QuickSearch';
+import AssistantPanel from '@/Components/Pm/AssistantPanel';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
 import TasksPage from '@/Components/Pm/TasksPage';
@@ -51,6 +52,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [taskFilter, setTaskFilter] = useState<string | null>(null);
   const [quickSearch, setQuickSearch] = useState('');
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
+  const [assistantPrompt, setAssistantPrompt] = useState<{ text: string; nonce: number } | null>(null);
 
   const seen = useRef<Set<PmPage>>(new Set());
   const [gen, setGen] = useState<Partial<Record<PmPage, number>>>({});
@@ -254,6 +256,10 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         tasks={allTasks}
         projects={projects}
         onOpenTask={openTask}
+        onAsk={(text) => {
+          setAssistantPrompt({ text, nonce: Date.now() });
+          visitPm('assistant', {});
+        }}
       />
 
       <div>
@@ -369,6 +375,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
             )}
           </Pane>
         )}
+
+        {mounted('assistant') && <Pane show={page === 'assistant'}><AssistantPanel active={page === 'assistant'} prefill={assistantPrompt} /></Pane>}
 
         {mounted('tasks') && (
           <Pane show={page === 'tasks'}>

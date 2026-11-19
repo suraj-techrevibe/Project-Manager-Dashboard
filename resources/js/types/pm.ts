@@ -167,3 +167,8 @@ export interface PmIntakeInput {
   priority?: PmIntakePriority;
   requested_due_at?: string | null;
 }
+
+export type AssistantActionStatus = 'pending' | 'running' | 'done' | 'failed' | 'cancelled';
+export interface AssistantAction { id: string; tool: string; summary: string; details: Record<string, unknown>; status: AssistantActionStatus; message?: string; }
+export interface AssistantReply { reply: string; actions: AssistantAction[]; tools: string[]; }
+export interface AssistantActionResult { ok: boolean; message: string; status: 'done' | 'failed' | 'cancelled'; }

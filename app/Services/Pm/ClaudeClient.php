@@ -69,4 +69,49 @@ class ClaudeClient
 
         return is_array($out) ? $out : [];
     }
+
+    /**
+     * One tool-aware turn against the Messages API. Returns the raw response
+     * (content blocks + stop_reason) so the caller can run the tool loop.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @param  array<int, array<string, mixed>>  $tools
+     */
+    public function converse(string $system, array $messages, array $tools = [], int $maxTokens = 2000): array
+    {
+        $key = config('services.anthropic.key');
+
+        if (! $key) {
+            throw new RuntimeException('The assistant needs an API key — set ANTHROPIC_API_KEY in .env');
+        }
+
+        $payload = [
+            'model' => config('services.anthropic.model'),
+            'max_tokens' => $maxTokens,
+            'system' => 'Today is '.now()->toFormattedDateString().".\n\n".$system,
+            'messages' => $messages,
+        ];
+        if ($tools) {
+            $payload['tools'] = $tools;
+        }
+
+        try {
+            $res = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])
+                ->timeout(90)
+                ->retry(2, 800, fn ($e) => $e instanceof ConnectionException
+                    || in_array(optional($e->response ?? null)->status(), [429, 500, 502, 503, 529], true), throw: false)
+                ->post('https://api.anthropic.com/v1/messages', $payload);
+        } catch (ConnectionException) {
+            throw new RuntimeException("Couldn't reach the AI service — try again in a moment.");
+        }
+
+        if (in_array($res->status(), [401, 403], true)) {
+            throw new RuntimeException('The assistant needs a valid API key — check ANTHROPIC_API_KEY.');
+        }
+        if ($res->failed()) {
+            throw new RuntimeException('AI request failed ('.$res->status().'): '.$res->json('error.message', 'unknown error'));
+        }
+
+        return $res->json();
+    }
 }
