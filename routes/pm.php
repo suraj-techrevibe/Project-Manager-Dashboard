@@ -22,7 +22,8 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('brief', [PmPageController::class, 'brief'])->name('page.brief');
     Route::get('reports', [PmPageController::class, 'reports'])->name('page.reports');
     Route::get('scope', [PmPageController::class, 'scope'])->name('page.scope');
-    Route::get('git', [PmPageController::class, 'git'])->name('page.git');\n    Route::get('qa', [PmPageController::class, 'qa'])->name('page.qa');
+    Route::get('git', [PmPageController::class, 'git'])->name('page.git');
+    Route::get('qa', [PmPageController::class, 'qa'])->name('page.qa');
 });
 
 // JSON API used by those pages.
@@ -61,7 +62,11 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm/api')->name('pm.')->gro
     Route::patch('drafts/{draft}', [PmDraftController::class, 'update'])->name('drafts.update');
     Route::post('drafts/{draft}/verify', [PmDraftController::class, 'verify'])->name('drafts.verify');
     Route::delete('drafts/{draft}', [PmDraftController::class, 'destroy'])->name('drafts.destroy');
-    Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');\n    Route::post('qa', [PmQaController::class, 'store'])->name('qa.store');\n    Route::patch('qa/{issue}', [PmQaController::class, 'update'])->name('qa.update');\n    Route::delete('qa/{issue}', [PmQaController::class, 'destroy'])->name('qa.destroy');\n    Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
+    Route::post('qa', [PmQaController::class, 'store'])->name('qa.store');
+    Route::patch('qa/{issue}', [PmQaController::class, 'update'])->name('qa.update');
+    Route::delete('qa/{issue}', [PmQaController::class, 'destroy'])->name('qa.destroy');
+    Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::post('reports', [ReportController::class, 'store'])->name('reports.store');
     Route::delete('reports/{report}', [ReportController::class, 'destroy'])->name('reports.destroy');
     Route::post('scope', [PmController::class, 'scope'])->name('scope');
