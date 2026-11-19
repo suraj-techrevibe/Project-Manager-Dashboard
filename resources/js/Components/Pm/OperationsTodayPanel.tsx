@@ -83,7 +83,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <details className="rounded-2xl border border-slate-200 bg-white p-4"><summary className="mb-3 cursor-pointer text-sm font-semibold text-slate-900">Taskmandu project portfolio</summary><div>
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-semibold text-slate-900">Taskmandu project portfolio</h3>
             <button type="button" onClick={() => onNavigate('projects')} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">View projects →</button>
@@ -112,9 +112,9 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
               Taskmandu projects could not be loaded. Check the Taskmandu connection and refresh.
             </div>
           )}
-        </div>
+        </div></details>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <details className="rounded-2xl border border-slate-200 bg-white p-4"><summary className="mb-3 cursor-pointer text-sm font-semibold text-slate-900">Requests and ideas needing attention</summary><div>
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-semibold text-slate-900">Needs your attention</h3>
             <button type="button" onClick={() => onNavigate('operations')} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">
