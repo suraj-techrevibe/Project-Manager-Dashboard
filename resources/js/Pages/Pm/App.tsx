@@ -239,12 +239,12 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     { key: 'worst', label: 'Project risk', text: riskProjects.length ? `${riskProjects[0].name} has the most warning signals.` : 'No project warning signals.', count: riskProjects.length },
   ];
   const current = PM_PAGES.find((p) => p.key === page)!;
+  const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
   const quickQuery = quickSearch.trim().toLowerCase();
   const quickPages = PM_PAGES.filter((p) => !quickQuery || p.label.toLowerCase().includes(quickQuery) || p.key.toLowerCase().includes(quickQuery)).slice(0, 5);
   const quickTasks = quickQuery ? allTasks.filter((t) => [t.title, t.project_name, t.assignee, t.status, t.description].filter(Boolean).join(' ').toLowerCase().includes(quickQuery)).slice(0, 7) : [];
   useEffect(() => { const handler = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setQuickSearchOpen(true); } if (e.key === 'Escape') setQuickSearchOpen(false); }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, []);
   const mounted = (key: PmPage) => visited.has(key) || page === key;
-  const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
 
   return (
     <AuthenticatedLayout header={<h2 className="text-lg font-semibold text-slate-800">Company Operations</h2>}>
