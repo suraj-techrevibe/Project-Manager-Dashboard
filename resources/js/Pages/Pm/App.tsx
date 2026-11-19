@@ -271,40 +271,28 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         </div>
       </div>
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
-        <nav aria-label="Company operations sections" className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {PM_PAGES.map((p) => {
-              const on = p.key === page;
-              const badge = p.key === 'today' ? attention : 0;
-              return (
-                <a
-                  key={p.key}
-                  href={p.href}
-                  aria-current={on ? 'page' : undefined}
-                  onClick={(e) => {
-                    // Let ctrl/cmd/middle-click open a new browser tab as usual.
-                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                    e.preventDefault();
-                    // Clicking the tab you're already on resets it to its start screen.
-                    visitPm(p.key, on ? {} : undefined);
-                  }}
-                  className={`relative flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition ${
-                    on
-                      ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700'
-                      : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Icon name={LOOK[p.key].icon} className="h-4 w-4" />
-                  <span className="hidden sm:inline">{p.label}</span>
-                  <span className="sm:hidden">{LOOK[p.key].short}</span>
-                  {badge > 0 && (
-                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white" title="Overdue + blocked">
-                      {badge}
-                    </span>
-                  )}
-                </a>
-              );
-            })}
+        <nav aria-label="Company operations sections" className="mb-5 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-slate-400">Workspace navigation</div>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {[
+              { title: 'Daily operations', keys: ['today', 'operations', 'projects'] },
+              { title: 'Planning & input', keys: ['minutes', 'brief'] },
+              { title: 'Oversight', keys: ['reports', 'scope', 'git'] },
+            ].map((group) => (
+              <div key={group.title} className="min-w-0">
+                <div className="mb-1 px-1 text-[11px] font-medium text-slate-500">{group.title}</div>
+                <div className="flex flex-wrap gap-1">
+                  {group.keys.map((key) => {
+                    const p = PM_PAGES.find((item) => item.key === key)!;
+                    const on = p.key === page;
+                    const badge = p.key === 'today' ? attention : 0;
+                    return <a key={p.key} href={p.href} aria-current={on ? 'page' : undefined} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); visitPm(p.key, on ? {} : undefined); }} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${on ? 'border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'}`}>
+                      <Icon name={LOOK[p.key].icon} className="h-4 w-4" /><span>{p.label}</span>{badge > 0 && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">{badge}</span>}
+                    </a>;
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </nav>
 
