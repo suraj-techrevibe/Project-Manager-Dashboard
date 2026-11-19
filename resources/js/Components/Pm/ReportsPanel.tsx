@@ -352,7 +352,7 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
       {c.kind === 'daily' || c.kind === 'weekly' ? (
         <>
           <UpdatePart c={c} />
-          <details open className="mt-4">
+          <details className="mt-4">
             <summary className="cursor-pointer select-none text-sm font-semibold text-slate-600">
               Project details <span className="font-normal text-slate-400">· from the task board</span>
             </summary>

@@ -59,6 +59,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [taskFilter, setTaskFilter] = useState<string | null>(null);
+  const [quickSearch, setQuickSearch] = useState('');
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
 
   const seen = useRef<Set<PmPage>>(new Set());
   const [gen, setGen] = useState<Partial<Record<PmPage, number>>>({});
@@ -237,48 +239,61 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     { key: 'worst', label: 'Project risk', text: riskProjects.length ? `${riskProjects[0].name} has the most warning signals.` : 'No project warning signals.', count: riskProjects.length },
   ];
   const current = PM_PAGES.find((p) => p.key === page)!;
-  const mounted = (key: PmPage) => visited.has(key) || page === key;
   const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
+  const quickQuery = quickSearch.trim().toLowerCase();
+  const quickPages = PM_PAGES.filter((p) => !quickQuery || p.label.toLowerCase().includes(quickQuery) || p.key.toLowerCase().includes(quickQuery)).slice(0, 5);
+  const quickTasks = quickQuery ? allTasks.filter((t) => [t.title, t.project_name, t.assignee, t.status, t.description].filter(Boolean).join(' ').toLowerCase().includes(quickQuery)).slice(0, 7) : [];
+  const quickProjects = quickQuery ? projects.filter((p) => p.name.toLowerCase().includes(quickQuery)).slice(0, 5) : [];
+  useEffect(() => { const handler = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setQuickSearchOpen(true); } if (e.key === 'Escape') setQuickSearchOpen(false); }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, []);
+  const mounted = (key: PmPage) => visited.has(key) || page === key;
 
   return (
     <AuthenticatedLayout header={<h2 className="text-lg font-semibold text-slate-800">Company Operations</h2>}>
       <Head title={`${current.label} · Company Operations`} />
 
+      <div className="mx-auto max-w-6xl px-3 pt-4 sm:px-6 sm:pt-6">
+        <div className="relative">
+          <button type="button" onClick={() => setQuickSearchOpen(true)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm hover:border-indigo-300 hover:shadow">
+            <Icon name="search" className="h-5 w-5 text-slate-500" />
+            <span className="flex-1 text-sm text-slate-500">Search tasks, businesses, meetings, reports or navigate…</span>
+            <kbd className="hidden rounded border bg-slate-50 px-2 py-1 text-xs text-slate-500 sm:inline">Ctrl K</kbd>
+          </button>
+          {quickSearchOpen && <div className="fixed inset-0 z-50 bg-slate-950/30 p-3 sm:p-6" onClick={() => setQuickSearchOpen(false)}>
+            <div className="mx-auto mt-8 max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3 border-b px-4 py-3"><Icon name="search" className="h-5 w-5 text-slate-500"/><input autoFocus value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} placeholder="Search workspace or jump to a section…" className="w-full border-0 p-0 text-sm outline-none focus:ring-0"/><button onClick={() => setQuickSearchOpen(false)} className="text-xs text-slate-500">Esc</button></div>
+              <div className="max-h-[70vh] overflow-y-auto p-2">
+                <div className="px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Navigation</div>
+                {quickPages.map((p) => <button key={p.key} onClick={() => { setQuickSearchOpen(false); setQuickSearch(''); visitPm(p.key, {}); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50"><Icon name={LOOK[p.key].icon} className="h-4 w-4 text-slate-500"/><span>{p.label}</span><span className="ml-auto text-xs text-slate-400">Open</span></button>)}
+                {quickQuery && <><div className="px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Projects</div>{quickProjects.map((p) => <button key={p._id} onClick={() => { setQuickSearchOpen(false); setQuickSearch(''); visitPm('projects', { project: p._id }); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50"><Icon name="folder" className="h-4 w-4 text-slate-500"/><span className="truncate">{p.name}</span><span className="ml-auto text-xs text-slate-400">Project</span></button>)}{quickProjects.length===0 && <p className="px-3 py-1 text-xs text-slate-400">No matching projects.</p>}<div className="px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Tasks</div>{quickTasks.map((t) => <button key={t.card_id} disabled={!t.project_id || !t.task_id} onClick={() => { setQuickSearchOpen(false); setQuickSearch(''); if (t.project_id && t.task_id) openTask({projectId:t.project_id, taskId:t.task_id}); }} className="w-full rounded-lg px-3 py-2 text-left hover:bg-indigo-50 disabled:opacity-50"><div className="text-sm font-medium text-slate-800">{t.title}</div><div className="text-xs text-slate-500">{t.project_name ?? 'Project'} · {t.status}{t.assignee ? ' · '+t.assignee : ''}</div></button>)}{quickTasks.length===0 && <p className="px-3 py-2 text-sm text-slate-500">No matching tasks found.</p>}</>}
+                {!quickQuery && <p className="px-3 py-3 text-xs text-slate-500">Type to search tasks, or choose a section above. Search results are limited to tasks currently loaded by the PM dashboard.</p>}
+              </div>
+            </div>
+          </div>}
+        </div>
+      </div>
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
-        <nav aria-label="Company operations sections" className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {PM_PAGES.map((p) => {
-              const on = p.key === page;
-              const badge = p.key === 'today' ? attention : 0;
-              return (
-                <a
-                  key={p.key}
-                  href={p.href}
-                  aria-current={on ? 'page' : undefined}
-                  onClick={(e) => {
-                    // Let ctrl/cmd/middle-click open a new browser tab as usual.
-                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                    e.preventDefault();
-                    // Clicking the tab you're already on resets it to its start screen.
-                    visitPm(p.key, on ? {} : undefined);
-                  }}
-                  className={`relative flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition ${
-                    on
-                      ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700'
-                      : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Icon name={LOOK[p.key].icon} className="h-4 w-4" />
-                  <span className="hidden sm:inline">{p.label}</span>
-                  <span className="sm:hidden">{LOOK[p.key].short}</span>
-                  {badge > 0 && (
-                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white" title="Overdue + blocked">
-                      {badge}
-                    </span>
-                  )}
-                </a>
-              );
-            })}
+        <nav aria-label="Company operations sections" className="mb-5 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-slate-400">Workspace navigation</div>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {[
+              { title: 'Daily operations', keys: ['today', 'operations', 'projects'] },
+              { title: 'Planning & input', keys: ['minutes', 'brief'] },
+              { title: 'Oversight', keys: ['reports', 'scope', 'git'] },
+            ].map((group) => (
+              <div key={group.title} className="min-w-0">
+                <div className="mb-1 px-1 text-[11px] font-medium text-slate-500">{group.title}</div>
+                <div className="flex flex-wrap gap-1">
+                  {group.keys.map((key) => {
+                    const p = PM_PAGES.find((item) => item.key === key)!;
+                    const on = p.key === page;
+                    const badge = p.key === 'today' ? attention : 0;
+                    return <a key={p.key} href={p.href} aria-current={on ? 'page' : undefined} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); visitPm(p.key, on ? {} : undefined); }} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${on ? 'border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'}`}>
+                      <Icon name={LOOK[p.key].icon} className="h-4 w-4" /><span>{p.label}</span>{badge > 0 && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">{badge}</span>}
+                    </a>;
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </nav>
 
@@ -291,6 +306,9 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onCapture={(kind) => visitPm('operations', { new: kind })}
                 />
+                <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-800 marker:hidden">Detailed daily PM monitoring <span className="float-right text-slate-400 group-open:rotate-180">⌄</span><span className="mt-1 block text-xs font-normal text-slate-500">Workload, task flags, blockers, verification and team activity</span></summary>
+                  <div className="border-t border-slate-100 p-3 sm:p-4">
                 <TodayCommandCenter
                   counts={counts}
                   workload={today.workload}
@@ -354,7 +372,12 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onOpenProject={(id) => visitPm('projects', { project: id })}
                 />
-                <MeetingFollowUpCard data={today.meeting_followup} />
+                  </div>
+                </details>
+                <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">Meeting follow-ups</summary>
+                  <div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div>
+                </details>
                 <div id="task-list" className="scroll-mt-4">
                   <div className="mb-2 flex justify-end">
                     <button onClick={() => setShowAllTasks((v) => !v)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50">

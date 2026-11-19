@@ -196,6 +196,13 @@ export default function RequestsIdeasPanel() {
       return matchesSearch && matchesStatus && matchesProject;
     });
   }, [visibleIntakes, searchQuery, statusFilter, projectFilter]);
+  const priorityRank: Record<PmIntake['priority'], number> = { critical: 4, high: 3, medium: 2, low: 1 };
+  const attentionStatuses = new Set(['received', 'needs_clarification', 'in_review', 'captured', 'under_review']);
+  const orderedIntakes = [...filteredIntakes].sort((a, b) => {
+    const aAttention = attentionStatuses.has(a.status) ? 1 : 0;
+    const bAttention = attentionStatuses.has(b.status) ? 1 : 0;
+    return bAttention - aAttention || priorityRank[b.priority] - priorityRank[a.priority] || (b.updated_at || '').localeCompare(a.updated_at || '');
+  });
   const requestCount = intakes.filter((item) => item.kind === 'request').length;
   const ideaCount = intakes.filter((item) => item.kind === 'idea').length;
 
@@ -526,7 +533,7 @@ export default function RequestsIdeasPanel() {
                 <p className="mt-1 text-sm text-slate-500">Try a different search or clear the filters.</p>
               </div>
             )}
-            {!loading && filteredIntakes.map((item) => {
+            {!loading && orderedIntakes.map((item) => {
               const statuses = item.kind === 'request' ? REQUEST_STATUSES : IDEA_STATUSES;
               const accepted = item.kind === 'request' ? item.status === 'approved' : item.status === 'accepted';
               const canPlan = accepted || item.status === 'planned';

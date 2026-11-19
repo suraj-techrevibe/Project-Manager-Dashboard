@@ -83,9 +83,9 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <details className="group rounded-2xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">Taskmandu project portfolio <span className="float-right text-slate-400 group-open:rotate-180">⌄</span><span className="mt-1 block text-xs font-normal text-slate-500">Project progress and task health</span></summary><div className="mt-3">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="font-semibold text-slate-900">Taskmandu project portfolio</h3>
+            
             <button type="button" onClick={() => onNavigate('projects')} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">View projects →</button>
           </div>
           {projects.length ? (
@@ -112,11 +112,11 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
               Taskmandu projects could not be loaded. Check the Taskmandu connection and refresh.
             </div>
           )}
-        </div>
+        </div></details>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <details className="group rounded-2xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">Requests and ideas needing attention <span className="float-right text-slate-400 group-open:rotate-180">⌄</span><span className="mt-1 block text-xs font-normal text-slate-500">Recent intake that needs follow-up</span></summary><div className="mt-3">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="font-semibold text-slate-900">Needs your attention</h3>
+            
             <button type="button" onClick={() => onNavigate('operations')} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">
               View all →
             </button>
@@ -143,7 +143,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
               No open requests or ideas need attention.
             </div>
           )}
-        </div>
+        </div></details>
       </div>
       <p className="mt-4 text-xs text-slate-500">A Taskmandu project is the business record. Progress above is calculated from the project’s real Tasks; request and idea records remain separate until work is pushed.</p>
     </section>
