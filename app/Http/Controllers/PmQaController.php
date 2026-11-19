@@ -18,7 +18,7 @@ class PmQaController extends Controller
             'title'=>'required|string|max:200','description'=>'nullable|string|max:5000',
             'severity'=>['required',Rule::in(['Critical','High','Medium','Low'])],
             'status'=>['required',Rule::in(['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'])],
-            'assignee'=>'nullable|string|max:160','evidence_url'=>'nullable|string|max:1000','retest_notes'=>'nullable|string|max:5000',
+            'assignee'=>'nullable|string|max:160','evidence_url'=>'nullable|string|max:1000','pm_task_url'=>'nullable|url|max:1000','retest_notes'=>'nullable|string|max:5000',
         ]);
         $data['created_by']=$request->user()->id;
         return response()->json(['issue'=>PmQaIssue::create($data)],201);
