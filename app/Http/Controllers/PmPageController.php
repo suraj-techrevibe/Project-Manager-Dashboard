@@ -49,4 +49,9 @@ class PmPageController extends Controller
     {
         return Inertia::render('Pm/App', ['page' => 'git']);
     }
+
+    public function qa(): Response
+    {
+        return Inertia::render('Pm/App', ['page' => 'qa']);
+    }
 }
