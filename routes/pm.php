@@ -5,6 +5,7 @@ use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\PmPageController;
 use App\Http\Controllers\PmOperationsController;
+use App\Http\Controllers\PmAssistantController;
 use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmDraftController;
 use App\Http\Controllers\PmMeetingTicketController;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Route;
 // Pages: one real URL per tab, so each opens on its own and Back/Forward/bookmarks work.
 Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('/', [PmController::class, 'index'])->name('index');
+    Route::get('assistant', [PmAssistantController::class, 'page'])->name('page.assistant');
     Route::get('tasks', [PmPageController::class, 'tasks'])->name('page.tasks');
     Route::get('operations', [PmPageController::class, 'operations'])->name('page.operations');
     Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
@@ -31,6 +33,9 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
 Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->group(function () {
     Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
+    Route::post('assistant/chat', [PmAssistantController::class, 'chat'])->middleware('throttle:20,1')->name('assistant.chat');
+    Route::post('assistant/actions/{action}/confirm', [PmAssistantController::class, 'confirm'])->whereUuid('action')->name('assistant.confirm');
+    Route::post('assistant/actions/{action}/cancel', [PmAssistantController::class, 'cancel'])->whereUuid('action')->name('assistant.cancel');
     Route::get('today', [PmController::class, 'today'])->name('today');
     Route::post('sync', [PmController::class, 'sync'])->name('sync');
     Route::get('digest', [PmController::class, 'digest'])->name('digest');

@@ -1,0 +1,357 @@
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { pmApi } from '@/lib/pmApi';
+import { Icon } from '@/Components/Pm/ui/kit';
+import type { AssistantAction } from '@/types/pm';
+
+interface Msg {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  actions?: AssistantAction[];
+  tools?: string[];
+  error?: boolean;
+  /** Result notes ("✓ Done: …") — shown as a small status line and fed back to the model as context. */
+  note?: boolean;
+}
+
+const STORE = 'pm.assistant.v1';
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const TOOL_LABEL: Record<string, string> = {
+  board_overview: 'Checked board overview',
+  search_tasks: 'Searched tasks',
+  list_flags: 'Checked flags',
+  team_workload: 'Checked workload',
+  list_projects: 'Looked up projects',
+  get_project: 'Opened a project',
+  list_employees: 'Looked up people',
+  list_intakes: 'Checked requests & ideas',
+  list_meeting_minutes: 'Searched meeting minutes',
+  recent_activity: 'Checked recent activity',
+};
+
+const TOOL_NAME: Record<string, string> = {
+  create_task: 'Create task',
+  update_task: 'Update task',
+  add_task_comment: 'Add comment',
+  create_subtask: 'Add sub-task',
+  update_subtask: 'Update sub-task',
+  create_intake: 'Log request / idea',
+  snooze_task: 'Snooze task',
+  sync_board: 'Sync from Taskmandu',
+};
+
+const SUGGESTIONS: { title: string; items: string[] }[] = [
+  { title: 'Ask', items: ["What's overdue and who owns it?", 'Who has capacity this week?', 'Summarise where each active project stands', 'What did we decide in the last meeting?'] },
+  { title: 'Do', items: ['Create a task in … due Friday and assign it to …', 'Mark … as completed', 'Log a new client request: …', 'Move all my overdue tasks to next Monday'] },
+];
+
+/* ---------- tiny, safe markdown (bold, code, bullets, numbers) ---------- */
+
+function inline(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <code key={i} className="rounded bg-slate-100 px-1 py-0.5 text-[0.85em]">{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function Markdown({ text }: { text: string }) {
+  const blocks: ReactNode[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  const flush = () => {
+    if (!list) return;
+    const Tag = list.ordered ? 'ol' : 'ul';
+    blocks.push(
+      <Tag key={blocks.length} className={`my-1.5 space-y-1 pl-5 ${list.ordered ? 'list-decimal' : 'list-disc'}`}>
+        {list.items.map((it, i) => <li key={i}>{inline(it)}</li>)}
+      </Tag>
+    );
+    list = null;
+  };
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+    const number = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet || number) {
+      const ordered = Boolean(number);
+      if (!list || list.ordered !== ordered) { flush(); list = { ordered, items: [] }; }
+      list.items.push((bullet ?? number)![1]);
+    } else {
+      flush();
+      if (line.trim()) blocks.push(<p key={blocks.length} className="my-1.5 first:mt-0 last:mb-0">{inline(line.replace(/^#{1,6}\s+/, ''))}</p>);
+    }
+  }
+  flush();
+  return <div className="break-words text-sm leading-relaxed text-slate-800">{blocks}</div>;
+}
+
+/* ---------- action card ---------- */
+
+const fmtKey = (k: string) => k.replace(/_/g, ' ');
+const fmtVal = (v: unknown) => (Array.isArray(v) ? v.join(', ') : typeof v === 'object' && v ? JSON.stringify(v) : String(v));
+
+function ActionCard({ a, onConfirm, onCancel }: { a: AssistantAction; onConfirm: () => void; onCancel: () => void }) {
+  const entries = Object.entries(a.details ?? {}).filter(([, v]) => v !== null && v !== '');
+  const tone =
+    a.status === 'done' ? 'border-emerald-200 bg-emerald-50/60'
+    : a.status === 'failed' ? 'border-red-200 bg-red-50/60'
+    : a.status === 'cancelled' ? 'border-slate-200 bg-slate-50'
+    : 'border-indigo-200 bg-indigo-50/50';
+
+  return (
+    <div className={`mt-2 rounded-xl border p-3 ${tone}`}>
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 rounded-md bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 ring-1 ring-inset ring-indigo-100">{TOOL_NAME[a.tool] ?? a.tool}</span>
+        <p className="min-w-0 flex-1 text-sm font-medium text-slate-900">{a.summary}</p>
+      </div>
+
+      {entries.length > 0 && (
+        <details className="mt-2 text-xs text-slate-600">
+          <summary className="cursor-pointer select-none text-slate-500 hover:text-slate-800">Details</summary>
+          <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            {entries.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="capitalize text-slate-400">{fmtKey(k)}</dt>
+                <dd className="min-w-0 break-words">{fmtVal(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {a.status === 'pending' && (
+          <>
+            <button type="button" onClick={onConfirm} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700">Confirm</button>
+            <button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+            <span className="text-[11px] text-slate-400">Nothing changes until you confirm.</span>
+          </>
+        )}
+        {a.status === 'running' && <span className="text-xs text-slate-500">Applying…</span>}
+        {a.status === 'done' && <span className="text-xs font-semibold text-emerald-700">✓ Done</span>}
+        {a.status === 'cancelled' && <span className="text-xs text-slate-500">Cancelled</span>}
+        {a.status === 'failed' && <span className="text-xs font-medium text-red-700">{a.message ?? 'Failed'}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- panel ---------- */
+
+export default function AssistantPanel({ active, prefill }: { active: boolean; prefill: { text: string; nonce: number } | null }) {
+  const [messages, setMessages] = useState<Msg[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(STORE) ?? '[]') as Msg[];
+    } catch {
+      return [];
+    }
+  });
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const lastPrefill = useRef<number | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORE, JSON.stringify(messages.slice(-40)));
+    } catch {
+      /* storage full or unavailable — chat still works for this visit */
+    }
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, busy]);
+
+  useEffect(() => {
+    if (active) field.current?.focus({ preventScroll: true });
+  }, [active]);
+
+  // auto-grow composer
+  useEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
+
+  const patchAction = useCallback((msgId: string, actionId: string, patch: Partial<AssistantAction>) => {
+    setMessages((all) => all.map((m) => (m.id === msgId ? { ...m, actions: m.actions?.map((a) => (a.id === actionId ? { ...a, ...patch } : a)) } : m)));
+  }, []);
+
+  const send = useCallback(
+    async (text: string) => {
+      const q = text.trim();
+      if (!q || busy) return;
+      const next: Msg[] = [...messagesRef.current.filter((m) => !m.error), { id: uid(), role: 'user', content: q }];
+      setMessages(next);
+      setInput('');
+      setBusy(true);
+      try {
+        const history = next.slice(-20).map((m) => ({ role: m.role, content: m.content }));
+        const { data } = await pmApi.assistantChat(history);
+        setMessages((all) => [...all, { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools }]);
+      } catch (e) {
+        const msg = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+        setMessages((all) => [...all, { id: uid(), role: 'assistant', error: true, content: msg?.error ?? msg?.message ?? "Couldn't reach the assistant. Check your connection and try again." }]);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy]
+  );
+
+  // "Ask the assistant" from the search palette
+  useEffect(() => {
+    if (prefill && prefill.nonce !== lastPrefill.current) {
+      lastPrefill.current = prefill.nonce;
+      void send(prefill.text);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
+
+  const run = async (msgId: string, a: AssistantAction, kind: 'confirm' | 'cancel') => {
+    patchAction(msgId, a.id, { status: 'running' });
+    try {
+      const { data } = kind === 'confirm' ? await pmApi.assistantConfirm(a.id) : await pmApi.assistantCancel(a.id);
+      patchAction(msgId, a.id, { status: data.status, message: data.message });
+      const line = data.status === 'done' ? `✓ Done: ${a.summary}` : data.status === 'cancelled' ? `Cancelled: ${a.summary}` : `✗ Failed: ${a.summary} — ${data.message}`;
+      setMessages((all) => [...all, { id: uid(), role: 'assistant', content: line, note: true }]);
+    } catch (e) {
+      const err = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Something went wrong.';
+      patchAction(msgId, a.id, { status: 'failed', message: err });
+    }
+  };
+
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      void send(input);
+    }
+  };
+
+  const empty = messages.length === 0;
+
+  return (
+    <section className="mx-auto flex h-[calc(100dvh-8rem)] min-h-[420px] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100">
+            <Icon name="spark" className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-sm font-semibold text-slate-900">PM assistant</div>
+            <div className="truncate text-xs text-slate-500">Reads live data · changes need your confirmation</div>
+          </div>
+        </div>
+        {!empty && (
+          <button
+            type="button"
+            onClick={() => { if (!busy) { setMessages([]); setInput(''); } }}
+            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            disabled={busy}
+          >
+            New chat
+          </button>
+        )}
+      </header>
+
+      <div ref={scroller} className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 px-3 py-4 sm:px-5" aria-live="polite">
+        {empty && (
+          <div className="mx-auto max-w-2xl py-4 sm:py-8">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">What do you want to know or do?</h2>
+            <p className="mt-1 text-sm text-slate-500">Ask about tasks, people, projects, requests or meetings — or tell me to create, assign, update or log things. I'll show you every change and wait for your confirmation.</p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {SUGGESTIONS.map((g) => (
+                <div key={g.title}>
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g.title}</div>
+                  <div className="space-y-1.5">
+                    {g.items.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => (s.includes('…') ? (setInput(s), field.current?.focus()) : void send(s))}
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50/50"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((m) =>
+          m.note ? (
+            <div key={m.id} className="text-center text-xs text-slate-500">{m.content}</div>
+          ) : m.role === 'user' ? (
+            <div key={m.id} className="flex justify-end">
+              <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-indigo-600 px-3.5 py-2 text-sm text-white shadow-sm sm:max-w-[75%]">{m.content}</div>
+            </div>
+          ) : (
+            <div key={m.id} className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-indigo-600 ring-1 ring-slate-200">
+                <Icon name="spark" className="h-3.5 w-3.5" />
+              </span>
+              <div className="min-w-0 max-w-[92%] flex-1 sm:max-w-[82%]">
+                {m.tools && m.tools.length > 0 && (
+                  <div className="mb-1.5 flex flex-wrap gap-1">
+                    {m.tools.filter((t) => TOOL_LABEL[t]).map((t) => (
+                      <span key={t} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500 ring-1 ring-inset ring-slate-200">{TOOL_LABEL[t]}</span>
+                    ))}
+                  </div>
+                )}
+                <div className={`rounded-2xl rounded-tl-md border px-3.5 py-2.5 shadow-sm ${m.error ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white'}`}>
+                  {m.error ? <p className="text-sm">{m.content}</p> : <Markdown text={m.content} />}
+                </div>
+                {m.actions?.map((a) => (
+                  <ActionCard key={a.id} a={a} onConfirm={() => void run(m.id, a, 'confirm')} onCancel={() => void run(m.id, a, 'cancel')} />
+                ))}
+              </div>
+            </div>
+          )
+        )}
+
+        {busy && (
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-indigo-600 ring-1 ring-slate-200"><Icon name="spark" className="h-3.5 w-3.5" /></span>
+            <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm" role="status" aria-label="Assistant is working">
+              {[0, 150, 300].map((d) => <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: `${d}ms` }} />)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <form
+        onSubmit={(e) => { e.preventDefault(); void send(input); }}
+        className="border-t border-slate-100 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="flex items-end gap-2 rounded-xl border border-slate-200 bg-white p-1.5 focus-within:border-indigo-400 focus-within:ring-1 focus-within:ring-indigo-400">
+          <textarea
+            ref={field}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+            rows={1}
+            maxLength={4000}
+            placeholder="Ask anything, or tell me what to do…"
+            className="max-h-40 min-h-[2.25rem] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+          />
+          <button
+            type="submit"
+            disabled={busy || !input.trim()}
+            aria-label="Send"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Icon name="send" className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mt-1.5 px-1 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line. AI can make mistakes — check changes before confirming.</p>
+      </form>
+    </section>
+  );
+}

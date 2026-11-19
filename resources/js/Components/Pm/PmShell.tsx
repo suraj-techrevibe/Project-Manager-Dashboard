@@ -7,6 +7,7 @@ import { PM_PAGES, visitPm, type PmPage } from '@/lib/pmNav';
 /** Sidebar icons + the one-line description shown under each page title. */
 export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   today: { icon: 'grid', blurb: 'What needs your attention right now' },
+  assistant: { icon: 'spark', blurb: 'Ask anything about your projects, or tell it what to do' },
   tasks: { icon: 'list', blurb: 'Every task and completed subtask across projects' },
   operations: { icon: 'inbox', blurb: 'Requests, ideas and business records' },
   projects: { icon: 'folder', blurb: 'Projects, tasks, members and documents' },
@@ -19,7 +20,7 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
-  { title: 'Overview', keys: ['today', 'tasks', 'operations', 'projects'] },
+  { title: 'Overview', keys: ['today', 'assistant', 'tasks', 'operations', 'projects'] },
   { title: 'Planning', keys: ['minutes', 'brief'] },
   { title: 'Oversight', keys: ['reports', 'scope', 'git', 'qa'] },
 ];
@@ -171,7 +172,7 @@ export default function PmShell({ page, attention = 0, onOpenSearch, children }:
             aria-label="Search"
           >
             <Icon name="search" className="h-4 w-4 shrink-0" />
-            <span className="hidden flex-1 truncate text-left sm:block">Search tasks, projects…</span>
+            <span className="hidden flex-1 truncate text-left sm:block">Search or ask the assistant…</span>
             <kbd className="hidden rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-500 md:inline">Ctrl K</kbd>
           </button>
         </header>

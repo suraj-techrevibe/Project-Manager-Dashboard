@@ -30,6 +30,8 @@ import type {
   PmIntake,
   PmIntakeInput,
   PmIntakeKind,
+  AssistantReply,
+  AssistantActionResult,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
 
@@ -51,6 +53,10 @@ api.interceptors.response.use((res) => {
 type P = { project: Project };
 
 export const pmApi = {
+  assistantChat: (messages: { role: 'user' | 'assistant'; content: string }[]) =>
+    api.post<AssistantReply>('/assistant/chat', { messages }, { timeout: 150_000 }),
+  assistantConfirm: (id: string) => api.post<AssistantActionResult>(`/assistant/actions/${id}/confirm`),
+  assistantCancel: (id: string) => api.post<AssistantActionResult>(`/assistant/actions/${id}/cancel`),
   ask: (question: string) => api.post<{ answer: string }>('/ask', { question }),
   nudge: (cardId: number) => api.post<{ message: string }>(`/cards/${cardId}/nudge`),
 

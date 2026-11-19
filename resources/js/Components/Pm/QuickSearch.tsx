@@ -13,13 +13,15 @@ interface Props {
   tasks: AllTask[];
   projects: Project[];
   onOpenTask: (f: TaskFocus) => void;
+  /** Hand the typed text to the AI assistant. */
+  onAsk: (text: string) => void;
 }
 
 const Heading = ({ children }: { children: string }) => <div className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{children}</div>;
 const rowCls = 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-indigo-50 focus:bg-indigo-50 focus:outline-none disabled:opacity-50';
 
 /** Ctrl/⌘+K palette: jump to a section, a project or a task already loaded by the dashboard. */
-export default function QuickSearch({ open, query, onQuery, onClose, tasks, projects, onOpenTask }: Props) {
+export default function QuickSearch({ open, query, onQuery, onClose, tasks, projects, onOpenTask, onAsk }: Props) {
   const q = query.trim().toLowerCase();
   const input = useRef<HTMLInputElement>(null);
 
@@ -50,6 +52,7 @@ export default function QuickSearch({ open, query, onQuery, onClose, tasks, proj
             ref={input}
             value={query}
             onChange={(e) => onQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && query.trim()) { const text = query.trim(); onClose(); onQuery(''); onAsk(text); } }}
             placeholder="Search tasks, projects or jump to a section…"
             className="w-full border-0 bg-transparent p-0 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
           />
@@ -59,6 +62,17 @@ export default function QuickSearch({ open, query, onQuery, onClose, tasks, proj
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto p-2">
+          {q && (
+            <button
+              type="button"
+              className="mb-1 flex w-full items-center gap-3 rounded-lg bg-indigo-50 px-3 py-2.5 text-left text-sm font-medium text-indigo-800 ring-1 ring-inset ring-indigo-100 transition hover:bg-indigo-100"
+              onClick={() => { const text = query.trim(); done(); onAsk(text); }}
+            >
+              <Icon name="spark" className="h-4 w-4" />
+              <span className="min-w-0 flex-1 truncate">Ask the assistant: “{query.trim()}”</span>
+              <span className="text-xs text-indigo-500">Enter ↵</span>
+            </button>
+          )}
           <Heading>Go to</Heading>
           {pages.map((p) => (
             <button key={p.key} type="button" className={rowCls} onClick={() => { done(); visitPm(p.key, {}); }}>
