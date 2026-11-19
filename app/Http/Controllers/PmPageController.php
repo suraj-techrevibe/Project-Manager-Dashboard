@@ -10,6 +10,11 @@ use Inertia\Response;
  */
 class PmPageController extends Controller
 {
+    public function tasks(): Response
+    {
+        return Inertia::render('Pm/App', ['page' => 'tasks']);
+    }
+
     public function operations(): Response
     {
         return Inertia::render('Pm/App', ['page' => 'operations']);

@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Route;
 // Pages: one real URL per tab, so each opens on its own and Back/Forward/bookmarks work.
 Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('/', [PmController::class, 'index'])->name('index');
+    Route::get('tasks', [PmPageController::class, 'tasks'])->name('page.tasks');
     Route::get('operations', [PmPageController::class, 'operations'])->name('page.operations');
     Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
     Route::get('minutes', [PmPageController::class, 'minutes'])->name('page.minutes');

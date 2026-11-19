@@ -1,4 +1,5 @@
 import { PageProps } from '@/types';
+import ScrollToTop from '@/Components/ScrollToTop';
 import { Head, Link } from '@inertiajs/react';
 
 export default function Welcome({
@@ -361,6 +362,7 @@ export default function Welcome({
                     </div>
                 </div>
             </div>
+            <ScrollToTop />
         </>
     );
 }

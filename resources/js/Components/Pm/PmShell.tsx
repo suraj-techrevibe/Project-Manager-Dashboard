@@ -1,22 +1,24 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useEffect, useState, type ReactNode } from 'react';
+import ScrollToTop from '@/Components/ScrollToTop';
 import { Icon } from '@/Components/Pm/ui/kit';
 import { PM_PAGES, visitPm, type PmPage } from '@/lib/pmNav';
 
 /** Sidebar icons + the one-line description shown under each page title. */
 export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   today: { icon: 'grid', blurb: 'What needs your attention right now' },
+  tasks: { icon: 'list', blurb: 'Every task and completed subtask across projects' },
   operations: { icon: 'inbox', blurb: 'Requests, ideas and business records' },
   projects: { icon: 'folder', blurb: 'Projects, tasks, members and documents' },
-  minutes: { icon: 'notes', blurb: 'Capture meetings and turn them into work' },
-  brief: { icon: 'list', blurb: 'Draft a brief and push it to Taskmandu as tickets' },
+  minutes: { icon: 'clock', blurb: 'Capture meetings and turn them into work' },
+  brief: { icon: 'notes', blurb: 'Draft a brief and push it to Taskmandu as tickets' },
   reports: { icon: 'chart', blurb: 'Progress and delivery reporting' },
   scope: { icon: 'target', blurb: 'Check requests against agreed scope' },
   git: { icon: 'branch', blurb: 'Repository activity and delivery signals' },
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
-  { title: 'Overview', keys: ['today', 'operations', 'projects'] },
+  { title: 'Overview', keys: ['today', 'tasks', 'operations', 'projects'] },
   { title: 'Planning', keys: ['minutes', 'brief'] },
   { title: 'Oversight', keys: ['reports', 'scope', 'git'] },
 ];
@@ -176,15 +178,7 @@ export default function PmShell({ page, attention = 0, onOpenSearch, children }:
         <main className="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">{children}</main>
       </div>
 
-      <button
-        type="button"
-        aria-label="Back to top"
-        title="Back to top"
-        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-lg transition hover:bg-slate-50 sm:right-6"
-      >
-        <Icon name="up" className="h-4 w-4" />
-      </button>
+      <ScrollToTop />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import PmShell from '@/Components/Pm/PmShell';
 import QuickSearch from '@/Components/Pm/QuickSearch';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
+import TasksPage from '@/Components/Pm/TasksPage';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import GitPanel from '@/Components/Pm/GitPanel';
@@ -76,8 +77,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
 
     if (seen.current.has(page)) {
       if (REFETCH_ON_OPEN.includes(page)) setGen((g) => ({ ...g, [page]: (g[page] ?? 0) + 1 }));
-      if (page === 'today') void loadToday();
-    } else if (page === 'today' && !props.flags) {
+      if (page === 'today' || page === 'tasks') void loadToday();
+    } else if ((page === 'today' || page === 'tasks') && !props.flags) {
       void loadToday(); // /pm/projects etc. load without Today's payload
     }
     seen.current.add(page);
@@ -100,7 +101,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   }, []);
 
   useEffect(() => {
-    if (page === 'today' && !projects.length && !projectsLoading) void loadProjects();
+    if ((page === 'today' || page === 'tasks') && !projects.length && !projectsLoading) void loadProjects();
   }, [page, projects.length, projectsLoading, loadProjects]);
 
   const handleSync = async () => {
@@ -346,9 +347,10 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   <div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div>
                 </details>
                 <div id="task-list" className="scroll-mt-20">
-                  <div className="mb-2 flex justify-end">
-                    <button onClick={() => setShowAllTasks((v) => !v)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">
-                      {showAllTasks ? 'Hide all tasks' : `All tasks${allTasks.length ? ` (${allTasks.length})` : ''}`}
+                  <div className="mb-2 flex justify-end gap-2">
+                    {showAllTasks && <button onClick={() => { setShowAllTasks(false); setTaskFilter(null); }} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">Hide filtered list</button>}
+                    <button onClick={() => visitPm('tasks')} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm hover:bg-slate-50">
+                      {`All tasks${allTasks.length ? ` (${allTasks.length})` : ''} →`}
                     </button>
                   </div>
                   {showAllTasks && <AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => {
@@ -365,6 +367,20 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                 {todayError ? <>{todayError}{' '}<button onClick={() => void loadToday()} className="underline">Try again</button></> : 'Loading Today…'}
               </div>
             )}
+          </Pane>
+        )}
+
+        {mounted('tasks') && (
+          <Pane show={page === 'tasks'}>
+            <TasksPage
+              tasks={today ? allTasks : null}
+              loading={todayLoading}
+              error={todayError}
+              onRetry={() => void loadToday()}
+              projects={projects}
+              projectsLoading={projectsLoading}
+              onOpenTask={openTask}
+            />
           </Pane>
         )}
 
