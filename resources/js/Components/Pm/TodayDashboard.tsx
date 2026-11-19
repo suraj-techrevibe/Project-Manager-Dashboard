@@ -687,7 +687,7 @@ export default function TodayDashboard({
       )}
 
       {/* 1. Today header */}
-      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium text-slate-500">
@@ -804,7 +804,7 @@ export default function TodayDashboard({
 
       {/* 4. At risk + Team load */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="font-bold text-slate-900">At risk</h2>
@@ -840,7 +840,7 @@ export default function TodayDashboard({
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="font-bold text-slate-900">Team load</h2>
@@ -881,7 +881,7 @@ export default function TodayDashboard({
 
       {/* 5. Since last workday */}
       {since && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="font-bold text-slate-900">Since last workday</h2>
@@ -941,7 +941,7 @@ export default function TodayDashboard({
       </section>
 
       {/* 7. Deterministic questions + detailed filters */}
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <details>
           <summary className="cursor-pointer list-none px-5 py-4">
             <div className="flex items-center justify-between gap-3">
@@ -1020,7 +1020,7 @@ export default function TodayDashboard({
       </section>
 
       {/* 8. Full task queue keeps the old actions, but is separated from the Today summary. */}
-      <section id="today-task-queue" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section id="today-task-queue" className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-bold text-slate-900">Task queue</h2>
@@ -1100,7 +1100,7 @@ export default function TodayDashboard({
       </section>
 
       {/* Existing rich workload/detail view is still available, but no longer dominates Today. */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <details>
           <summary className="cursor-pointer list-none px-5 py-4">
             <div className="flex items-center justify-between">

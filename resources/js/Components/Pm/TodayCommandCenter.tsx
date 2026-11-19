@@ -93,11 +93,11 @@ function Panel({ id, tone, title, sub, badge, action, children }: { id?: string;
   const t = TONES[tone];
   const [open, setOpen] = useState(true);
   return (
-    <section id={id} className={`w-full min-w-0 overflow-hidden scroll-mt-4 rounded-[1.75rem] border p-3 shadow-md shadow-slate-200/40 sm:p-6 ${t.panel}`}>
+    <section id={id} className={`w-full min-w-0 overflow-hidden scroll-mt-20 rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5`}>
       <div className="mb-4 flex min-w-0 flex-wrap items-start justify-between gap-3 sm:mb-5">
         <div className="min-w-0 flex-1">
           <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full min-w-0 max-w-full text-left">
-            <h3 className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words text-base font-semibold sm:text-lg ${t.head}`}>
+            <h3 className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words text-sm font-semibold tracking-tight text-slate-900 sm:text-base`}>
               <span className={`h-2.5 w-2.5 rounded-full ${t.dot}`} />
               {title}
               {badge}
@@ -116,9 +116,9 @@ function Panel({ id, tone, title, sub, badge, action, children }: { id?: string;
 function CollapsibleSection({ id, title, sub, children }: { id?: string; title: string; sub?: string; children: ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
-    <section id={id} className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <section id={id} className="scroll-mt-20 rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
       <button type="button" onClick={() => setOpen((v) => !v)} className="mb-4 w-full text-left">
-        <h3 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+        <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-slate-900 sm:text-base">
           {title}<span className="text-xs text-slate-400">{open ? '▾' : '▸'}</span>
         </h3>
         {sub && <p className="mt-0.5 text-sm text-slate-500">{sub}</p>}
@@ -152,7 +152,7 @@ function TaskRow({ c, onOpen, onNudge, extra, compact }: { c: CcCard; onOpen: ()
   // Narrow columns: title gets the full width, buttons sit underneath.
   if (compact) {
     return (
-      <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
         <div className="text-[15px] font-medium leading-snug text-slate-900">{t.title}</div>
         <div className="mt-1.5 text-xs text-slate-500">
           <span className="font-medium text-slate-600">{t.project_name ?? 'Standalone'}</span> · {t.assignee ?? 'Unassigned'}
@@ -173,7 +173,7 @@ function TaskRow({ c, onOpen, onNudge, extra, compact }: { c: CcCard; onOpen: ()
   }
 
   return (
-    <div className="flex min-w-0 flex-col items-stretch gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:p-3.5">
+    <div className="flex min-w-0 flex-col items-stretch gap-3 rounded-xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:p-3.5">
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-medium text-slate-900">{t.title}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
@@ -198,7 +198,7 @@ function TaskRow({ c, onOpen, onNudge, extra, compact }: { c: CcCard; onOpen: ()
 
 function AssignRow({ title, meta, staff, onOpen, onAssign }: { title: string; meta: string; staff: Employee[]; onOpen: () => void; onAssign: (employeeId: string) => void }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
+    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm">
       <button onClick={onOpen} className="min-w-0 flex-1 text-left">
         <div className="truncate text-[15px] font-medium text-slate-900">{title}</div>
         <div className="truncate text-xs text-slate-500">{meta}</div>
@@ -428,7 +428,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
               { label: 'Overloaded', value: String(over.length), sub: over.length ? over.slice(0, 2).map((w) => w.name.split(' ')[0]).join(', ') : 'nobody', filter: 'overloaded' },
               { label: p.since ? `Done since ${p.since.label}` : 'Done recently', value: String(p.since?.completed.count ?? 0), sub: p.since?.tracked ? `${p.since.created.count} new tasks` : 'fills in after 2nd sync', filter: 'done_since' },
             ].map((m) => (
-              <button key={m.label} type="button" onClick={() => p.onShowTaskList(m.filter)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/10">
+              <button key={m.label} type="button" onClick={() => p.onShowTaskList(m.filter)} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/10">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{m.label}</div>
                 <div className="mt-0.5 text-2xl font-bold tabular-nums text-white">{m.value}</div>
                 <div className="truncate text-[11px] text-slate-400">{m.sub}</div>
@@ -451,7 +451,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </section>
 
       {/* ===== 2. Big numbers ===== */}
-      <section className="w-full min-w-0 overflow-hidden rounded-3xl border border-[#493b31] bg-[#211d1a] p-3 shadow-sm sm:p-5">
+      <section className="w-full min-w-0 overflow-hidden rounded-xl border border-[#493b31] bg-[#211d1a] p-3 shadow-sm sm:p-5">
         <button type="button" onClick={() => setGlanceOpen((v) => !v)} className="mb-4 w-full min-w-0 text-left">
           <h3 className="flex items-center gap-2 text-xl font-semibold text-[#f0e7df]">
             Today at a glance<span className="text-xs text-[#b5a99e]">{glanceOpen ? '▾' : '▸'}</span>
@@ -463,7 +463,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             const t = TONES[k.tone];
             const accent: Record<Tone, string> = { red: 'text-red-300', orange: 'text-orange-300', amber: 'text-amber-200', blue: 'text-sky-300', violet: 'text-violet-300', teal: 'text-teal-300', emerald: 'text-emerald-300', rose: 'text-rose-300', indigo: 'text-indigo-300', slate: 'text-stone-300' };
             return (
-              <button key={k.key} onClick={() => p.onShowTaskList(k.key)} className={`min-w-0 rounded-2xl border p-3 text-left transition duration-200 hover:-translate-y-0.5 sm:rounded-3xl sm:p-5 ${k.value ? 'border-[#5b493d] bg-[#302923] shadow-md hover:bg-[#382f28]' : 'border-[#403831] bg-[#292420] shadow-sm hover:bg-[#332b25]'} ${k.value && (k.key === 'overdue' || k.key === 'blocked') ? 'ring-1 ring-red-400/50 shadow-lg' : ''}`}>
+              <button key={k.key} onClick={() => p.onShowTaskList(k.key)} className={`min-w-0 rounded-xl border p-3 text-left transition duration-200 hover:-translate-y-0.5 sm:rounded-xl sm:p-5 ${k.value ? 'border-[#5b493d] bg-[#302923] shadow-md hover:bg-[#382f28]' : 'border-[#403831] bg-[#292420] shadow-sm hover:bg-[#332b25]'} ${k.value && (k.key === 'overdue' || k.key === 'blocked') ? 'ring-1 ring-red-400/50 shadow-lg' : ''}`}>
                 <div className="flex items-center justify-between">
                   <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-semibold leading-snug text-[#e7ddd4] sm:gap-2 sm:text-sm">
                     {k.label}
@@ -481,12 +481,12 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </section>
 
       {p.showDigest && (
-        <section id="morning-digest" className="scroll-mt-20 rounded-3xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
+        <section id="morning-digest" className="scroll-mt-20 rounded-xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
           <h3 className="text-xl font-semibold text-indigo-950">Morning digest</h3>
           <p className="mt-1 text-sm text-indigo-700">
             {p.digestLoading ? 'Generating your stand-up summary…' : 'Generated stand-up summary.'}
           </p>
-          <div className="mt-4 min-h-20 rounded-2xl border border-indigo-100 bg-white/70 p-4">
+          <div className="mt-4 min-h-20 rounded-xl border border-indigo-100 bg-white/70 p-4">
             {p.digestLoading ? (
               <div className="flex items-center gap-3 text-sm font-medium text-indigo-700">
                 <span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" aria-hidden="true" />
@@ -503,7 +503,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
 
       {/* ===== 3. Sub-task progress ===== */}
       {p.subtaskSummary.total > 0 && (
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-xl font-semibold text-slate-900">Sub-task progress</h3>
@@ -534,7 +534,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         ) : completedSubtasks.length ? (
           <div className="space-y-2.5">
             {completedSubtasks.slice(0, 12).map((item) => (
-              <div key={`${item.projectId}:${item.taskId}:${item.subtaskId}`} className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
+              <div key={`${item.projectId}:${item.taskId}:${item.subtaskId}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">✓</span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-slate-800">{item.subtaskTitle}</div>
@@ -562,10 +562,10 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       </Panel>
 
       {/* ===== 4. PM checklist (ordered) ===== */}
-      <section id="pm-checklist" className="scroll-mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+      <section id="pm-checklist" className="scroll-mt-20 rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <button type="button" onClick={() => setChecklistOpen((v) => !v)} className="text-left"><h3 className="text-xl font-semibold text-slate-900">Your checklist · work it from 1 down <span className="ml-1 text-sm text-slate-400">{checklistOpen ? "▾" : "▸"}</span></h3></button>
+            <button type="button" onClick={() => setChecklistOpen((v) => !v)} className="text-left"><h3 className="text-sm font-semibold tracking-tight text-slate-900 sm:text-base">Your checklist · work it from 1 down <span className="ml-1 text-sm text-slate-400">{checklistOpen ? "▾" : "▸"}</span></h3></button>
             <p className="mt-0.5 text-sm text-slate-500">Each line is a question. Press <b>Show tasks</b> to filter the list below to the answer.</p>
           </div>
           {p.activeKey && (
@@ -583,7 +583,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             const clear = !item.positive && a.count === 0;
             const isActive = p.activeKey === item.key;
             return (
-              <li key={item.key} className={`flex flex-wrap items-center gap-4 rounded-2xl border p-4 transition ${isActive ? `bg-white ring-2 ${t.ring} ${t.panel}` : clear ? 'border-slate-100 bg-slate-50/60' : t.panel}`}>
+              <li key={item.key} className={`flex flex-wrap items-center gap-4 rounded-xl border p-4 transition ${isActive ? `bg-white ring-2 ${t.ring} ${t.panel}` : clear ? 'border-slate-100 bg-slate-50/60' : t.panel}`}>
                 <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold ${clear ? 'bg-emerald-100 text-emerald-600' : `${t.chip}`}`}>{clear ? '✓' : i + 1}</div>
                 <div className="min-w-0 flex-1 basis-64">
                   <div className="flex flex-wrap items-center gap-2">
@@ -610,7 +610,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </ol>}
 
         {checklistOpen && active && activeAnswer && (
-          <div className={`mt-4 rounded-2xl border p-4 text-sm ${TONES[active.tone].panel}`}>
+          <div className={`mt-4 rounded-xl border p-4 text-sm ${TONES[active.tone].panel}`}>
             <b className={TONES[active.tone].head}>{active.title}:</b> {activeAnswer.text}{' '}
             <button onClick={() => jump('task-list')} className="font-semibold text-slate-900 underline">
               Jump to the list ↓
@@ -628,7 +628,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             { title: 'Due today', tone: 'blue' as Tone, count: counts.due_today, text: 'Finish by end of day.', filter: 'due_today' },
           ].map((item) => {
             const t = TONES[item.tone];
-            return <button key={item.title} onClick={() => p.onShowTaskList(item.filter)} className={`rounded-2xl border p-5 text-left transition hover:-translate-y-0.5 ${t.panel} hover:shadow-md`}>
+            return <button key={item.title} onClick={() => p.onShowTaskList(item.filter)} className={`rounded-xl border p-5 text-left transition hover:-translate-y-0.5 ${t.panel} hover:shadow-md`}>
               <div className={`text-sm font-semibold ${t.head}`}>{item.title}</div>
               <div className={`mt-1 text-4xl font-bold ${t.num}`}>{item.count}</div>
               <div className="mt-1 text-sm text-slate-500">{item.text}</div>
@@ -706,7 +706,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         sub="Who is overloaded, and who can take more? Click a person to filter the list to them."
         action={<LinkButton tone="emerald" onClick={() => p.onNavigate?.('projects')}>Open Projects →</LinkButton>}
       >
-        <div id="team-workload" className="scroll-mt-4">
+        <div id="team-workload" className="scroll-mt-20">
           <div className="mb-4 flex flex-wrap gap-2">
             {free.map((w) => (
               <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200">
@@ -738,7 +738,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
               const bar = r.score < 60 ? 'bg-red-500' : r.score < 80 ? 'bg-amber-500' : 'bg-emerald-500';
               const txt = r.score < 60 ? 'text-red-600' : r.score < 80 ? 'text-amber-600' : 'text-emerald-600';
               return (
-                <div key={r.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <div key={r.id} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <span className="truncate text-[15px] font-semibold text-slate-900">{r.name}</span>
                     <span className={`text-lg font-bold tabular-nums ${txt}`}>{r.score}</span>

@@ -1,4 +1,5 @@
 import { visitPm } from '../../lib/pmNav';
+import { Icon, Pill, btnPrimary, btnSecondary } from './ui/kit';
 import type { OperationsTodaySummary, PmIntakeStatus } from '../../types/pm';
 
 interface Props {
@@ -20,132 +21,133 @@ const STATUS_LABELS: Record<PmIntakeStatus, string> = {
   planned: 'In delivery',
 };
 
-function Metric({ label, value, hint, tone }: { label: string; value: number; hint: string; tone: 'slate' | 'amber' | 'rose' | 'indigo' }) {
-  const styles = {
-    slate: 'border-slate-200 bg-white text-slate-900',
-    amber: 'border-amber-200 bg-amber-50 text-amber-950',
-    rose: 'border-rose-200 bg-rose-50 text-rose-950',
-    indigo: 'border-indigo-200 bg-indigo-50 text-indigo-950',
-  };
+type MetricTone = 'slate' | 'amber' | 'rose' | 'indigo';
 
+const METRIC_ACCENT: Record<MetricTone, { bar: string; value: string }> = {
+  slate: { bar: 'border-t-slate-300', value: 'text-slate-900' },
+  amber: { bar: 'border-t-amber-400', value: 'text-amber-700' },
+  rose: { bar: 'border-t-rose-500', value: 'text-rose-700' },
+  indigo: { bar: 'border-t-indigo-500', value: 'text-indigo-700' },
+};
+
+function Metric({ label, value, hint, tone }: { label: string; value: number; hint: string; tone: MetricTone }) {
+  const a = METRIC_ACCENT[tone];
   return (
-    <div className={`rounded-2xl border p-4 ${styles[tone]}`}>
-      <div className="text-xs font-semibold uppercase tracking-wide opacity-65">{label}</div>
-      <div className="mt-1 text-3xl font-bold tabular-nums">{value}</div>
-      <div className="mt-1 text-xs opacity-70">{hint}</div>
+    <div className={`rounded-xl border border-t-2 border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${a.bar}`}>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`mt-1 text-3xl font-semibold tabular-nums tracking-tight ${value === 0 && tone !== 'slate' ? 'text-slate-400' : a.value}`}>{value}</div>
+      <div className="mt-1 text-xs text-slate-500">{hint}</div>
     </div>
   );
 }
+
+function Card({ title, sub, action, children }: { title: string; sub: string; action: { label: string; onClick: () => void }; children: React.ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold tracking-tight text-slate-900">{title}</h3>
+          <p className="text-xs text-slate-500">{sub}</p>
+        </div>
+        <button type="button" onClick={action.onClick} className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+          {action.label} →
+        </button>
+      </header>
+      <div className="flex-1 p-4">{children}</div>
+    </section>
+  );
+}
+
+const EmptyNote = ({ children }: { children: React.ReactNode }) => (
+  <div className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">{children}</div>
+);
 
 export default function OperationsTodayPanel({ summary, onNavigate, onCapture }: Props) {
   const { counts } = summary;
   const projects = summary.projects;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 p-4 shadow-sm sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <section aria-label="Company overview" className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-widest text-indigo-600">Company operations</div>
-          <h2 className="mt-1 text-2xl font-bold text-slate-950">Your company at a glance</h2>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">Capture incoming work, match it to a Taskmandu project and track delivery against that project.</p>
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">Company overview</h2>
+          <p className="text-sm text-slate-500">Incoming work, decisions waiting on you and delivery across Taskmandu projects.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onCapture('request')}
-            className="rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-          >
-            + New request
+          <button type="button" onClick={() => onCapture('request')} className={btnPrimary}>
+            <Icon name="plus" className="h-4 w-4" /> New request
           </button>
-          <button
-            type="button"
-            onClick={() => onCapture('idea')}
-            className="rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-          >
-            + New idea
+          <button type="button" onClick={() => onCapture('idea')} className={btnSecondary}>
+            <Icon name="plus" className="h-4 w-4" /> New idea
           </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('operations')}
-            className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Open workflow →
+          <button type="button" onClick={() => onNavigate('operations')} className={btnSecondary}>
+            Open workflow
           </button>
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Metric label="Open requests" value={counts.open_requests} hint="Not yet planned or closed" tone="slate" />
         <Metric label="Awaiting decision" value={counts.requests_for_decision} hint="Requests in review" tone="amber" />
         <Metric label="Ideas to review" value={counts.ideas_for_review} hint="Under review" tone="indigo" />
         <Metric label="Overdue requests" value={counts.overdue_requests} hint="Past requested date" tone="rose" />
-        <Metric label="Projects with tasks" value={counts.projects_with_tasks} hint="From the synced Taskmandu task board" tone="slate" />
+        <Metric label="Active projects" value={counts.projects_with_tasks} hint="With tasks on the synced board" tone="slate" />
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <details className="group rounded-2xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">Taskmandu project portfolio <span className="float-right text-slate-400 group-open:rotate-180">⌄</span><span className="mt-1 block text-xs font-normal text-slate-500">Project progress and task health</span></summary><div className="mt-3">
-          <div className="flex items-center justify-between gap-2">
-            
-            <button type="button" onClick={() => onNavigate('projects')} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">View projects →</button>
-          </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Project portfolio" sub="Progress and task health from Taskmandu" action={{ label: 'View projects', onClick: () => onNavigate('projects') }}>
           {projects.length ? (
-            <div className="mt-3 space-y-3">
+            <ul className="space-y-2">
               {projects.slice(0, 7).map((project) => (
-                <button key={project.id} type="button" onClick={() => visitPm('projects', { project: project.id })} className="block w-full rounded-xl bg-slate-50 px-3 py-3 text-left hover:bg-indigo-50">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-semibold text-slate-800">{project.name}</span>
-                    <span className="shrink-0 text-xs text-slate-500">{project.progress}%</span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                    <div className="h-full rounded-full bg-indigo-600" style={{ width: `${project.progress}%` }} />
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span>{project.completed}/{project.task_count} completed</span><span>{project.open} open</span>
-                    {project.blocked > 0 && <span className="font-medium text-rose-700">{project.blocked} blocked</span>}
-                    {project.overdue > 0 && <span className="font-medium text-amber-700">{project.overdue} overdue</span>}
-                  </div>
-                </button>
+                <li key={project.id}>
+                  <button type="button" onClick={() => visitPm('projects', { project: project.id })} className="block w-full rounded-lg border border-slate-100 px-3 py-2.5 text-left transition hover:border-indigo-200 hover:bg-indigo-50/40">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-medium text-slate-900">{project.name}</span>
+                      <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600">{project.progress}%</span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full bg-indigo-500" style={{ width: `${project.progress}%` }} />
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                      <span>
+                        {project.completed}/{project.task_count} done
+                      </span>
+                      <span>{project.open} open</span>
+                      {project.blocked > 0 && <span className="font-medium text-rose-700">{project.blocked} blocked</span>}
+                      {project.overdue > 0 && <span className="font-medium text-amber-700">{project.overdue} overdue</span>}
+                    </div>
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
-            <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-sm text-slate-500">
-              Taskmandu projects could not be loaded. Check the Taskmandu connection and refresh.
-            </div>
+            <EmptyNote>Taskmandu projects could not be loaded. Check the Taskmandu connection and refresh.</EmptyNote>
           )}
-        </div></details>
+        </Card>
 
-        <details className="group rounded-2xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">Requests and ideas needing attention <span className="float-right text-slate-400 group-open:rotate-180">⌄</span><span className="mt-1 block text-xs font-normal text-slate-500">Recent intake that needs follow-up</span></summary><div className="mt-3">
-          <div className="flex items-center justify-between gap-2">
-            
-            <button type="button" onClick={() => onNavigate('operations')} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">
-              View all →
-            </button>
-          </div>
+        <Card title="Needs attention" sub="Recent requests and ideas that need follow-up" action={{ label: 'View all', onClick: () => onNavigate('operations') }}>
           {summary.recent_items.length ? (
-            <div className="mt-3 divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100">
               {summary.recent_items.map((item) => (
-                <div key={`${item.kind}-${item.id}`} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <li key={`${item.kind}-${item.id}`} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-slate-800">{item.title}</div>
+                    <div className="truncate text-sm font-medium text-slate-900">{item.title}</div>
                     <div className="mt-0.5 text-xs text-slate-500">
                       {item.project_name || item.business_name || 'No project matched'} · {item.kind === 'request' ? 'Request' : 'Idea'}
                       {item.requested_due_at ? ` · Due ${new Date(`${item.requested_due_at}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}
                     </div>
                   </div>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
-                    {STATUS_LABELS[item.status]}
-                  </span>
-                </div>
+                  <Pill>{STATUS_LABELS[item.status]}</Pill>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
-            <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-sm text-slate-500">
-              No open requests or ideas need attention.
-            </div>
+            <EmptyNote>No open requests or ideas need attention.</EmptyNote>
           )}
-        </div></details>
+        </Card>
       </div>
-      <p className="mt-4 text-xs text-slate-500">A Taskmandu project is the business record. Progress above is calculated from the project’s real Tasks; request and idea records remain separate until work is pushed.</p>
+
+      <p className="text-xs text-slate-500">A Taskmandu project is the business record. Progress is calculated from the project's real tasks; requests and ideas stay separate until work is pushed.</p>
     </section>
   );
 }

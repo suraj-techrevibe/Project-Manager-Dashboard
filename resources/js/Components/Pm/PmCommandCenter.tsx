@@ -38,7 +38,7 @@ export default function PmCommandCenter() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading command center…</div>;
+  if (loading) return <div className="mb-4 rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading command center…</div>;
   if (!data) return null;
 
   const critical = data.actions.filter((a) => a.priority === 0).length;
@@ -83,7 +83,7 @@ export default function PmCommandCenter() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1.45fr_.85fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white">
+        <section className="rounded-xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-4 py-3">
             <h2 className="font-semibold text-slate-900">Needs attention</h2>
             <p className="text-xs text-slate-500">Each row has a PM decision, not just a count.</p>
@@ -106,7 +106,7 @@ export default function PmCommandCenter() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="font-semibold text-slate-900">Capacity decision</h2>
           {data.overloaded.length ? (
             <div className="mt-3 space-y-2">
@@ -122,7 +122,7 @@ export default function PmCommandCenter() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1.2fr_.8fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Project risk radar</h2><p className="text-xs text-slate-500">Deterministic score from delivery, tasks, schedule, team and client signals.</p></div><button onClick={() => setUrlParams({ tab: 'projects' })} className="text-xs underline">All projects →</button></div>
           <div className="mt-3 space-y-2">
             {data.projects.map((p) => (
@@ -141,7 +141,7 @@ export default function PmCommandCenter() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Waiting for</h2><p className="text-xs text-slate-500">Client/internal follow-up queue.</p></div><button onClick={() => setUrlParams({ tab: 'automation' })} className="text-xs underline">Manage →</button></div>
           <div className="mt-3 space-y-2">
             {data.waiting.map((w) => <div key={w.id} className="rounded-lg border border-slate-100 p-3">
@@ -153,7 +153,7 @@ export default function PmCommandCenter() {
         </section>
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">What changed</h2><p className="text-xs text-slate-500">Last 24 hours from PM sync activity.</p></div><button onClick={() => setUrlParams({ tab: 'reports' })} className="text-xs underline">Open reports →</button></div>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           {data.recent.map((r, i) => <div key={`${r.type}-${i}`} className="rounded-lg bg-slate-50 px-3 py-2 text-xs">

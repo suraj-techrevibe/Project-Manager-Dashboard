@@ -20,12 +20,12 @@ export const toneText: Record<Tone, string> = {
 };
 
 const toneSoft: Record<Tone, string> = {
-  neutral: 'bg-slate-100 text-slate-600',
-  brand: 'bg-indigo-50 text-indigo-700',
-  danger: 'bg-red-100 text-red-700',
-  warn: 'bg-amber-100 text-amber-800',
-  ok: 'bg-emerald-100 text-emerald-700',
-  info: 'bg-sky-100 text-sky-700',
+  neutral: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200',
+  brand: 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-100',
+  danger: 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-100',
+  warn: 'bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-100',
+  ok: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100',
+  info: 'bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-100',
 };
 
 const toneBar: Record<Tone, string> = {
@@ -39,9 +39,9 @@ const toneBar: Record<Tone, string> = {
 
 /** Shared control styles so buttons look the same on every tab. */
 export const btnPrimary =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 active:bg-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
 export const btnSecondary =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
 export const btnChip = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs font-medium transition ${
     active ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
@@ -66,6 +66,16 @@ const ICONS: Record<string, string> = {
   arrow: 'M5 12h14M13 6l6 6-6 6',
   copy: 'M9 9h10v10H9V9zM5 15V5h10',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z',
+  search: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3',
+  menu: 'M4 6h16M4 12h16M4 18h16',
+  close: 'M6 6l12 12M18 6L6 18',
+  logout: 'M15 17l5-5-5-5M20 12H9M12 21H5a2 2 0 01-2-2V5a2 2 0 012-2h7',
+  user: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0',
+  clock: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2',
+  alert: 'M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z',
+  check: 'M5 13l4 4L19 7',
+  plus: 'M12 5v14M5 12h14',
+  grid: 'M4 4h6v6H4V4zM14 4h6v6h-6V4zM4 14h6v6H4v-6zM14 14h6v6h-6v-6z',
 };
 
 export function Icon({ name, className = 'h-4 w-4' }: { name: keyof typeof ICONS | string; className?: string }) {
@@ -162,7 +172,7 @@ export function Section({
   }, [id]);
 
   return (
-    <section id={id} className="scroll-mt-16 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section id={id} className="scroll-mt-20 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-transparent px-4 py-3 data-[open=true]:border-slate-100" data-open={open}>
         <span className={`h-5 w-1 shrink-0 rounded-full ${toneBar[tone]}`} aria-hidden />
         <button
@@ -171,7 +181,7 @@ export function Section({
           aria-controls={`${id}-body`}
           className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
         >
-          <span className="truncate text-sm font-semibold text-slate-900">{title}</span>
+          <span className="truncate text-sm font-semibold tracking-tight text-slate-900">{title}</span>
           {count !== undefined && count !== '' && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${toneSoft[tone]}`}>{count}</span>}
           {subtitle && <span className="hidden truncate text-xs font-normal text-slate-500 md:inline">{subtitle}</span>}
         </button>
@@ -240,7 +250,7 @@ export function JumpNav({ items }: { items: JumpItem[] }) {
   if (items.length === 0) return null;
 
   return (
-    <nav aria-label="Sections" className="sticky top-0 z-20 -mx-1 rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm backdrop-blur">
+    <nav aria-label="Sections" className="sticky top-14 z-20 -mx-1 rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm backdrop-blur">
       <div ref={scroller} className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -304,16 +314,16 @@ export function PageHeader({
   links?: QuickLink[];
 }) {
   return (
-    <header className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-indigo-50/40 p-4 shadow-sm sm:p-5">
+    <header className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           {icon && (
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100">
               <Icon name={icon} className="h-5 w-5" />
             </span>
           )}
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold leading-tight text-slate-900 sm:text-xl">{title}</h1>
+            <h1 className="text-lg font-semibold leading-tight tracking-tight text-slate-900 sm:text-xl">{title}</h1>
             {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
             {status && <div className="mt-1 text-xs text-slate-500">{status}</div>}
           </div>
@@ -345,12 +355,12 @@ export function PageHeader({
 /* ------------------------------------------------------------------ */
 
 const tileTone: Record<Tone, { idle: string; value: string }> = {
-  neutral: { idle: 'border-slate-200 bg-white hover:border-slate-300', value: 'text-slate-900' },
-  brand: { idle: 'border-indigo-200 bg-indigo-50 hover:border-indigo-300', value: 'text-indigo-700' },
-  danger: { idle: 'border-red-200 bg-red-50 hover:border-red-300', value: 'text-red-700' },
-  warn: { idle: 'border-amber-200 bg-amber-50 hover:border-amber-300', value: 'text-amber-700' },
-  ok: { idle: 'border-emerald-200 bg-emerald-50 hover:border-emerald-300', value: 'text-emerald-700' },
-  info: { idle: 'border-sky-200 bg-sky-50 hover:border-sky-300', value: 'text-sky-700' },
+  neutral: { idle: 'border-slate-200/80 bg-white hover:border-slate-300', value: 'text-slate-900' },
+  brand: { idle: 'border-slate-200/80 border-t-2 border-t-indigo-500 bg-white hover:border-slate-300', value: 'text-indigo-700' },
+  danger: { idle: 'border-slate-200/80 border-t-2 border-t-red-500 bg-white hover:border-slate-300', value: 'text-red-700' },
+  warn: { idle: 'border-slate-200/80 border-t-2 border-t-amber-400 bg-white hover:border-slate-300', value: 'text-amber-700' },
+  ok: { idle: 'border-slate-200/80 border-t-2 border-t-emerald-500 bg-white hover:border-slate-300', value: 'text-emerald-700' },
+  info: { idle: 'border-slate-200/80 border-t-2 border-t-sky-400 bg-white hover:border-slate-300', value: 'text-sky-700' },
 };
 
 /** A number that can be clicked (filter, jump, or open something). */
@@ -374,12 +384,12 @@ export function StatTile({
   const t = tileTone[tone];
   const body = (
     <>
-      <div className={`text-xs font-medium ${active ? 'text-indigo-100' : 'text-slate-500'}`}>{label}</div>
+      <div className={`text-[11px] font-semibold uppercase tracking-wide ${active ? 'text-indigo-100' : 'text-slate-500'}`}>{label}</div>
       <div className={`mt-0.5 font-semibold tabular-nums ${size === 'lg' ? 'text-4xl' : 'text-2xl'} ${active ? 'text-white' : t.value}`}>{value}</div>
       {hint && <div className={`mt-0.5 text-[11px] ${active ? 'text-indigo-100' : 'text-slate-400'}`}>{hint}</div>}
     </>
   );
-  const cls = `rounded-xl border p-3 text-left transition sm:p-4 ${active ? 'border-indigo-600 bg-indigo-600 shadow-md' : t.idle}`;
+  const cls = `rounded-xl border p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition sm:p-4 ${active ? 'border-indigo-600 bg-indigo-600 shadow-md' : t.idle}`;
 
   return onClick ? (
     <button onClick={onClick} aria-pressed={active} className={`${cls} focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1`}>
