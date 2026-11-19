@@ -59,6 +59,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [taskFilter, setTaskFilter] = useState<string | null>(null);
+  const [quickSearch, setQuickSearch] = useState('');
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
 
   const seen = useRef<Set<PmPage>>(new Set());
   const [gen, setGen] = useState<Partial<Record<PmPage, number>>>({});
@@ -237,6 +239,10 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     { key: 'worst', label: 'Project risk', text: riskProjects.length ? `${riskProjects[0].name} has the most warning signals.` : 'No project warning signals.', count: riskProjects.length },
   ];
   const current = PM_PAGES.find((p) => p.key === page)!;
+  const quickQuery = quickSearch.trim().toLowerCase();
+  const quickPages = PM_PAGES.filter((p) => !quickQuery || p.label.toLowerCase().includes(quickQuery) || p.key.toLowerCase().includes(quickQuery)).slice(0, 5);
+  const quickTasks = quickQuery ? allTasks.filter((t) => [t.title, t.project_name, t.assignee, t.status, t.description].filter(Boolean).join(' ').toLowerCase().includes(quickQuery)).slice(0, 7) : [];
+  useEffect(() => { const handler = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setQuickSearchOpen(true); } if (e.key === 'Escape') setQuickSearchOpen(false); }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, []);
   const mounted = (key: PmPage) => visited.has(key) || page === key;
   const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
 
@@ -244,6 +250,26 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     <AuthenticatedLayout header={<h2 className="text-lg font-semibold text-slate-800">Company Operations</h2>}>
       <Head title={`${current.label} · Company Operations`} />
 
+      <div className="mx-auto max-w-6xl px-3 pt-4 sm:px-6 sm:pt-6">
+        <div className="relative">
+          <button type="button" onClick={() => setQuickSearchOpen(true)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm hover:border-indigo-300 hover:shadow">
+            <Icon name="search" className="h-5 w-5 text-slate-500" />
+            <span className="flex-1 text-sm text-slate-500">Search tasks, businesses, meetings, reports or navigate…</span>
+            <kbd className="hidden rounded border bg-slate-50 px-2 py-1 text-xs text-slate-500 sm:inline">Ctrl K</kbd>
+          </button>
+          {quickSearchOpen && <div className="fixed inset-0 z-50 bg-slate-950/30 p-3 sm:p-6" onClick={() => setQuickSearchOpen(false)}>
+            <div className="mx-auto mt-8 max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3 border-b px-4 py-3"><Icon name="search" className="h-5 w-5 text-slate-500"/><input autoFocus value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} placeholder="Search workspace or jump to a section…" className="w-full border-0 p-0 text-sm outline-none focus:ring-0"/><button onClick={() => setQuickSearchOpen(false)} className="text-xs text-slate-500">Esc</button></div>
+              <div className="max-h-[70vh] overflow-y-auto p-2">
+                <div className="px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Navigation</div>
+                {quickPages.map((p) => <button key={p.key} onClick={() => { setQuickSearchOpen(false); setQuickSearch(''); visitPm(p.key, {}); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50"><Icon name={LOOK[p.key].icon} className="h-4 w-4 text-slate-500"/><span>{p.label}</span><span className="ml-auto text-xs text-slate-400">Open</span></button>)}
+                {quickQuery && <><div className="px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Tasks</div>{quickTasks.map((t) => <button key={t.card_id} disabled={!t.project_id || !t.task_id} onClick={() => { setQuickSearchOpen(false); setQuickSearch(''); if (t.project_id && t.task_id) openTask({projectId:t.project_id, taskId:t.task_id}); }} className="w-full rounded-lg px-3 py-2 text-left hover:bg-indigo-50 disabled:opacity-50"><div className="text-sm font-medium text-slate-800">{t.title}</div><div className="text-xs text-slate-500">{t.project_name ?? 'Project'} · {t.status}{t.assignee ? ' · '+t.assignee : ''}</div></button>)}{quickTasks.length===0 && <p className="px-3 py-2 text-sm text-slate-500">No matching tasks found.</p>}</>}
+                {!quickQuery && <p className="px-3 py-3 text-xs text-slate-500">Type to search tasks, or choose a section above. Search results are limited to tasks currently loaded by the PM dashboard.</p>}
+              </div>
+            </div>
+          </div>}
+        </div>
+      </div>
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
         <nav aria-label="Company operations sections" className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
