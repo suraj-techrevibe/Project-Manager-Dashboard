@@ -13,7 +13,8 @@ import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
-import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';\nimport QACenter from '@/Components/Pm/QACenter';
+import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
+import QACenter from '@/Components/Pm/QACenter';
 import { pmApi } from '@/lib/pmApi';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { PmFlag, TaskFocus, TodayData, Project } from '@/types/pm';
@@ -164,7 +165,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       'PM stand-up',
       m ? `Overdue: ${m.overdue} · Blocked: ${m.blocked} · Due today: ${m.due_today} · No owner: ${m.unassigned}` : '',
       today?.since ? `Since ${today.since.label}: ${today.since.completed.count} completed · ${today.since.created.count} created · ${today.since.blocked.count} blocked` : '',
-    ].filter(Boolean).join('\n');
+    ].filter(Boolean).join('
+');
     try { await navigator.clipboard.writeText(text); } catch {}
   };
 
@@ -390,7 +392,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
-        {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}\n        {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
+        {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
+        {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
       </div>
     </PmShell>
   );
