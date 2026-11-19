@@ -206,7 +206,8 @@ function DailyDetails({ c }: { c: DailyContent }) {
 }
 
 function WeeklyDetails({ c }: { c: WeeklyContent }) {
-  const total = c.completed_by_project.reduce((n, g) => n + g.items.length, 0);
+  const completedGroups = c.completed_by_business ?? c.completed_by_project.map((g) => ({ business: g.project, items: g.items }));
+  const total = completedGroups.reduce((n, g) => n + g.items.length, 0);
 
   return (
     <>
@@ -214,13 +215,50 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
         <p className="text-sm text-slate-700">{c.summary_text}</p>
       </Section>
 
-      <Section title="Completed this week" count={total}>
-        {c.completed_by_project.length ? (
+      <Section title="Business-wise progress" count={c.business_summary?.length ?? 0}>
+        {c.business_summary?.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[48rem] text-left text-sm">
+              <thead className="text-xs text-slate-400">
+                <tr>
+                  <th className="pb-1 pr-3 font-normal">Business</th>
+                  <th className="pb-1 pr-3 text-right font-normal">Completed</th>
+                  <th className="pb-1 pr-3 text-right font-normal">QA pending</th>
+                  <th className="pb-1 pr-3 text-right font-normal">Accepted</th>
+                  <th className="pb-1 pr-3 text-right font-normal">Open</th>
+                  <th className="pb-1 pr-3 text-right font-normal">In progress</th>
+                  <th className="pb-1 pr-3 text-right font-normal">Blocked</th>
+                  <th className="pb-1 text-right font-normal">Overdue</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-700">
+                {c.business_summary.map((b) => (
+                  <tr key={b.business} className="border-t border-slate-100">
+                    <td className="py-1.5 pr-3 font-medium">{b.business}</td>
+                    <td className="py-1.5 pr-3 text-right">{b.completed}</td>
+                    <td className={`py-1.5 pr-3 text-right ${b.qa_pending ? 'text-amber-600 font-medium' : ''}`}>{b.qa_pending}</td>
+                    <td className="py-1.5 pr-3 text-right">{b.qa_accepted}</td>
+                    <td className="py-1.5 pr-3 text-right">{b.open}</td>
+                    <td className="py-1.5 pr-3 text-right">{b.in_progress}</td>
+                    <td className={`py-1.5 pr-3 text-right ${b.blocked ? 'text-red-600 font-medium' : ''}`}>{b.blocked}</td>
+                    <td className={`py-1.5 text-right ${b.overdue ? 'text-red-600 font-medium' : ''}`}>{b.overdue}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>No business-to-project links are configured yet.</Empty>
+        )}
+      </Section>
+
+      <Section title="Completed this week by business" count={total}>
+        {completedGroups.length ? (
           <div className="flex flex-col gap-2">
-            {c.completed_by_project.map((g) => (
-              <div key={g.project}>
+            {completedGroups.map((g) => (
+              <div key={g.business}>
                 <div className="mb-0.5 text-xs font-medium text-slate-500">
-                  {g.project} <span className="text-slate-400">{g.items.length}</span>
+                  {g.business} <span className="text-slate-400">{g.items.length}</span>
                 </div>
                 <Tasks items={g.items.map((i) => ({ ...i, project: null }))} />
               </div>
@@ -465,7 +503,7 @@ export default function ReportsPanel() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={4}
-            placeholder={'Optional — type what you did, in your own words. e.g.\nCalled the client about the payment gateway\nReviewed Ravi\'s login PR\nWaiting on logo files from client\nTomorrow: demo prep'}
+            placeholder={'Log your operational work as well as task-board activity. e.g.\nPlanning: clarified broker-system requirements with boss\nCoordination: agreed technical approach with Senior Dev\nQA: tested referral and commission calculations\nFollow-up: resolved blocker with developer\nWaiting on: client approval for payment gateway\nNext: prepare business demo'}
             className={`${inputCls} min-w-0 flex-1 resize-y`}
           />
         </div>
