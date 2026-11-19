@@ -165,8 +165,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       'PM stand-up',
       m ? `Overdue: ${m.overdue} · Blocked: ${m.blocked} · Due today: ${m.due_today} · No owner: ${m.unassigned}` : '',
       today?.since ? `Since ${today.since.label}: ${today.since.completed.count} completed · ${today.since.created.count} created · ${today.since.blocked.count} blocked` : '',
-    ].filter(Boolean).join('
-');
+    ].filter(Boolean).join('\\n');
     try { await navigator.clipboard.writeText(text); } catch {}
   };
 
