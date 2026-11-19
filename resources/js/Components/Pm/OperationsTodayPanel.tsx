@@ -143,7 +143,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
               No open requests or ideas need attention.
             </div>
           )}
-        </div>
+        </div></details>
       </div>
       <p className="mt-4 text-xs text-slate-500">A Taskmandu project is the business record. Progress above is calculated from the project’s real Tasks; request and idea records remain separate until work is pushed.</p>
     </section>
