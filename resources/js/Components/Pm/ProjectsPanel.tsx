@@ -108,6 +108,13 @@ export default function ProjectsPanel() {
     const matchesRisk = risk === 'all' || (risk === 'overdue' ? st.overdue > 0 : st.blocked > 0);
     return matchesSearch && matchesRisk && (statusFilter === 'All' || p.status === statusFilter);
   });
+  // In the default portfolio view, surface projects needing attention before healthy projects.
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    const sa = stats(a), sb = stats(b);
+    const scoreA = sa.overdue * 3 + sa.blocked * 2;
+    const scoreB = sb.overdue * 3 + sb.blocked * 2;
+    return scoreB - scoreA || a.name.localeCompare(b.name);
+  });
 
   const totalTasks = projects.reduce((n, p) => n + p.tasks.length, 0);
   const doneTasks = projects.reduce((n, p) => n + p.tasks.filter((t) => t.status === 'Completed').length, 0);
@@ -244,7 +251,7 @@ export default function ProjectsPanel() {
         {!loading && projects.length > 0 && filtered.length === 0 && <EmptyState title="No projects match those filters" />}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((p) => {
+          {sortedFiltered.map((p) => {
             const progress = projectProgress(p);
             const st = stats(p);
             return (
