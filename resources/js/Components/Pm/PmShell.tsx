@@ -15,12 +15,13 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   reports: { icon: 'chart', blurb: 'Progress and delivery reporting' },
   scope: { icon: 'target', blurb: 'Check requests against agreed scope' },
   git: { icon: 'branch', blurb: 'Repository activity and delivery signals' },
+  qa: { icon: 'target', blurb: 'Capture, track and retest quality issues' },
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
   { title: 'Overview', keys: ['today', 'tasks', 'operations', 'projects'] },
   { title: 'Planning', keys: ['minutes', 'brief'] },
-  { title: 'Oversight', keys: ['reports', 'scope', 'git'] },
+  { title: 'Oversight', keys: ['reports', 'scope', 'git', 'qa'] },
 ];
 
 interface Props {
