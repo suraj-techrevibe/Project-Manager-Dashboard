@@ -14,6 +14,7 @@ import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
 import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
+import QACenter from '@/Components/Pm/QACenter';
 import { pmApi } from '@/lib/pmApi';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { PmFlag, TaskFocus, TodayData, Project } from '@/types/pm';
@@ -391,6 +392,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
+        {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
       </div>
     </PmShell>
   );
