@@ -28,7 +28,7 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
 });
 
 // JSON API used by those pages.
-Route::middleware(['auth', 'throttle:30,1'])->prefix('pm/api')->name('pm.')->group(function () {
+Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->group(function () {
     Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('today', [PmController::class, 'today'])->name('today');
@@ -89,28 +89,33 @@ Route::middleware(['auth', 'throttle:30,1'])->prefix('pm/api')->name('pm.')->gro
     Route::post('git/pull', [PmController::class, 'gitPull'])->name('git.pull');
     Route::post('git/push', [PmController::class, 'gitPush'])->name('git.push');
     Route::post('git/checkout', [PmController::class, 'gitCheckout'])->name('git.checkout');
-    Route::prefix('projects')->name('projects.')->where(['project'=>'[0-9a-fA-F]{24}','task'=>'[0-9a-fA-F]{24}','subTask'=>'[0-9a-fA-F]{24}','document'=>'[0-9a-fA-F]{24}','variable'=>'[0-9a-fA-F]{24}','member'=>'[0-9a-fA-F]{24}'])->group(function () {
-        Route::get('/', [ProjectController::class, 'index'])->name('index');
-        Route::post('/', [ProjectController::class, 'store'])->name('store');
-        Route::get('{project}', [ProjectController::class, 'show'])->name('show');
-        Route::patch('{project}', [ProjectController::class, 'update'])->name('update');
-        Route::delete('{project}', [ProjectController::class, 'destroy'])->name('destroy');
-        Route::post('{project}/documents', [ProjectController::class, 'addDocument'])->name('documents.store');
-        Route::patch('{project}/documents/{document}', [ProjectController::class, 'updateDocument'])->name('documents.update');
-        Route::delete('{project}/documents/{document}', [ProjectController::class, 'deleteDocument'])->name('documents.destroy');
-        Route::post('{project}/variables', [ProjectController::class, 'addVariable'])->name('variables.store');
-        Route::patch('{project}/variables/{variable}', [ProjectController::class, 'updateVariable'])->name('variables.update');
-        Route::delete('{project}/variables/{variable}', [ProjectController::class, 'deleteVariable'])->name('variables.destroy');
-        Route::post('{project}/tasks', [ProjectController::class, 'addTask'])->name('tasks.store');
-        Route::patch('{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('tasks.update');
-        Route::delete('{project}/tasks/{task}', [ProjectController::class, 'deleteTask'])->name('tasks.destroy');
-        Route::post('{project}/tasks/{task}/comments', [ProjectController::class, 'addTaskComment'])->name('tasks.comments.store');
-        Route::post('{project}/tasks/{task}/subtasks', [ProjectController::class, 'addSubTask'])->name('subtasks.store');
-        Route::patch('{project}/tasks/{task}/subtasks/{subTask}', [ProjectController::class, 'updateSubTask'])->name('subtasks.update');
-        Route::delete('{project}/tasks/{task}/subtasks/{subTask}', [ProjectController::class, 'deleteSubTask'])->name('subtasks.destroy');
-        Route::post('{project}/tasks/{task}/subtasks/{subTask}/comments', [ProjectController::class, 'addSubTaskComment'])->name('subtasks.comments.store');
-        Route::get('{project}/members', [ProjectController::class, 'members'])->name('members.index');
-        Route::post('{project}/members', [ProjectController::class, 'addMember'])->name('members.store');
-        Route::delete('{project}/members/{member}', [ProjectController::class, 'removeMember'])->name('members.destroy');
-    });
+});
+
+// Project passthrough to Taskmandu: each call fans out to the Taskmandu API and the UI
+// re-fetches projects often (open, task polling every 15s), so it gets its own, higher limit.
+Route::middleware(['auth', 'throttle:240,1'])->prefix('pm/api')->name('pm.')->group(function () {
+Route::prefix('projects')->name('projects.')->where(['project'=>'[0-9a-fA-F]{24}','task'=>'[0-9a-fA-F]{24}','subTask'=>'[0-9a-fA-F]{24}','document'=>'[0-9a-fA-F]{24}','variable'=>'[0-9a-fA-F]{24}','member'=>'[0-9a-fA-F]{24}'])->group(function () {
+    Route::get('/', [ProjectController::class, 'index'])->name('index');
+    Route::post('/', [ProjectController::class, 'store'])->name('store');
+    Route::get('{project}', [ProjectController::class, 'show'])->name('show');
+    Route::patch('{project}', [ProjectController::class, 'update'])->name('update');
+    Route::delete('{project}', [ProjectController::class, 'destroy'])->name('destroy');
+    Route::post('{project}/documents', [ProjectController::class, 'addDocument'])->name('documents.store');
+    Route::patch('{project}/documents/{document}', [ProjectController::class, 'updateDocument'])->name('documents.update');
+    Route::delete('{project}/documents/{document}', [ProjectController::class, 'deleteDocument'])->name('documents.destroy');
+    Route::post('{project}/variables', [ProjectController::class, 'addVariable'])->name('variables.store');
+    Route::patch('{project}/variables/{variable}', [ProjectController::class, 'updateVariable'])->name('variables.update');
+    Route::delete('{project}/variables/{variable}', [ProjectController::class, 'deleteVariable'])->name('variables.destroy');
+    Route::post('{project}/tasks', [ProjectController::class, 'addTask'])->name('tasks.store');
+    Route::patch('{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('tasks.update');
+    Route::delete('{project}/tasks/{task}', [ProjectController::class, 'deleteTask'])->name('tasks.destroy');
+    Route::post('{project}/tasks/{task}/comments', [ProjectController::class, 'addTaskComment'])->name('tasks.comments.store');
+    Route::post('{project}/tasks/{task}/subtasks', [ProjectController::class, 'addSubTask'])->name('subtasks.store');
+    Route::patch('{project}/tasks/{task}/subtasks/{subTask}', [ProjectController::class, 'updateSubTask'])->name('subtasks.update');
+    Route::delete('{project}/tasks/{task}/subtasks/{subTask}', [ProjectController::class, 'deleteSubTask'])->name('subtasks.destroy');
+    Route::post('{project}/tasks/{task}/subtasks/{subTask}/comments', [ProjectController::class, 'addSubTaskComment'])->name('subtasks.comments.store');
+    Route::get('{project}/members', [ProjectController::class, 'members'])->name('members.index');
+    Route::post('{project}/members', [ProjectController::class, 'addMember'])->name('members.store');
+    Route::delete('{project}/members/{member}', [ProjectController::class, 'removeMember'])->name('members.destroy');
+});
 });

@@ -89,21 +89,32 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   // Clicking a task on Today opens Projects -> that project -> Tasks -> the task itself.
   const openTask = (f: TaskFocus) => visitPm('projects', { project: f.projectId, ptab: 'tasks', task: f.taskId, sub: f.subId });
 
+  // A failed refresh must never wipe projects we already have, and an empty (or failed)
+  // result must never trigger an automatic re-fetch — that loop used to burn the
+  // /pm/api throttle and blank the Today timeline / Tasks views.
+  const projectsLoaded = useRef(false);
+  const projectsInFlight = useRef(false);
+
   const loadProjects = useCallback(async () => {
+    if (projectsInFlight.current) return;
+    projectsInFlight.current = true;
     setProjectsLoading(true);
     try {
       const { data } = await pmApi.projects();
       setProjects(data.projects);
+      projectsLoaded.current = true;
     } catch {
-      setProjects([]);
+      // Keep whatever projects are already on screen; the next tab visit or Sync now retries.
     } finally {
+      projectsInFlight.current = false;
       setProjectsLoading(false);
     }
   }, []);
 
+  // Load once per tab visit (and only until the first success) — keyed on `page` alone.
   useEffect(() => {
-    if ((page === 'today' || page === 'tasks') && !projects.length && !projectsLoading) void loadProjects();
-  }, [page, projects.length, projectsLoading, loadProjects]);
+    if ((page === 'today' || page === 'tasks') && !projectsLoaded.current) void loadProjects();
+  }, [page, loadProjects]);
 
   const handleSync = async () => {
     setSyncing(true);

@@ -18,20 +18,7 @@ services:
     networks:
       - pm
 
-  # Runs the app's scheduled commands (SyncBoard, RunPmAutomation, SendDigest, GenerateReport)
-  # every minute, the same way `php artisan schedule:run` would via real cron.
-  scheduler:
-    build:
-      context: .
-      target: app
-    <<: *app-env
-    command: ["sh", "-c", "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"]
-    volumes:
-      - storage:/var/www/html/storage
-    depends_on:
-      - app
-    networks:
-      - pm
+  # The scheduler (pm:sync etc.) now runs inside the app container via supervisord.
 
   db:
     image: mysql:8.0

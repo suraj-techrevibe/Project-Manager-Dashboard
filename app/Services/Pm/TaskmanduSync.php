@@ -8,6 +8,8 @@ use App\Models\PmSubtask;
 use App\Models\PmTaskmanduEvent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class TaskmanduSync
@@ -17,7 +19,7 @@ class TaskmanduSync
     private array $seenExternalIds = [];
     public function __construct(private TaskmanduClient $client) {}
     public function configured(): bool { return $this->client->configured(); }
-    public function run(): int { try { $employees=$this->employeeMap(); $count=0; $this->baseline=PmCard::query()->exists(); $this->seenExternalIds=[]; $count+=$this->syncStandaloneTasks($employees); $count+=$this->syncProjectBoards($employees); $this->reconcileMissingRemoteCards(); Cache::forever('pm.last_synced_at',now()->toIso8601String()); Cache::forget('pm.last_sync_error'); return $count; } catch (\Throwable $e) { Cache::forever('pm.last_sync_error',['message'=>$e->getMessage(),'at'=>now()->toIso8601String()]); throw new RuntimeException('Taskmandu sync failed: '.$e->getMessage(), 0, $e); } }
+    public function run(): int { try { $employees=$this->employeeMap(); $count=0; $this->baseline=PmCard::query()->exists(); $this->seenExternalIds=[]; Cache::forget('pm.last_sync_warning'); $count+=$this->syncStandaloneTasks($employees); $count+=$this->syncProjectBoards($employees); $this->reconcileMissingRemoteCards(); Cache::forever('pm.last_synced_at',now()->toIso8601String()); Cache::forget('pm.last_sync_error'); return $count; } catch (\Throwable $e) { Cache::forever('pm.last_sync_error',['message'=>$e->getMessage(),'at'=>now()->toIso8601String()]); throw new RuntimeException('Taskmandu sync failed: '.$e->getMessage(), 0, $e); } }
     public function employeeMap(): array { $map=[]; foreach($this->client->paginate('/employees') as $e){$name=trim(($e['firstName']??'').' '.($e['lastName']??''));foreach(['employeeId','_id','userId'] as $key)if(!empty($e[$key])&&is_string($e[$key]))$map[$e[$key]]=$name;} return $map; }
     private ?array $employeeRows = null;
 
@@ -35,20 +37,85 @@ public function mongoIdFor(string $idOrCode): string
 }
     private function names(array $employees,array $ids):?string{$names=collect($ids)->map(fn($id)=>$employees[$id]??$id)->filter();return $names->isEmpty()?null:$names->implode(', ');}
     private function syncStandaloneTasks(array $employees):int{$tasks=$this->client->paginate('/tasks');$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');foreach($tasks as $t){$externalId='task:'.$t['_id'];$this->seenExternalIds[]=$externalId;$card=PmCard::firstOrNew(['external_id'=>$externalId]);[$existed,$oldStatus,$oldComments]=[$card->exists,$card->status,(int)$card->comments_count];$card->fill(['title'=>$t['title'],'description'=>$t['description']??null,'assignee'=>$this->names($employees,$t['assignedToId']??[]),'status'=>$t['status'],'due_at'=>$t['dueDate']??null,'last_activity_at'=>Carbon::parse($t['updatedAt']),'subtasks_count'=>0,'subtasks_completed_count'=>0,'project_id'=>null,'project_name'=>null,'task_id'=>$t['_id'],'priority'=>$t['priority']??null,'estimated_hours'=>$t['estimatedHours']??null,'tags'=>$t['tags']??[],'comments_count'=>count($t['comments']??[]),'assigned_by'=>$t['assignedByName']??null,'url'=>$frontend?"{$frontend}/tasks/{$t['_id']}":null]);$card->save();$this->track($card,$existed,$oldStatus,$oldComments);}return count($tasks);}
-    private function syncProjectBoards(array $employees):int{$projects=$this->client->paginate('/projects');$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');$count=0;$seenSubs=[];foreach($projects as $summary){$p=$this->client->get("/projects/{$summary['_id']}")['data']??$summary;foreach($p['tasks']??[] as $t){$lastComment=collect($t['comments']??[])->last();$lastActivity=collect([$lastComment['createdAt']??null,$t['updatedAt']??null,$t['createdAt']??null])->merge(collect($t['subTasks']??[])->pluck('completedAt'))->filter()->map(fn($at)=>Carbon::parse($at))->max();$externalId="project:{$p['_id']}:task:{$t['_id']}";$this->seenExternalIds[]=$externalId;$card=PmCard::firstOrNew(['external_id'=>$externalId]);[$existed,$oldStatus,$oldComments]=[$card->exists,$card->status,(int)$card->comments_count];$card->fill(['title'=>$t['title'],'description'=>$t['description']??null,'assignee'=>$this->names($employees,$t['assignedToId']??[]),'status'=>$t['status'],'due_at'=>$t['dueDate']??null,'last_activity_at'=>$lastActivity,'subtasks_count'=>count($t['subTasks']??[]),'subtasks_completed_count'=>$this->completedSubtaskCount($t['subTasks']??[]),'project_id'=>$p['_id'],'project_name'=>$p['name'],'task_id'=>$t['_id'],'priority'=>$t['priority']??null,'estimated_hours'=>$t['estimatedHours']??null,'tags'=>$t['tags']??[],'comments_count'=>count($t['comments']??[]),'assigned_by'=>$t['assignedByName']??null,'url'=>$frontend?"{$frontend}/projects/{$p['_id']}":null]);$card->save();$this->track($card,$existed,$oldStatus,$oldComments);$this->captureStatusEvent($p,$t,$card,$existed,$oldStatus,$t['status']??null,$t['updatedAt']??null);$this->captureComments($p,$t,$card,null,$t['comments']??[]);$count++;$this->syncSubTasks($p,$t,$card,$employees,$seenSubs);}}PmSubtask::query()->whereNotIn('external_id',$seenSubs?:[''])->delete();return $count;}
+    private function syncProjectBoards(array $employees):int{$projects=$this->client->paginate('/projects');$frontend=rtrim(config('services.taskmandu.frontend_url',''),'/');$count=0;$seenSubs=[];foreach($projects as $summary){$p=$this->client->get("/projects/{$summary['_id']}")['data']??$summary;foreach($p['tasks']??[] as $t){$lastComment=collect($t['comments']??[])->last();$lastActivity=collect([$lastComment['createdAt']??null,$t['updatedAt']??null,$t['createdAt']??null])->merge(collect($t['subTasks']??[])->pluck('completedAt'))->filter()->map(fn($at)=>Carbon::parse($at))->max();$externalId="project:{$p['_id']}:task:{$t['_id']}";$this->seenExternalIds[]=$externalId;$card=PmCard::firstOrNew(['external_id'=>$externalId]);[$existed,$oldStatus,$oldComments]=[$card->exists,$card->status,(int)$card->comments_count];$card->fill(['title'=>$t['title'],'description'=>$t['description']??null,'assignee'=>$this->names($employees,$t['assignedToId']??[]),'status'=>$t['status'],'due_at'=>$t['dueDate']??null,'last_activity_at'=>$lastActivity,'subtasks_count'=>count($t['subTasks']??[]),'subtasks_completed_count'=>$this->completedSubtaskCount($t['subTasks']??[]),'project_id'=>$p['_id'],'project_name'=>$p['name'],'task_id'=>$t['_id'],'priority'=>$t['priority']??null,'estimated_hours'=>$t['estimatedHours']??null,'tags'=>$t['tags']??[],'comments_count'=>count($t['comments']??[]),'assigned_by'=>$t['assignedByName']??null,'url'=>$frontend?"{$frontend}/projects/{$p['_id']}":null]);$card->save();$this->track($card,$existed,$oldStatus,$oldComments);$this->captureStatusEvent($p,$t,$card,$existed,$oldStatus,$t['status']??null,$t['updatedAt']??null);$this->captureComments($p,$t,$card,null,$t['comments']??[]);$count++;$this->syncSubTasks($p,$t,$card,$employees,$seenSubs);}}$this->reconcileMissingSubtasks($seenSubs);return $count;}
+    /**
+     * Largest share of the mirror one sync may remove. A bigger drop almost always means the
+     * remote view shrank (service-account permissions, membership change, partial/empty
+     * response) rather than that most of the work was really deleted in Taskmandu.
+     */
+    private const MAX_DELETE_FRACTION = 0.3;
+    private const MIN_DELETE_GUARD = 10;
+
     /**
      * Reconcile only Taskmandu-owned mirror rows, and only after every remote
      * list/detail request completed successfully. PM-only cards are untouched.
+     * Refuses (and records a warning) when the delete looks like a shrunken remote view.
      */
     private function reconcileMissingRemoteCards(): void
     {
-        PmCard::query()
-            ->where(function ($query) {
-                $query->where('external_id', 'like', 'task:%')
-                    ->orWhere('external_id', 'like', 'project:%');
-            })
-            ->whereNotIn('external_id', $this->seenExternalIds ?: ['__no_remote_tasks__'])
-            ->delete();
+        $mirror = fn () => PmCard::query()->where(function ($query) {
+            $query->where('external_id', 'like', 'task:%')
+                ->orWhere('external_id', 'like', 'project:%');
+        });
+
+        $total = (clone $mirror())->count();
+        $stale = (clone $mirror())->whereNotIn('external_id', $this->seenExternalIds ?: ['__no_remote_tasks__']);
+        $missing = (clone $stale)->count();
+
+        if ($missing === 0) {
+            return;
+        }
+
+        if ($this->deleteLooksUnsafe($total, $missing, count($this->seenExternalIds))) {
+            $this->warnSkippedDelete('cards', $missing, $total);
+
+            return;
+        }
+
+        DB::transaction(fn () => $stale->delete());
+    }
+
+    /** Same protection for the sub-task mirror. */
+    private function reconcileMissingSubtasks(array $seenSubs): void
+    {
+        $total = PmSubtask::query()->count();
+        $stale = PmSubtask::query()->whereNotIn('external_id', $seenSubs ?: ['']);
+        $missing = (clone $stale)->count();
+
+        if ($missing === 0) {
+            return;
+        }
+
+        if ($this->deleteLooksUnsafe($total, $missing, count($seenSubs))) {
+            $this->warnSkippedDelete('sub-tasks', $missing, $total);
+
+            return;
+        }
+
+        DB::transaction(fn () => $stale->delete());
+    }
+
+    private function deleteLooksUnsafe(int $total, int $missing, int $seen): bool
+    {
+        if ($total === 0) {
+            return false;
+        }
+
+        // Nothing seen at all but we hold local rows: an empty pull, never a real mass delete.
+        if ($seen === 0) {
+            return true;
+        }
+
+        return $missing >= self::MIN_DELETE_GUARD && ($missing / $total) > self::MAX_DELETE_FRACTION;
+    }
+
+    private function warnSkippedDelete(string $what, int $missing, int $total): void
+    {
+        $message = "Skipped removing {$missing} of {$total} mirrored {$what} that Taskmandu did not return. "
+            .'That is too many to be real deletions — check the sync account\'s role (needs projects:manage) and project membership.';
+
+        Log::warning('[pm:sync] '.$message);
+        Cache::forever('pm.last_sync_warning', ['message' => $message, 'at' => now()->toIso8601String()]);
     }
 
     private function syncSubTasks(array $project,array $task,PmCard $parent,array $employees,array &$seen):void{
