@@ -18,6 +18,7 @@ return new class extends Migration {
             $table->string('status', 30)->default('Draft');
             $table->string('assignee', 160)->nullable();
             $table->string('evidence_url', 1000)->nullable();
+            $table->string('pm_task_url', 1000)->nullable();
             $table->text('retest_notes')->nullable();
             $table->timestamps();
             $table->index(['status', 'severity']);
