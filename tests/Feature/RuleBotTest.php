@@ -339,6 +339,29 @@ class RuleBotTest extends TestCase
         \Illuminate\Support\Facades\Http::assertSentCount(1);
     }
 
+    public function test_loose_matches_and_slash_ai_go_to_gemini(): void
+    {
+        config(['services.gemini.key' => 'test', 'pm.assistant.driver' => 'hybrid', 'pm.assistant.provider' => 'gemini']);
+        \Illuminate\Support\Facades\Http::fake(['generativelanguage.googleapis.com/*' => \Illuminate\Support\Facades\Http::response(['candidates' => [['content' => ['parts' => [['text' => 'Gemini plan']]]]]])]);
+
+        // only "my" matched — not really a task question
+        $this->assertSame('gemini', $this->ask('plan my week please')['engine']);
+
+        // explicit task words stay with the rules
+        $this->assertSame('builtin', $this->ask('show my tasks')['engine']);
+        $this->assertSame('builtin', $this->ask("what's overdue")['engine']);
+
+        // forced
+        $r = $this->ask('/ai what is overdue');
+        $this->assertSame('gemini', $r['engine']);
+        $this->assertSame('Gemini plan', $r['reply']);
+
+        config(['services.gemini.key' => null]);
+        $off = $this->ask('/ai hello');
+        $this->assertSame('builtin', $off['engine']);
+        $this->assertStringContainsString('AI model is off', $off['reply']);
+    }
+
     public function test_status_says_what_is_answering(): void
     {
         config(['pm.assistant.driver' => 'hybrid', 'pm.assistant.provider' => 'gemini', 'services.gemini.key' => null]);

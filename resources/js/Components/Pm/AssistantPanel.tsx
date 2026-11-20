@@ -146,10 +146,14 @@ export function EngineBadge({ engine }: { engine?: AssistantEngine }) {
 /* ---------- the conversation + composer (shared by the page and the floating bubble) ---------- */
 
 export function ChatBody({ active, compact = false }: { active: boolean; compact?: boolean }) {
-  const { messages, busy } = useAssistant();
+  const { messages, busy, status } = useAssistant();
   const [input, setInput] = useState('');
   const scroller = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    void loadStatus();
+  }, []);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
@@ -216,7 +220,7 @@ export function ChatBody({ active, compact = false }: { active: boolean; compact
           </div>
         )}
 
-        {messages.map((m) =>
+        {messages.map((m, idx) =>
           m.note ? (
             <div key={m.id} className="text-center text-xs text-slate-500">{m.content}</div>
           ) : m.role === 'user' ? (
@@ -239,7 +243,20 @@ export function ChatBody({ active, compact = false }: { active: boolean; compact
                 <div className={`rounded-2xl rounded-tl-md border px-3.5 py-2.5 shadow-sm ${m.error ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white'}`}>
                   {m.error ? <p className="text-sm">{m.content}</p> : <Markdown text={m.content} />}
                 </div>
-                {!m.error && m.engine && <div className="mt-1 pl-1"><EngineBadge engine={m.engine} /></div>}
+                {!m.error && m.engine && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 pl-1">
+                    <EngineBadge engine={m.engine} />
+                    {m.engine === 'builtin' && status?.ai_ready && !busy && messages[idx - 1]?.role === 'user' && (
+                      <button
+                        type="button"
+                        onClick={() => submit(`/ai ${messages[idx - 1].content.replace(/^\/ai\s+/i, '')}`)}
+                        className="text-[11px] font-medium text-sky-700 hover:underline"
+                      >
+                        Not right? Ask {status.provider === 'anthropic' ? 'Claude' : 'Gemini'} instead
+                      </button>
+                    )}
+                  </div>
+                )}
                 {(m.actions?.filter((a) => a.status === 'pending').length ?? 0) > 1 && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => void runAll(m)} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700">

@@ -438,6 +438,11 @@ class RuleBot
         if (! $hasFilter && $f['terms'] === '' && ! $asksTasks) {
             return $this->out($this->notUnderstood());
         }
+        // Only a name / "my" matched, and nothing says it is about tasks ("plan my week", "what should I do") —
+        // answer from the board if that's all there is, but let the AI model have a go first when it is on.
+        if (! $asksTasks && ! $f['project'] && ! $f['status'] && ! $f['overdue'] && ! $f['unassigned'] && ! $f['stuck'] && ! $f['priority'] && ! $f['range']) {
+            $this->unhandled = true;
+        }
 
         $rows = $this->applyFilters($f);
         $total = $rows->count();

@@ -79,6 +79,17 @@ TXT;
         $driver = config('pm.assistant.driver', 'hybrid');
         $aiReady = $this->aiReady();
 
+        // "/ai …", "ask gemini …", "gemini: …" — the person wants the AI model, not the rules.
+        $last = array_key_last($clean);
+        if (preg_match('#^\s*(?:/ai|/gemini|ask (?:the )?(?:ai|gemini)[:,]?|(?:ai|gemini):)\s*(.*)$#is', $clean[$last]['content'], $m)) {
+            $clean[$last]['content'] = trim($m[1]) !== '' ? trim($m[1]) : $clean[$last]['content'];
+            if (! $aiReady || $driver === 'builtin') {
+                return ['reply' => 'The AI model is off, so I can only use the built-in assistant. '.$this->status()['label'].'.', 'actions' => [], 'tools' => [], 'suggestions' => [], 'engine' => 'builtin'];
+            }
+
+            return $this->chatWithAi($clean, $user) + ['suggestions' => [], 'engine' => $this->engineName()];
+        }
+
         if ($driver === 'ai' && $aiReady) {
             return $this->chatWithAi($clean, $user) + ['engine' => $this->engineName()];
         }
