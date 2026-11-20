@@ -1,6 +1,8 @@
 <?php
 
 return [
+    // 'builtin' = rule-based assistant (no API key needed). 'ai' = Claude via ANTHROPIC_API_KEY.
+    'assistant' => ['driver' => env('PM_ASSISTANT_DRIVER', 'builtin')],
     'weekly_capacity_hours' => (float) env('PM_WEEKLY_CAPACITY_HOURS', 40),
     'automation' => [
         'idle_days' => (int) env('PM_NUDGE_IDLE_DAYS', 3),

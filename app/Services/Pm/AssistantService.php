@@ -63,6 +63,29 @@ TXT;
      */
     public function chat(array $history, User $user): array
     {
+        $clean = collect($history)
+            ->filter(fn ($m) => in_array($m['role'] ?? '', ['user', 'assistant'], true) && trim((string) ($m['content'] ?? '')) !== '')
+            ->map(fn ($m) => ['role' => $m['role'], 'content' => Str::limit((string) $m['content'], 6000, '')])
+            ->values()
+            ->all();
+
+        // Default: the built-in rule-based bot (no AI service, no API key). Set PM_ASSISTANT_DRIVER=ai to use Claude instead.
+        if (config('pm.assistant.driver', 'builtin') !== 'ai' || ! config('services.anthropic.key')) {
+            if (! $clean || end($clean)['role'] !== 'user') {
+                throw new RuntimeException('Send a message first.');
+            }
+
+            return app(RuleBot::class)->respond($clean, $user, fn (string $tool, array $args, User $u) => $this->queue($tool, $args, $u));
+        }
+
+        return $this->chatWithAi($clean, $user);
+    }
+
+    /**
+     * @param  array<int, array{role: string, content: string}>  $history
+     */
+    private function chatWithAi(array $history, User $user): array
+    {
         $messages = collect($history)
             ->filter(fn ($m) => in_array($m['role'] ?? '', ['user', 'assistant'], true) && trim((string) ($m['content'] ?? '')) !== '')
             ->map(fn ($m) => ['role' => $m['role'], 'content' => Str::limit((string) $m['content'], 6000, '')])
@@ -124,7 +147,7 @@ TXT;
     /* Pending actions                                                     */
     /* ------------------------------------------------------------------ */
 
-    private function queue(string $name, array $input, User $user): array
+    public function queue(string $name, array $input, User $user): array
     {
         $id = (string) Str::uuid();
         $summary = trim((string) ($input['summary'] ?? '')) ?: Str::headline($name);
@@ -134,7 +157,7 @@ TXT;
             'id' => $id,
             'tool' => $name,
             'summary' => Str::limit($summary, 300),
-            'details' => $this->compact($input),
+            'details' => $this->compact(Arr::except($input, ['project_id', 'task_id', 'subtask_id', 'card_id', 'assignee_ids', 'linked_project_id'])),
             'status' => 'pending',
         ];
         Cache::put($this->key($id), $action + ['user_id' => $user->id, 'args' => $input], now()->addMinutes(self::ACTION_TTL_MINUTES));

@@ -33,7 +33,7 @@ class AssistantTest extends TestCase
 
     public function test_read_tool_results_reach_the_model_and_reply_comes_back(): void
     {
-        config(['services.anthropic.key' => 'test']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai']);
         $this->card('Fix login');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('search_tasks', ['overdue' => true]))
@@ -49,7 +49,7 @@ class AssistantTest extends TestCase
 
     public function test_write_tools_are_queued_not_executed_and_confirm_runs_once(): void
     {
-        config(['services.anthropic.key' => 'test']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai']);
         $card = $this->card('Noisy task');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('snooze_task', ['summary' => 'Snooze Noisy task for 3 days', 'card_id' => $card->id]))
@@ -70,7 +70,7 @@ class AssistantTest extends TestCase
 
     public function test_another_user_cannot_confirm_my_action_and_cancel_changes_nothing(): void
     {
-        config(['services.anthropic.key' => 'test']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai']);
         $card = $this->card('Mine');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('snooze_task', ['summary' => 'Snooze', 'card_id' => $card->id]))

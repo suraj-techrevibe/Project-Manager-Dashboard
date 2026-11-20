@@ -9,6 +9,7 @@ interface Msg {
   content: string;
   actions?: AssistantAction[];
   tools?: string[];
+  suggestions?: string[];
   error?: boolean;
   /** Result notes ("✓ Done: …") — shown as a small status line and fed back to the model as context. */
   note?: boolean;
@@ -42,8 +43,8 @@ const TOOL_NAME: Record<string, string> = {
 };
 
 const SUGGESTIONS: { title: string; items: string[] }[] = [
-  { title: 'Ask', items: ["What's overdue and who owns it?", 'Who has capacity this week?', 'Summarise where each active project stands', 'What did we decide in the last meeting?'] },
-  { title: 'Do', items: ['Create a task in … due Friday and assign it to …', 'Mark … as completed', 'Log a new client request: …', 'Move all my overdue tasks to next Monday'] },
+  { title: 'Ask', items: ['Give me an overview', "What's overdue?", 'Who has capacity this week?', 'What did we decide in the last meeting?'] },
+  { title: 'Do', items: ['Create task "…" in … due friday', 'Mark "…" as done', 'Log a client request: …', 'Move all my overdue tasks to next monday'] },
 ];
 
 /* ---------- tiny, safe markdown (bold, code, bullets, numbers) ---------- */
@@ -192,7 +193,7 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
       try {
         const history = next.slice(-20).map((m) => ({ role: m.role, content: m.content }));
         const { data } = await pmApi.assistantChat(history);
-        setMessages((all) => [...all, { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools }]);
+        setMessages((all) => [...all, { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools, suggestions: data.suggestions }]);
       } catch (e) {
         const msg = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
         setMessages((all) => [...all, { id: uid(), role: 'assistant', error: true, content: msg?.error ?? msg?.message ?? "Couldn't reach the assistant. Check your connection and try again." }]);
@@ -225,6 +226,12 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
     }
   };
 
+  const runAll = async (m: Msg) => {
+    for (const a of m.actions?.filter((x) => x.status === 'pending') ?? []) await run(m.id, a, 'confirm');
+  };
+
+  const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant' && !m.note)?.id;
+
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -243,7 +250,7 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
           </span>
           <div className="min-w-0 leading-tight">
             <div className="truncate text-sm font-semibold text-slate-900">PM assistant</div>
-            <div className="truncate text-xs text-slate-500">Reads live data · changes need your confirmation</div>
+            <div className="truncate text-xs text-slate-500">Built-in assistant · reads live data · changes need your confirmation</div>
           </div>
         </div>
         {!empty && (
@@ -262,7 +269,7 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
         {empty && (
           <div className="mx-auto max-w-2xl py-4 sm:py-8">
             <h2 className="text-lg font-semibold tracking-tight text-slate-900">What do you want to know or do?</h2>
-            <p className="mt-1 text-sm text-slate-500">Ask about tasks, people, projects, requests or meetings — or tell me to create, assign, update or log things. I'll show you every change and wait for your confirmation.</p>
+            <p className="mt-1 text-sm text-slate-500">Ask about tasks, people, projects, requests or meetings in plain English — or tell me to create, assign, update or log things. I'll show every change and wait for your confirmation. Type “help” to see everything I understand.</p>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {SUGGESTIONS.map((g) => (
                 <div key={g.title}>
@@ -308,9 +315,26 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
                 <div className={`rounded-2xl rounded-tl-md border px-3.5 py-2.5 shadow-sm ${m.error ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white'}`}>
                   {m.error ? <p className="text-sm">{m.content}</p> : <Markdown text={m.content} />}
                 </div>
+                {(m.actions?.filter((a) => a.status === 'pending').length ?? 0) > 1 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => void runAll(m)} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700">
+                      Confirm all {m.actions!.filter((a) => a.status === 'pending').length}
+                    </button>
+                    <span className="text-[11px] text-slate-400">or review each one below</span>
+                  </div>
+                )}
                 {m.actions?.map((a) => (
                   <ActionCard key={a.id} a={a} onConfirm={() => void run(m.id, a, 'confirm')} onCancel={() => void run(m.id, a, 'cancel')} />
                 ))}
+                {!busy && m.id === lastAssistantId && m.suggestions && m.suggestions.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {m.suggestions.map((s) => (
+                      <button key={s} type="button" onClick={() => void send(s)} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700">
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )
@@ -350,7 +374,7 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
             <Icon name="send" className="h-4 w-4" />
           </button>
         </div>
-        <p className="mt-1.5 px-1 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line. AI can make mistakes — check changes before confirming.</p>
+        <p className="mt-1.5 px-1 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line. Always check a change before you confirm it.</p>
       </form>
     </section>
   );
