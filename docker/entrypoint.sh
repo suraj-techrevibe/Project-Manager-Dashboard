@@ -29,4 +29,10 @@ php /var/www/html/artisan route:cache
 php /var/www/html/artisan view:cache
 php /var/www/html/artisan storage:link || true
 
+# The artisan commands above run as root. Anything they log would leave a root-owned
+# laravel.log that php-fpm (www-data) can't append to, giving "Permission denied" 500s after deploy.
+mkdir -p /var/www/html/storage/logs
+touch /var/www/html/storage/logs/laravel.log
+chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+
 exec "$@"
