@@ -70,6 +70,23 @@ class ProjectController extends Controller
             $res = $this->taskmandu->get("/projects/{$project}");
             $data = $this->present($res['data'] ?? null);
 
+            // Taskmandu's single-project GET sometimes comes back without its
+            // tasks while the list endpoint still has them. An empty task list
+            // here made the PM task detail blank out a second after opening, so
+            // fall back to the list entry for this project.
+            if (is_array($data) && empty($data['tasks'])) {
+                try {
+                    foreach ($this->taskmandu->paginate('/projects') as $listed) {
+                        if (($listed['_id'] ?? null) === $project && ! empty($listed['tasks'])) {
+                            $data['tasks'] = $listed['tasks'];
+                            break;
+                        }
+                    }
+                } catch (RuntimeException $e) {
+                    // Keep the original response; the frontend also guards against empty tasks.
+                }
+            }
+
             // Today is built from the same Taskmandu sync mirror. If the live
             // project response is missing/stale for a nested sub-task, keep the
             // task-detail view consistent with the authoritative synced status.
@@ -79,7 +96,7 @@ class ProjectController extends Controller
                     ->get(['task_id', 'subtask_id', 'status', 'completed_at'])
                     ->keyBy(fn ($s) => "{$s->task_id}:{$s->subtask_id}");
 
-                foreach ($data['tasks'] ?? [] as &$task) {
+                foreach ($data['tasks'] as &$task) {
                     foreach ($task['subTasks'] ?? [] as &$sub) {
                         $mirror = $mirrors->get("{$task['_id']}:{$sub['_id']}");
                         if ($mirror && $mirror->status === 'Completed') {

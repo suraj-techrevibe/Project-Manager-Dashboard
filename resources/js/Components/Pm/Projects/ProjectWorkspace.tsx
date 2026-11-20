@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
+import { keepTasksIfEmpty } from '../../../lib/normalizeProject';
 import type { Employee, Project, ProjectStatus } from '../../../types/pm';
 import { PROJECT_STATUSES } from '../../../types/pm';
 import { Icon, Pill, StatTile } from '../ui/kit';
@@ -53,29 +54,22 @@ export default function ProjectWorkspace({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Always read the latest project inside async work; the closure captured at
+  // mount goes stale as soon as the task detail's poll updates the project.
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
   async function refresh() {
     setRefreshing(true);
     setError(null);
     try {
       const { data } = await pmApi.project(project._id);
-      const refreshedProject = data.project;
-
-      // A transient/incomplete Taskmandu response must not erase tasks that
-      // were already loaded from the project list. Keep the last known tasks
-      // and surface a warning so the API response can be investigated.
-      if (project.tasks.length > 0 && refreshedProject.tasks.length === 0) {
-        console.warn('[PM] Ignoring empty Taskmandu project refresh; preserving existing tasks.', {
-          projectId: project._id,
-          existingTaskCount: project.tasks.length,
-        });
-        onChanged({ ...refreshedProject, tasks: project.tasks });
-        setError(
-          'Taskmandu returned this project without any tasks. Your previously loaded tasks are being kept; try refreshing again later.',
-        );
-        return;
+      const { project: next, kept } = keepTasksIfEmpty(projectRef.current, data.project);
+      onChanged(next);
+      if (kept) {
+        console.warn('[PM] Taskmandu returned no tasks on refresh; keeping existing tasks.', { projectId: project._id });
+        setError('Taskmandu returned this project without any tasks. Your previously loaded tasks are being kept; try refreshing again later.');
       }
-
-      onChanged(refreshedProject);
     } catch (e) {
       setError(err(e, "Couldn't refresh this project."));
     } finally {

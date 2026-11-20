@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { setUrlParams, useUrlParam } from '../../../lib/urlState';
 import { pmApi } from '../../../lib/pmApi';
+import { keepTasksIfEmpty } from '../../../lib/normalizeProject';
 import type { Employee, NewSubTaskInput, NewTaskInput, Project, ProjectComment, ProjectTask, SubTask, TaskPriority, TaskStatus } from '../../../types/pm';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../../../types/pm';
 import {
@@ -48,6 +49,9 @@ export default function TaskDetail({
   onBack: () => void;
 }) {
   const { busy, error, run } = useRunner(onChanged);
+  // The 15s poll lives across renders; read the freshest project through a ref.
+  const projectRef = useRef(project);
+  projectRef.current = project;
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [editingDesc, setEditingDesc] = useState(false);
@@ -72,7 +76,8 @@ export default function TaskDetail({
       inFlight = true;
       try {
         const { data } = await pmApi.project(project._id);
-        if (active) onChanged(data.project);
+        // An empty task list from a read-only poll is a bad response, not a real deletion.
+        if (active) onChanged(keepTasksIfEmpty(projectRef.current, data.project).project);
       } catch {
         // A temporary network/API failure should not blank the current task.
       } finally {

@@ -61,3 +61,16 @@ export function normalizeProject(raw: any): Project {
     members: arr<any>(raw.members).map((m) => ({ ...m, role: m.role ?? 'member', joinedAt: m.joinedAt ?? '' })),
   } as Project;
 }
+
+/**
+ * Read-only refreshes (open, 15s task polling) must never wipe tasks we
+ * already hold. If Taskmandu answers a single-project GET with no tasks while
+ * we have some, keep ours. Do NOT use this for mutations: deleting the last
+ * task legitimately returns an empty list.
+ */
+export function keepTasksIfEmpty(prev: Project | null | undefined, next: Project): { project: Project; kept: boolean } {
+  if (prev && prev.tasks.length > 0 && next.tasks.length === 0) {
+    return { project: { ...next, tasks: prev.tasks }, kept: true };
+  }
+  return { project: next, kept: false };
+}
