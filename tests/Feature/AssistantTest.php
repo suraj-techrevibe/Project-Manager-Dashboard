@@ -33,7 +33,7 @@ class AssistantTest extends TestCase
 
     public function test_read_tool_results_reach_the_model_and_reply_comes_back(): void
     {
-        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'anthropic']);
         $this->card('Fix login');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('search_tasks', ['overdue' => true]))
@@ -49,7 +49,7 @@ class AssistantTest extends TestCase
 
     public function test_write_tools_are_queued_not_executed_and_confirm_runs_once(): void
     {
-        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'anthropic']);
         $card = $this->card('Noisy task');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('snooze_task', ['summary' => 'Snooze Noisy task for 3 days', 'card_id' => $card->id]))
@@ -70,7 +70,7 @@ class AssistantTest extends TestCase
 
     public function test_another_user_cannot_confirm_my_action_and_cancel_changes_nothing(): void
     {
-        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'anthropic']);
         $card = $this->card('Mine');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('snooze_task', ['summary' => 'Snooze', 'card_id' => $card->id]))
@@ -87,5 +87,26 @@ class AssistantTest extends TestCase
     {
         $this->postJson('/pm/api/assistant/chat', ['messages' => [['role' => 'user', 'content' => 'hi']]])->assertUnauthorized();
         $this->actingAs(User::factory()->create())->postJson('/pm/api/assistant/chat', ['messages' => []])->assertStatus(422);
+    }
+
+    public function test_gemini_tool_loop_round_trips_signatures_and_results(): void
+    {
+        config(['services.gemini.key' => 'g-test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'gemini']);
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::sequence()
+            ->push(['candidates' => [['content' => ['parts' => [['functionCall' => ['name' => 'lookup_pm_data', 'args' => ['kind' => 'meeting_templates']], 'thoughtSignature' => 'SIG123']]]]]])
+            ->push(['candidates' => [['content' => ['parts' => [['text' => 'You have no templates yet.']]]]]]),
+        ]);
+
+        $r = $this->actingAs(User::factory()->create())->postJson('/pm/api/assistant/chat', ['messages' => [['role' => 'user', 'content' => 'what templates exist?']]])->assertOk()->json();
+
+        $this->assertSame('You have no templates yet.', $r['reply']);
+        $this->assertContains('lookup_pm_data', $r['tools']);
+        Http::assertSentCount(2);
+        $second = Http::recorded()[1][0]->data();
+        $parts = collect($second['contents'])->pluck('parts')->flatten(1);
+        $this->assertSame('SIG123', $parts->firstWhere('functionCall')['thoughtSignature'], 'the thought signature is echoed back');
+        $this->assertSame('lookup_pm_data', $parts->firstWhere('functionResponse')['functionResponse']['name']);
+        $this->assertSame('OBJECT', collect($second['tools'][0]['functionDeclarations'])->firstWhere('name', 'search_tasks')['parameters']['type'] ?? null);
+        $this->assertArrayNotHasKey('parameters', collect($second['tools'][0]['functionDeclarations'])->firstWhere('name', 'board_overview'));
     }
 }

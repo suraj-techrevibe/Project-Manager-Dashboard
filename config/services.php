@@ -39,6 +39,10 @@ return [
     'key' => env('ANTHROPIC_API_KEY'),
     'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5'),
 ],
+'gemini' => [
+    'key' => env('GEMINI_API_KEY'),
+    'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+],
 'taskmandu' => [
     'base_url' => env('TASKMANDU_BASE_URL'),
     'email' => env('TASKMANDU_EMAIL'),

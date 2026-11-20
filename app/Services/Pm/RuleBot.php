@@ -22,6 +22,8 @@ use Illuminate\Support\Str;
  */
 class RuleBot
 {
+    use RuleBotKnowledge;
+
     /** A reply starting with this means "I need more details" — the next short message is merged with the previous one. */
     public const NEED_MORE = 'I need a bit more';
 
@@ -65,6 +67,9 @@ class RuleBot
 
     private array $suggest = [];
 
+    /** True when nothing understood the question — lets the assistant hand it to the AI model (hybrid mode). */
+    private bool $unhandled = false;
+
     public function __construct(private FlagService $flags, private TaskmanduSync $taskmandu) {}
 
     /* ================================================================== */
@@ -82,6 +87,7 @@ class RuleBot
         $this->queue = $queue;
         $this->used = [];
         $this->suggest = [];
+        $this->unhandled = false;
         $this->employees = null;
         $this->cards = PmCard::query()->get();
 
@@ -122,6 +128,9 @@ class RuleBot
         }
 
         // ---- changes (always confirmed) ----
+        if (preg_match('/^ (how|where) (do|can|could|should|would|to|is|are)\b/', $n) && ($g = $this->guide($n))) {
+            return $g;
+        }
         if (preg_match('/^ (please )?(sync|refresh|reload|pull)\b/', $n) || preg_match('/\b(sync|refresh) (the )?(board|taskmandu|tasks|data)\b/', $n) && ! str_contains($n, '?')) {
             return $this->doSync();
         }
@@ -178,6 +187,9 @@ class RuleBot
         if (preg_match('/\b(team|staff|people|employees|members|who works|who is on|who are)\b/', $n) && preg_match('/\b(list|show|all|who|our|the)\b/', $n)
             && ! preg_match('/\btasks?\b|overdue|blocked|working on/', $n)) {
             return $this->people();
+        }
+        if ($kb = $this->knowledge($raw, $n)) {
+            return $kb;
         }
         if (preg_match('/\b(meeting|meetings|minutes|standup notes|discussed|decisions?|action items?)\b/', $n)) {
             return $this->meetings($n);
@@ -324,9 +336,22 @@ class RuleBot
     {
         $this->used[] = 'list_meeting_minutes';
         $q = MeetingMinutes::query()->latest('meeting_date')->latest('id');
-        $term = $this->searchTerms($n, ['meeting', 'meetings', 'minutes', 'last', 'latest', 'recent', 'discussed', 'decisions', 'decision', 'action', 'items', 'item', 'what', 'did', 'we', 'show', 'tell', 'from', 'about']);
+        $term = $this->searchTerms($n, ['meeting', 'meetings', 'minutes', 'last', 'latest', 'recent', 'discussed', 'decisions', 'decision', 'action', 'items', 'item', 'what', 'did', 'we', 'show', 'tell', 'from', 'about', 'draft', 'drafts', 'list', 'all', 'every', 'history']);
         if ($term !== '') {
             $q->where(fn ($w) => $w->where('title', 'like', "%{$term}%")->orWhere('discussion', 'like', "%{$term}%")->orWhere('raw_notes', 'like', "%{$term}%"));
+        }
+        if (preg_match('/\bdrafts?\b/', $n)) {
+            $q->where('status', 'draft');
+        }
+        if (preg_match('/\b(list|all|how many|every|history|which meetings|meetings (did|have) we)\b/', $n) && ! preg_match('/\b(decisions?|action items?|discussed)\b/', $n)) {
+            $total = (clone $q)->count();
+            $all = $q->limit(15)->get();
+            if ($all->isEmpty()) {
+                return $this->out($term !== '' ? "No meeting minutes mention “{$term}”." : 'No meeting minutes saved yet.');
+            }
+
+            return $this->out("**{$total}** meeting".($total === 1 ? '' : 's').":\n".$all->map(fn ($m) => '- **'.$m->title.'** — '.Carbon::parse($m->meeting_date)->format('D j M Y').' · '.($m->status ?: 'final')
+                .' · '.count((array) $m->decisions).' decisions · '.count((array) $m->action_items).' actions')->implode("\n").($total > 15 ? "\n…and ".($total - 15).' more.' : ''));
         }
         $rows = $q->limit(preg_match('/\b(last|latest|recent|previous)\b/', $n) && $term === '' ? 1 : 4)->get();
         if ($rows->isEmpty()) {
@@ -336,7 +361,13 @@ class RuleBot
         $out = [];
         foreach ($rows as $m) {
             $d = fn ($v) => collect((array) $v)->filter()->map(fn ($x) => is_array($x) ? trim(($x['task'] ?? '').(! empty($x['owner']) ? " — {$x['owner']}" : '').(! empty($x['due_date']) ? " (due {$x['due_date']})" : '')) : (string) $x);
-            $block = ["**{$m->title}** — ".Carbon::parse($m->meeting_date)->format('j M Y')];
+            $block = ["**{$m->title}** — ".Carbon::parse($m->meeting_date)->format('j M Y').($m->status === 'draft' ? ' *(draft)*' : '')];
+            if ($att = array_values(array_filter((array) $m->attendees))) {
+                $block[] = 'Attendees: '.implode(', ', $att);
+            }
+            if ($tp = collect((array) $m->topics)->map(fn ($x) => is_array($x) ? trim((string) ($x['title'] ?? '')) : trim((string) $x))->filter()->take(8)->all()) {
+                $block[] = 'Topics: '.implode('; ', $tp);
+            }
             if ($dec = $d($m->decisions)->take(6)->all()) {
                 $block[] = "Decisions:\n".implode("\n", array_map(fn ($x) => "- {$x}", $dec));
             }
@@ -413,7 +444,7 @@ class RuleBot
 
         if ($total === 0 && ! $hasFilter && $f['terms'] !== '') {
             // maybe a free-text word that matched nothing
-            return $this->out("I couldn't find a task matching “{$f['terms']}”.\n\n".$this->notUnderstood(short: true));
+            return $this->kbSearchAll($f['terms']) ?? $this->out("I couldn't find anything matching “{$f['terms']}”.\n\n".$this->notUnderstood(short: true));
         }
 
         $title = $this->describe($f);
@@ -1315,11 +1346,12 @@ class RuleBot
 
     private function out(string $reply, array $actions = []): array
     {
-        return ['reply' => $reply, 'actions' => $actions, 'tools' => array_values(array_unique($this->used)), 'suggestions' => $this->suggest];
+        return ['reply' => $reply, 'actions' => $actions, 'tools' => array_values(array_unique($this->used)), 'suggestions' => $this->suggest, 'unhandled' => $this->unhandled];
     }
 
     private function notUnderstood(bool $short = false): string
     {
+        $this->unhandled = true;
         $this->suggest = ["What's overdue?", 'Who has capacity this week?', 'Show unassigned tasks', 'help'];
 
         return ($short ? '' : "I didn't quite get that. ").'I can answer things like *what\'s overdue*, *what is Priya working on*, *how is the Salon site going*, and do things like *create task "Fix login" in Salon Site due friday*. Type **help** for the full list.';
@@ -1337,7 +1369,11 @@ Hi! I'm the built-in PM assistant — no AI service, I work straight from your b
 - *What is Priya working on?* · *my tasks* · *tasks in Salon Site due friday*
 - *Who has capacity?* · *who is overloaded?* · *which tasks have no owner?*
 - *How is Salon Site going?* · *list projects*
-- *Open requests* · *ideas to review* · *last meeting decisions*
+- *Open requests* · *ideas to review* · *last meeting decisions* · *list meetings* · *meeting follow-up*
+- *Show meeting templates* · *ticket packs* · *show drafts* · *latest weekly report* · *list reports*
+- *Open QA issues* · *critical QA bugs* · *who is waiting on a client?* · *list businesses*
+- *Show sub-tasks for Priya* · *latest comments* · *project health* · *git status* · *contacts*
+- *What do you know?* lists everything I can read · *where do I find reports?*
 
 **Tell me to do things** (I always ask you to confirm first)
 - *Create task "Fix login" in Salon Site due friday assign to Priya priority high*

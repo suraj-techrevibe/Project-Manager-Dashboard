@@ -2,7 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\MeetingMinutes;
+use App\Models\PmBusiness;
 use App\Models\PmCard;
+use App\Models\PmContact;
+use App\Models\PmDraft;
+use App\Models\PmMeetingTemplate;
+use App\Models\PmQaIssue;
+use App\Models\PmReport;
+use App\Models\PmSubtask;
+use App\Models\PmTicketPack;
+use App\Models\PmWaitingClient;
 use App\Models\PmIntake;
 use App\Models\User;
 use App\Services\Pm\TaskmanduSync;
@@ -224,5 +234,115 @@ class RuleBotTest extends TestCase
         $this->assertStringContainsString('Design homepage', $this->ask('what is blocking Salon Site')['reply']);
         $this->assertStringContainsString('Old thing', $this->ask('what did we complete this month')['reply']);
         $this->assertStringContainsString('Payment gateway', $this->ask('tasks due ' . strtolower(now()->format('l')))['reply']);
+    }
+
+    public function test_templates_packs_and_guides(): void
+    {
+        $this->assertStringContainsString('No meeting templates', $this->ask('show meeting templates')['reply']);
+
+        PmMeetingTemplate::create(['name' => 'Salon weekly sync', 'project_name' => 'Salon Site', 'weekday' => 'monday', 'meeting_time' => '10:00', 'attendees' => ['Priya', 'Sam'], 'topics' => [['title' => 'Blockers'], ['title' => 'Release plan']], 'active' => true]);
+        PmTicketPack::create(['name' => 'Website launch', 'description' => 'Standard launch checklist', 'tickets' => [['title' => 'DNS cutover'], ['title' => 'SSL check']]]);
+
+        $r = $this->ask('show meeting templates')['reply'];
+        $this->assertStringContainsString('Salon weekly sync', $r);
+        $this->assertStringContainsString('every Monday at 10:00', $r);
+        $this->assertStringContainsString('Release plan', $r);
+        $this->assertStringNotContainsString('Website launch', $r);
+
+        $r = $this->ask('what ticket packs do we have?')['reply'];
+        $this->assertStringContainsString('Website launch', $r);
+        $this->assertStringContainsString('DNS cutover', $r);
+
+        $this->assertStringContainsString('Meeting templates', $this->ask('what templates do we have')['reply']);
+        $this->assertStringContainsString('Minutes', $this->ask('where do I find meeting minutes?')['reply']);
+        $this->assertCount(0, $this->ask('how do I create a meeting template?')['actions'], 'a how-to question never creates anything');
+    }
+
+    public function test_minutes_list_and_details(): void
+    {
+        MeetingMinutes::create(['title' => 'Sprint kickoff', 'meeting_date' => '2026-11-10', 'status' => 'final', 'attendees' => ['Priya', 'Ashim'], 'topics' => [['title' => 'Scope']], 'decisions' => ['Ship Friday'], 'action_items' => [['task' => 'Write brief', 'owner' => 'Priya']]]);
+        MeetingMinutes::create(['title' => 'Client call', 'meeting_date' => '2026-11-12', 'status' => 'draft', 'attendees' => [], 'decisions' => [], 'action_items' => []]);
+
+        $r = $this->ask('list all meetings')['reply'];
+        $this->assertStringContainsString('**2** meetings', $r);
+        $this->assertStringContainsString('Sprint kickoff', $r);
+
+        $r = $this->ask('decisions from sprint kickoff')['reply'];
+        $this->assertStringContainsString('Ship Friday', $r);
+        $this->assertStringContainsString('Attendees: Priya, Ashim', $r);
+        $this->assertStringContainsString('Topics: Scope', $r);
+
+        $this->assertStringContainsString('Client call', $this->ask('show draft meeting minutes')['reply']);
+    }
+
+    public function test_drafts_reports_qa_businesses_waiting_contacts(): void
+    {
+        PmDraft::create(['title' => 'Booking portal brief', 'status' => 'draft', 'tickets' => [['uid' => '1', 'title' => 'Login screen']], 'created_by' => 'Xenon']);
+        $this->assertStringContainsString('Booking portal brief', $this->ask('show drafts')['reply']);
+
+        PmReport::create(['kind' => 'weekly', 'report_date' => now()->startOfWeek()->toDateString(), 'content' => [], 'body' => 'WEEKLY BODY TEXT', 'generated_by' => 'Xenon']);
+        $this->assertStringContainsString('WEEKLY BODY TEXT', $this->ask('latest weekly report')['reply']);
+        $this->assertStringContainsString('No ', $this->ask('daily report')['reply'], 'a missing daily report is reported, not invented');
+        $this->assertStringNotContainsString('WEEKLY BODY TEXT', $this->ask('daily report')['reply']);
+
+        PmQaIssue::create(['created_by' => $this->user->id, 'title' => 'Checkout button dead', 'severity' => 'Critical', 'status' => 'Reported', 'business' => 'RB Hair']);
+        PmQaIssue::create(['created_by' => $this->user->id, 'title' => 'Footer typo', 'severity' => 'Low', 'status' => 'Passed', 'business' => 'RB Hair']);
+        $r = $this->ask('open QA issues')['reply'];
+        $this->assertStringContainsString('Checkout button dead', $r);
+        $this->assertStringNotContainsString('Footer typo', $r, 'passed issues are not open');
+        $this->assertStringContainsString('Checkout button dead', $this->ask('show critical bugs')['reply']);
+
+        $biz = PmBusiness::create(['name' => 'RB Hair', 'slug' => 'rb-hair', 'status' => 'active']);
+        $this->assertStringContainsString('RB Hair', $this->ask('list businesses')['reply']);
+        $this->assertStringContainsString('Checkout button dead', $this->ask('qa issues for rb hair')['reply']);
+
+        PmWaitingClient::create(['title' => 'Logo approval', 'waiting_since' => now()->subDays(4)->toDateString(), 'status' => 'waiting']);
+        $this->assertStringContainsString('waiting 4 days', $this->ask('who is waiting on a client?')['reply']);
+
+        PmContact::create(['name' => 'Ashim Rai', 'email' => 'ashim@example.com']);
+        $this->assertStringContainsString('ashim@example.com', $this->ask("what is Ashim's email?")['reply']);
+    }
+
+    public function test_subtasks_inventory_and_global_search(): void
+    {
+        PmSubtask::create(['external_id' => 'x1', 'project_id' => str_repeat('a', 24), 'project_name' => 'Salon Site', 'task_id' => 't1', 'subtask_id' => 's1', 'parent_title' => 'Fix login bug', 'title' => 'Reproduce on Safari', 'assignee' => 'Sam Lee', 'status' => 'Assigned']);
+        $r = $this->ask('show subtasks for Sam')['reply'];
+        $this->assertStringContainsString('Reproduce on Safari', $r);
+        $this->assertStringContainsString('Fix login bug', $r);
+
+        $r = $this->ask('what do you know?')['reply'];
+        $this->assertStringContainsString('Meeting minutes', $r);
+        $this->assertStringContainsString('QA issues', $r);
+
+        PmDraft::create(['title' => 'Zebra rebrand brief', 'status' => 'draft', 'tickets' => []]);
+        $r = $this->ask('find zebra')['reply'];
+        $this->assertStringContainsString('Zebra rebrand brief', $r, 'search falls through to every other area when no task matches');
+    }
+
+    public function test_unhandled_flag_lets_hybrid_hand_over_to_gemini(): void
+    {
+        config(['services.gemini.key' => 'test', 'pm.assistant.driver' => 'hybrid', 'pm.assistant.provider' => 'gemini']);
+        \Illuminate\Support\Facades\Http::fake(['generativelanguage.googleapis.com/*' => \Illuminate\Support\Facades\Http::response([
+            'candidates' => [['content' => ['parts' => [['text' => 'Gemini says hi']]]]],
+        ])]);
+
+        // something the rules understand never touches Gemini
+        $this->assertStringContainsString('Fix login bug', $this->ask("What's overdue?")['reply']);
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+
+        // gibberish does
+        $r = $this->ask('qwertyuiop zxcvb')['reply'];
+        $this->assertSame('Gemini says hi', $r);
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    public function test_hybrid_survives_gemini_being_down(): void
+    {
+        config(['services.gemini.key' => 'test', 'pm.assistant.driver' => 'hybrid', 'pm.assistant.provider' => 'gemini']);
+        \Illuminate\Support\Facades\Http::fake(['generativelanguage.googleapis.com/*' => \Illuminate\Support\Facades\Http::response(['error' => ['message' => 'quota']], 429)]);
+
+        $r = $this->ask('qwertyuiop zxcvb')['reply'];
+        $this->assertStringContainsString('couldn\'t find anything', $r);
+        $this->assertStringContainsString('limit', $r);
     }
 }
