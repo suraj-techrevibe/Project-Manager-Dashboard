@@ -570,8 +570,8 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         {checklistOpen && active && activeAnswer && (
           <div className={`mt-4 rounded-xl border p-4 text-sm ${TONES[active.tone].panel}`}>
             <b className={TONES[active.tone].head}>{active.title}:</b> {activeAnswer.text}{' '}
-            <button onClick={() => jump('task-list')} className="font-semibold text-slate-900 underline">
-              Jump to the list ↓
+            <button onClick={() => p.onShowTaskList(active.key)} className="font-semibold text-slate-900 underline">
+              Open in All tasks →
             </button>
           </div>
         )}

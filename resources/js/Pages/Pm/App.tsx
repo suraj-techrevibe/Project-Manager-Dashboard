@@ -5,7 +5,7 @@ import QuickSearch from '@/Components/Pm/QuickSearch';
 import AssistantPanel from '@/Components/Pm/AssistantPanel';
 import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
-import AllTasksPanel, { type AllTask } from '@/Components/Pm/AllTasksPanel';
+import type { AllTask } from '@/Components/Pm/AllTasksPanel';
 import TasksPage from '@/Components/Pm/TasksPage';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
@@ -41,7 +41,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [today, setToday] = useState<TodayData | null>(props.flags ? (props as TodayData) : null);
   const [todayError, setTodayError] = useState<string | null>(null);
   const [todayLoading, setTodayLoading] = useState(false);
-    const [showAllTasks, setShowAllTasks] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -51,7 +50,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const [digestText, setDigestText] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [pinnedOnly, setPinnedOnly] = useState(false);
-  const [taskFilter, setTaskFilter] = useState<string | null>(null);
   const [quickSearch, setQuickSearch] = useState('');
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
 
@@ -327,15 +325,15 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onClearAsk={() => setActiveKey(null)}
                   onShowTaskList={(filter) => {
                     if (filter === 'free' || filter === 'overloaded') {
-                      setShowAllTasks(false);
-                      setTaskFilter(null);
                       requestAnimationFrame(() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
                       return;
                     }
-                    const map: Record<string, string> = { blocking: 'blocked', duesoon: 'due_soon', unowned: 'unassigned', stuck: 'stuck', unverified: 'unverified' };
-                    setTaskFilter(map[filter] ?? filter);
-                    setShowAllTasks(true);
-                    requestAnimationFrame(() => document.getElementById('task-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                    // The full task list lives on the All tasks tab — open it with the matching quick filter.
+                    const quick: Record<string, string> = {
+                      blocking: 'blocked', blocked: 'blocked', duesoon: 'week', due_soon: 'week', due_today: 'week',
+                      unowned: 'unassigned', unassigned: 'unassigned', overdue: 'overdue', open: 'open', done_since: 'done',
+                    };
+                    visitPm('tasks', { tq: quick[filter] ?? 'open' });
                   }}
                   onFilter={(type) => {
                     setActiveKey(type === 'blocked' ? 'blocking' : type === 'due_today' ? 'duesoon' : type);
@@ -361,21 +359,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   <summary className="cursor-pointer px-4 py-3 text-sm font-semibold tracking-tight text-slate-900">Meeting follow-ups</summary>
                   <div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div>
                 </details>
-                <div id="task-list" className="scroll-mt-20">
-                  <div className="mb-2 flex justify-end gap-2">
-                    {showAllTasks && <button onClick={() => { setShowAllTasks(false); setTaskFilter(null); }} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">Hide filtered list</button>}
-                    <button onClick={() => visitPm('tasks')} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm hover:bg-slate-50">
-                      {`All tasks${allTasks.length ? ` (${allTasks.length})` : ''} →`}
-                    </button>
-                  </div>
-                  {showAllTasks && <AllTasksPanel tasks={taskFilter ? allTasks.filter((t) => {
-                    if (taskFilter === 'open') return t.status !== 'Completed' && t.status !== 'Cancelled';
-                    if (taskFilter === 'free' || taskFilter === 'overloaded') return true;
-                    if (taskFilter === 'done_since') return t.status === 'Completed';
-                    const ids = new Set(commandCards.filter((c) => c.flags.some((f) => f.type === taskFilter)).map((c) => c.card_id));
-                    return ids.has(t.card_id);
-                  }) : allTasks} onOpenTask={openTask} onBack={() => { setShowAllTasks(false); setTaskFilter(null); }} />}
-                </div>
               </div>
             ) : (
               <div className="rounded-xl border border-slate-200/80 bg-white p-6 text-sm text-slate-500">
