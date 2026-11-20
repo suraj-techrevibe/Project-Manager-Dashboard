@@ -58,7 +58,24 @@ export default function ProjectWorkspace({
     setError(null);
     try {
       const { data } = await pmApi.project(project._id);
-      onChanged(data.project);
+      const refreshedProject = data.project;
+
+      // A transient/incomplete Taskmandu response must not erase tasks that
+      // were already loaded from the project list. Keep the last known tasks
+      // and surface a warning so the API response can be investigated.
+      if (project.tasks.length > 0 && refreshedProject.tasks.length === 0) {
+        console.warn('[PM] Ignoring empty Taskmandu project refresh; preserving existing tasks.', {
+          projectId: project._id,
+          existingTaskCount: project.tasks.length,
+        });
+        onChanged({ ...refreshedProject, tasks: project.tasks });
+        setError(
+          'Taskmandu returned this project without any tasks. Your previously loaded tasks are being kept; try refreshing again later.',
+        );
+        return;
+      }
+
+      onChanged(refreshedProject);
     } catch (e) {
       setError(err(e, "Couldn't refresh this project."));
     } finally {
