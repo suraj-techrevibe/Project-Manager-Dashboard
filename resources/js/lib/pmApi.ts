@@ -31,6 +31,7 @@ import type {
   PmIntakeInput,
   PmIntakeKind,
   AssistantReply,
+  AssistantStatus,
   AssistantActionResult,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
@@ -55,6 +56,7 @@ type P = { project: Project };
 export const pmApi = {
   assistantChat: (messages: { role: 'user' | 'assistant'; content: string }[]) =>
     api.post<AssistantReply>('/assistant/chat', { messages }, { timeout: 150_000 }),
+  assistantStatus: () => api.get<AssistantStatus>('/assistant/status'),
   assistantConfirm: (id: string) => api.post<AssistantActionResult>(`/assistant/actions/${id}/confirm`),
   assistantCancel: (id: string) => api.post<AssistantActionResult>(`/assistant/actions/${id}/cancel`),
   ask: (question: string) => api.post<{ answer: string }>('/ask', { question }),

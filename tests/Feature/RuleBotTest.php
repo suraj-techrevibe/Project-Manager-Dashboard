@@ -327,13 +327,29 @@ class RuleBotTest extends TestCase
         ])]);
 
         // something the rules understand never touches Gemini
-        $this->assertStringContainsString('Fix login bug', $this->ask("What's overdue?")['reply']);
+        $rule = $this->ask("What's overdue?");
+        $this->assertStringContainsString('Fix login bug', $rule['reply']);
+        $this->assertSame('builtin', $rule['engine']);
         \Illuminate\Support\Facades\Http::assertNothingSent();
 
         // gibberish does
-        $r = $this->ask('qwertyuiop zxcvb')['reply'];
-        $this->assertSame('Gemini says hi', $r);
+        $ai = $this->ask('qwertyuiop zxcvb');
+        $this->assertSame('Gemini says hi', $ai['reply']);
+        $this->assertSame('gemini', $ai['engine']);
         \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    public function test_status_says_what_is_answering(): void
+    {
+        config(['pm.assistant.driver' => 'hybrid', 'pm.assistant.provider' => 'gemini', 'services.gemini.key' => null]);
+        $s = $this->actingAs($this->user)->getJson('/pm/api/assistant/status')->assertOk()->json();
+        $this->assertFalse($s['ai_ready']);
+        $this->assertStringContainsString('GEMINI_API_KEY', $s['label']);
+
+        config(['services.gemini.key' => 'k']);
+        $s = $this->actingAs($this->user)->getJson('/pm/api/assistant/status')->json();
+        $this->assertTrue($s['ai_ready']);
+        $this->assertSame('Built-in + Gemini fallback', $s['label']);
     }
 
     public function test_hybrid_survives_gemini_being_down(): void

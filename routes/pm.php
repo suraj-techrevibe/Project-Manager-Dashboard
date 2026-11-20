@@ -33,6 +33,7 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
 Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->group(function () {
     Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
+    Route::get('assistant/status', [PmAssistantController::class, 'status'])->name('assistant.status');
     Route::post('assistant/chat', [PmAssistantController::class, 'chat'])->middleware('throttle:20,1')->name('assistant.chat');
     Route::post('assistant/actions/{action}/confirm', [PmAssistantController::class, 'confirm'])->whereUuid('action')->name('assistant.confirm');
     Route::post('assistant/actions/{action}/cancel', [PmAssistantController::class, 'cancel'])->whereUuid('action')->name('assistant.cancel');

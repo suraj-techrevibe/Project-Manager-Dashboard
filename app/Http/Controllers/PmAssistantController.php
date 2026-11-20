@@ -39,6 +39,11 @@ class PmAssistantController extends Controller
         }
     }
 
+    public function status(): JsonResponse
+    {
+        return response()->json($this->assistant->status());
+    }
+
     public function confirm(Request $request, string $action): JsonResponse
     {
         return $this->handle(fn () => $this->assistant->confirm($action, $request->user()));

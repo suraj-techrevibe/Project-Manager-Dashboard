@@ -1,22 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { pmApi } from '@/lib/pmApi';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { clearChat, loadStatus, runAction, runAll, send, setViewing, useAssistant } from '@/lib/assistantStore';
 import { Icon } from '@/Components/Pm/ui/kit';
-import type { AssistantAction } from '@/types/pm';
-
-interface Msg {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  actions?: AssistantAction[];
-  tools?: string[];
-  suggestions?: string[];
-  error?: boolean;
-  /** Result notes ("✓ Done: …") — shown as a small status line and fed back to the model as context. */
-  note?: boolean;
-}
-
-const STORE = 'pm.assistant.v1';
-const uid = () => Math.random().toString(36).slice(2, 10);
+import type { AssistantAction, AssistantEngine } from '@/types/pm';
 
 const TOOL_LABEL: Record<string, string> = {
   board_overview: 'Checked board overview',
@@ -29,6 +14,8 @@ const TOOL_LABEL: Record<string, string> = {
   list_intakes: 'Checked requests & ideas',
   list_meeting_minutes: 'Searched meeting minutes',
   recent_activity: 'Checked recent activity',
+  lookup_pm_data: 'Looked up PM data',
+  meeting_follow_up: 'Checked meeting follow-up',
 };
 
 const TOOL_NAME: Record<string, string> = {
@@ -43,7 +30,7 @@ const TOOL_NAME: Record<string, string> = {
 };
 
 const SUGGESTIONS: { title: string; items: string[] }[] = [
-  { title: 'Ask', items: ['Give me an overview', "What's overdue?", 'Who has capacity this week?', 'What did we decide in the last meeting?'] },
+  { title: 'Ask', items: ['Give me an overview', "What's overdue?", 'Show meeting templates', 'What did we decide in the last meeting?', 'Open QA issues', 'What do you know?'] },
   { title: 'Do', items: ['Create task "…" in … due friday', 'Mark "…" as done', 'Log a client request: …', 'Move all my overdue tasks to next monday'] },
 ];
 
@@ -139,32 +126,34 @@ function ActionCard({ a, onConfirm, onCancel }: { a: AssistantAction; onConfirm:
   );
 }
 
-/* ---------- panel ---------- */
+/* ---------- who answered ---------- */
 
-export default function AssistantPanel({ active, prefill }: { active: boolean; prefill: { text: string; nonce: number } | null }) {
-  const [messages, setMessages] = useState<Msg[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORE) ?? '[]') as Msg[];
-    } catch {
-      return [];
-    }
-  });
+const ENGINE: Record<AssistantEngine, { label: string; tone: string }> = {
+  builtin: { label: 'Built-in', tone: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  gemini: { label: 'Gemini', tone: 'bg-sky-50 text-sky-700 ring-sky-200' },
+  claude: { label: 'Claude', tone: 'bg-amber-50 text-amber-700 ring-amber-200' },
+};
+
+export function EngineBadge({ engine }: { engine?: AssistantEngine }) {
+  if (!engine || !ENGINE[engine]) return null;
+  return (
+    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${ENGINE[engine].tone}`} title={engine === 'builtin' ? 'Answered by the built-in rules — no AI model' : `Answered by ${ENGINE[engine].label}`}>
+      {ENGINE[engine].label}
+    </span>
+  );
+}
+
+/* ---------- the conversation + composer (shared by the page and the floating bubble) ---------- */
+
+export function ChatBody({ active, compact = false }: { active: boolean; compact?: boolean }) {
+  const { messages, busy } = useAssistant();
   const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
-  const messagesRef = useRef(messages);
-  messagesRef.current = messages;
-  const lastPrefill = useRef<number | null>(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORE, JSON.stringify(messages.slice(-40)));
-    } catch {
-      /* storage full or unavailable — chat still works for this visit */
-    }
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, busy]);
+  }, [messages, busy, active]);
 
   useEffect(() => {
     if (active) field.current?.focus({ preventScroll: true });
@@ -178,56 +167,10 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
-  const patchAction = useCallback((msgId: string, actionId: string, patch: Partial<AssistantAction>) => {
-    setMessages((all) => all.map((m) => (m.id === msgId ? { ...m, actions: m.actions?.map((a) => (a.id === actionId ? { ...a, ...patch } : a)) } : m)));
-  }, []);
-
-  const send = useCallback(
-    async (text: string) => {
-      const q = text.trim();
-      if (!q || busy) return;
-      const next: Msg[] = [...messagesRef.current.filter((m) => !m.error), { id: uid(), role: 'user', content: q }];
-      setMessages(next);
-      setInput('');
-      setBusy(true);
-      try {
-        const history = next.slice(-20).map((m) => ({ role: m.role, content: m.content }));
-        const { data } = await pmApi.assistantChat(history);
-        setMessages((all) => [...all, { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools, suggestions: data.suggestions }]);
-      } catch (e) {
-        const msg = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
-        setMessages((all) => [...all, { id: uid(), role: 'assistant', error: true, content: msg?.error ?? msg?.message ?? "Couldn't reach the assistant. Check your connection and try again." }]);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy]
-  );
-
-  // "Ask the assistant" from the search palette
-  useEffect(() => {
-    if (prefill && prefill.nonce !== lastPrefill.current) {
-      lastPrefill.current = prefill.nonce;
-      void send(prefill.text);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefill]);
-
-  const run = async (msgId: string, a: AssistantAction, kind: 'confirm' | 'cancel') => {
-    patchAction(msgId, a.id, { status: 'running' });
-    try {
-      const { data } = kind === 'confirm' ? await pmApi.assistantConfirm(a.id) : await pmApi.assistantCancel(a.id);
-      patchAction(msgId, a.id, { status: data.status, message: data.message });
-      const line = data.status === 'done' ? `✓ Done: ${a.summary}` : data.status === 'cancelled' ? `Cancelled: ${a.summary}` : `✗ Failed: ${a.summary} — ${data.message}`;
-      setMessages((all) => [...all, { id: uid(), role: 'assistant', content: line, note: true }]);
-    } catch (e) {
-      const err = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Something went wrong.';
-      patchAction(msgId, a.id, { status: 'failed', message: err });
-    }
-  };
-
-  const runAll = async (m: Msg) => {
-    for (const a of m.actions?.filter((x) => x.status === 'pending') ?? []) await run(m.id, a, 'confirm');
+  const submit = (text: string) => {
+    if (!text.trim() || busy) return;
+    setInput('');
+    void send(text);
   };
 
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant' && !m.note)?.id;
@@ -235,43 +178,24 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      void send(input);
+      submit(input);
     }
   };
 
   const empty = messages.length === 0;
+  const groups = compact ? SUGGESTIONS.map((g) => ({ ...g, items: g.items.slice(0, 3) })) : SUGGESTIONS;
 
   return (
-    <section className="mx-auto flex h-[calc(100dvh-8rem)] min-h-[420px] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100">
-            <Icon name="spark" className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-semibold text-slate-900">PM assistant</div>
-            <div className="truncate text-xs text-slate-500">Built-in assistant · reads live data · changes need your confirmation</div>
-          </div>
-        </div>
-        {!empty && (
-          <button
-            type="button"
-            onClick={() => { if (!busy) { setMessages([]); setInput(''); } }}
-            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            disabled={busy}
-          >
-            New chat
-          </button>
-        )}
-      </header>
-
+    <>
       <div ref={scroller} className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 px-3 py-4 sm:px-5" aria-live="polite">
         {empty && (
-          <div className="mx-auto max-w-2xl py-4 sm:py-8">
-            <h2 className="text-lg font-semibold tracking-tight text-slate-900">What do you want to know or do?</h2>
-            <p className="mt-1 text-sm text-slate-500">Ask about tasks, people, projects, requests or meetings in plain English — or tell me to create, assign, update or log things. I'll show every change and wait for your confirmation. Type “help” to see everything I understand.</p>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {SUGGESTIONS.map((g) => (
+          <div className={`mx-auto max-w-2xl ${compact ? 'py-1' : 'py-4 sm:py-8'}`}>
+            <h2 className={`${compact ? 'text-base' : 'text-lg'} font-semibold tracking-tight text-slate-900`}>What do you want to know or do?</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Ask about tasks, people, projects, requests, meetings, templates, reports or QA — or tell me to create, assign, update or log things. I show every change and wait for your confirmation. Type “help” for everything I understand.
+            </p>
+            <div className={`mt-4 grid gap-4 ${compact ? '' : 'sm:grid-cols-2'}`}>
+              {groups.map((g) => (
                 <div key={g.title}>
                   <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g.title}</div>
                   <div className="space-y-1.5">
@@ -279,7 +203,7 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
                       <button
                         key={s}
                         type="button"
-                        onClick={() => (s.includes('…') ? (setInput(s), field.current?.focus()) : void send(s))}
+                        onClick={() => (s.includes('…') ? (setInput(s), field.current?.focus()) : submit(s))}
                         className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50/50"
                       >
                         {s}
@@ -315,6 +239,7 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
                 <div className={`rounded-2xl rounded-tl-md border px-3.5 py-2.5 shadow-sm ${m.error ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white'}`}>
                   {m.error ? <p className="text-sm">{m.content}</p> : <Markdown text={m.content} />}
                 </div>
+                {!m.error && m.engine && <div className="mt-1 pl-1"><EngineBadge engine={m.engine} /></div>}
                 {(m.actions?.filter((a) => a.status === 'pending').length ?? 0) > 1 && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => void runAll(m)} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700">
@@ -324,12 +249,12 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
                   </div>
                 )}
                 {m.actions?.map((a) => (
-                  <ActionCard key={a.id} a={a} onConfirm={() => void run(m.id, a, 'confirm')} onCancel={() => void run(m.id, a, 'cancel')} />
+                  <ActionCard key={a.id} a={a} onConfirm={() => void runAction(m.id, a, 'confirm')} onCancel={() => void runAction(m.id, a, 'cancel')} />
                 ))}
                 {!busy && m.id === lastAssistantId && m.suggestions && m.suggestions.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {m.suggestions.map((s) => (
-                      <button key={s} type="button" onClick={() => void send(s)} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700">
+                      <button key={s} type="button" onClick={() => submit(s)} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700">
                         {s}
                       </button>
                     ))}
@@ -351,7 +276,7 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
       </div>
 
       <form
-        onSubmit={(e) => { e.preventDefault(); void send(input); }}
+        onSubmit={(e) => { e.preventDefault(); submit(input); }}
         className="border-t border-slate-100 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-end gap-2 rounded-xl border border-slate-200 bg-white p-1.5 focus-within:border-indigo-400 focus-within:ring-1 focus-within:ring-indigo-400">
@@ -374,8 +299,46 @@ export default function AssistantPanel({ active, prefill }: { active: boolean; p
             <Icon name="send" className="h-4 w-4" />
           </button>
         </div>
-        <p className="mt-1.5 px-1 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line. Always check a change before you confirm it.</p>
+        {!compact && <p className="mt-1.5 px-1 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line. Always check a change before you confirm it.</p>}
       </form>
+    </>
+  );
+}
+
+/* ---------- full page ---------- */
+
+export default function AssistantPanel({ active }: { active: boolean }) {
+  const { messages, busy, status } = useAssistant();
+
+  useEffect(() => {
+    void loadStatus();
+  }, []);
+
+  // While this page is showing, the floating bubble steps aside.
+  useEffect(() => {
+    setViewing(active);
+    return () => setViewing(false);
+  }, [active]);
+
+  return (
+    <section className="mx-auto flex h-[calc(100dvh-8rem)] min-h-[420px] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100">
+            <Icon name="spark" className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-sm font-semibold text-slate-900">PM assistant</div>
+            <div className="truncate text-xs text-slate-500">{status?.label ?? 'Built-in assistant'} · reads live data · changes need your confirmation</div>
+          </div>
+        </div>
+        {messages.length > 0 && (
+          <button type="button" onClick={clearChat} disabled={busy} className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            New chat
+          </button>
+        )}
+      </header>
+      <ChatBody active={active} />
     </section>
   );
 }

@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import ScrollToTop from '@/Components/ScrollToTop';
+import AssistantBubble from '@/Components/Pm/AssistantBubble';
 import { Icon } from '@/Components/Pm/ui/kit';
 import { PM_PAGES, visitPm, type PmPage } from '@/lib/pmNav';
 
@@ -180,7 +181,8 @@ export default function PmShell({ page, attention = 0, onOpenSearch, children }:
         <main className="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">{children}</main>
       </div>
 
-      <ScrollToTop />
+      <ScrollToTop raised />
+      <AssistantBubble hidden={page === 'assistant'} />
     </div>
   );
 }

@@ -80,14 +80,14 @@ TXT;
         $aiReady = $this->aiReady();
 
         if ($driver === 'ai' && $aiReady) {
-            return $this->chatWithAi($clean, $user);
+            return $this->chatWithAi($clean, $user) + ['engine' => $this->engineName()];
         }
 
         $bot = app(RuleBot::class)->respond($clean, $user, fn (string $tool, array $args, User $u) => $this->queue($tool, $args, $u));
 
         if ($driver === 'hybrid' && $aiReady && ($bot['unhandled'] ?? false) && empty($bot['actions'])) {
             try {
-                return $this->chatWithAi($clean, $user) + ['suggestions' => []];
+                return $this->chatWithAi($clean, $user) + ['suggestions' => [], 'engine' => $this->engineName()];
             } catch (\Throwable $e) {
                 report($e);
                 $bot['reply'] .= "\n\n*(I also tried the AI model but it isn't available right now: ".Str::limit($e->getMessage(), 140).')*';
@@ -95,7 +95,30 @@ TXT;
         }
         unset($bot['unhandled']);
 
-        return $bot;
+        return $bot + ['engine' => 'builtin'];
+    }
+
+    private function engineName(): string
+    {
+        return config('pm.assistant.provider', 'gemini') === 'anthropic' ? 'claude' : 'gemini';
+    }
+
+    /** What is answering right now — shown in the chat header so it is never a mystery. */
+    public function status(): array
+    {
+        $driver = config('pm.assistant.driver', 'hybrid');
+        $ready = $this->aiReady();
+        $ai = $this->engineName() === 'claude' ? 'Claude' : 'Gemini';
+        $envKey = $this->engineName() === 'claude' ? 'ANTHROPIC_API_KEY' : 'GEMINI_API_KEY';
+
+        $label = match (true) {
+            $driver === 'builtin' => 'Built-in assistant only',
+            ! $ready => "Built-in assistant only — {$ai} is off (no {$envKey})",
+            $driver === 'ai' => $ai,
+            default => "Built-in + {$ai} fallback",
+        };
+
+        return ['driver' => $driver, 'provider' => $this->engineName(), 'ai_ready' => $ready && $driver !== 'builtin', 'label' => $label];
     }
 
     private function aiReady(): bool
