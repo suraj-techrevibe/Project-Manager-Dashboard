@@ -33,7 +33,7 @@ class GeminiClient
         if (! $key) {
             throw new RuntimeException('The assistant needs a Gemini key — set GEMINI_API_KEY in .env');
         }
-        $model = config('services.gemini.model', 'gemini-2.5-flash');
+        $model = config('services.gemini.model', 'gemini-3.8-flash');
 
         $payload = [
             'systemInstruction' => ['parts' => [['text' => 'Today is '.now()->toFormattedDateString().".\n\n".$system]]],
@@ -60,6 +60,9 @@ class GeminiClient
         }
         if (in_array($res->status(), [400, 401, 403], true) && str_contains(Str::lower((string) $res->json('error.message')), 'api key')) {
             throw new RuntimeException('Gemini rejected the key — check GEMINI_API_KEY.');
+        }
+        if ($res->status() === 404) {
+            throw new RuntimeException("Gemini model '{$model}' isn't available — set GEMINI_MODEL to a current model (Google's message: ".Str::limit((string) $res->json('error.message'), 160).')');
         }
         if ($res->failed()) {
             throw new RuntimeException('Gemini request failed ('.$res->status().'): '.$res->json('error.message', 'unknown error'));
