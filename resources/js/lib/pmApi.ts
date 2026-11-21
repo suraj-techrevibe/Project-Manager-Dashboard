@@ -5,6 +5,7 @@ import type {
   PushTicket,
   PushResult,
   Report,
+  ReportContent,
   ScopeItem,
   GitStatus,
   PullRequest,
@@ -132,6 +133,8 @@ export const pmApi = {
     api.post<{ report: Report; warning: string | null }>('/reports', { date, notes: notes || null, sync, kind }),
 
   deleteReport: (id: number) => api.delete(`/reports/${id}`),
+
+  updateReport: (id: number, content: ReportContent, notes?: string | null) => api.patch<{ report: Report }>(`/reports/${id}`, { content, notes }),
 
   scopeCheck: (brief: string, message: string) =>
     api.post<{ items: ScopeItem[] }>('/scope', { brief, message }),
