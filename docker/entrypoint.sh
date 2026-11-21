@@ -15,11 +15,13 @@ fi
 # Wait for the database before migrating (DB container can take a moment to accept connections).
 if [ "${DB_CONNECTION}" = "mysql" ] || [ "${DB_CONNECTION}" = "pgsql" ]; then
     echo "Waiting for database at ${DB_HOST}:${DB_PORT}..."
-    for i in $(seq 1 30); do
+    # Back off between attempts: hammering a pooler with failed logins can trip its circuit breaker
+    # ("too many authentication failures") and lock the app out for minutes.
+    for i in $(seq 1 8); do
         if php /var/www/html/artisan db:show > /dev/null 2>&1; then
             break
         fi
-        sleep 2
+        sleep $((i * 3))
     done
 fi
 

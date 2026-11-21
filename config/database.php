@@ -96,6 +96,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'prefer',
+            // Needed when connecting through Supabase's transaction pooler (port 6543), which
+            // doesn't support server-side prepared statements. Off unless DB_EMULATE_PREPARES=true.
+            'options' => env('DB_EMULATE_PREPARES', false) ? [\PDO::ATTR_EMULATE_PREPARES => true] : [],
         ],
 
         'sqlsrv' => [
