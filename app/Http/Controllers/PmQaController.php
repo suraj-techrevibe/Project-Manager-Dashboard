@@ -153,29 +153,29 @@ class PmQaController extends Controller
             : (($fallback && $this->ai->configured($fallback)) ? $fallback : null);
 
         if ($provider === null) {
-            throw new \\RuntimeException('QA note organisation is unavailable. Configure GROQ_API_KEY or OPENROUTER_API_KEY in your Render environment settings.');
+            throw new \RuntimeException('QA note organisation is unavailable. Configure GROQ_API_KEY or OPENROUTER_API_KEY in your Render environment settings.');
         }
 
         $messages = [['role' => 'user', 'content' => $prompt]];
         try {
-            $response = $this->ai->converse($provider, $system."\\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
+            $response = $this->ai->converse($provider, $system."\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
         } catch (AiProviderUnavailableException $e) {
             if ($provider !== 'groq' || !$fallback || !$this->ai->configured($fallback)) {
-                throw new \\RuntimeException(ucfirst($provider).' is temporarily unavailable: '.$e->getMessage(), 0, $e);
+                throw new \RuntimeException(ucfirst($provider).' is temporarily unavailable: '.$e->getMessage(), 0, $e);
             }
-            \\Illuminate\\Support\\Facades\\Log::warning('QA quick capture switched to OpenRouter after Groq became unavailable.', ['reason' => $e->getMessage()]);
-            $response = $this->ai->converse($fallback, $system."\\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
+            \Illuminate\Support\Facades\Log::warning('QA quick capture switched to OpenRouter after Groq became unavailable.', ['reason' => $e->getMessage()]);
+            $response = $this->ai->converse($fallback, $system."\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
         }
 
-        $raw = collect($response['content'] ?? [])->where('type', 'text')->pluck('text')->implode("\\n");
+        $raw = collect($response['content'] ?? [])->where('type', 'text')->pluck('text')->implode("\n");
         $raw = trim(preg_replace('/^\x60{3}(?:json)?\\s*|\\s*\x60{3}$/m', '', trim($raw)));
         try {
             $out = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
-        } catch (\\JsonException) {
-            throw new \\RuntimeException("The AI provider returned an unreadable draft. Try again or shorten your notes.");
+        } catch (\JsonException) {
+            throw new \RuntimeException("The AI provider returned an unreadable draft. Try again or shorten your notes.");
         }
         if (!is_array($out)) {
-            throw new \\RuntimeException("The AI provider returned an invalid draft. Please try again.");
+            throw new \RuntimeException("The AI provider returned an invalid draft. Please try again.");
         }
         $allowedSeverity = ['Critical', 'High', 'Medium', 'Low'];
         $allowedTypes = ['Bug', 'UI/UX', 'Content', 'Performance', 'Functional', 'Enhancement', 'Observation'];
