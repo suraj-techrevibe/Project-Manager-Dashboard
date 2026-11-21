@@ -95,7 +95,7 @@ export default function DailyChecklistPanel({
   const sync = today?.operations_summary?.sync;
   const syncAt = sync?.last_synced_at ?? today?.lastSyncedAt ?? null;
   const syncAge = syncAt ? Date.now() - new Date(syncAt).getTime() : null;
-  const syncFresh = Boolean(sync?.configured && syncAt && syncAge !== null && syncAge <= 15 * 60_000 && !sync?.error && !sync?.warning && !error);
+  const syncFresh = Boolean(sync?.configured && syncAt && syncAge !== null && syncAge <= 15 * 60_000 && !sync?.error && !sync?.warning && !error && !qaError && !qaLoading);
   const awaitingQa = qaReviews?.filter((r) => r.qa_status === 'Awaiting QA' && ['Completed', 'Review'].includes(r.task_status)).length ?? null;
   const failedQa = qaReviews?.filter((r) => r.qa_status === 'Failed').length ?? null;
   const overloaded = today?.workload.filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length ?? null;
@@ -103,7 +103,7 @@ export default function DailyChecklistPanel({
 
   const toggle = (id: string) => setChecked((current) => ({ ...current, [id]: !current[id] }));
   const reset = () => setChecked({});
-  const statusLabel = error ? 'Dashboard data unavailable' : loading ? 'Loading live overview…' : !today ? 'Live overview not loaded' : syncFresh ? 'Taskmandu sync healthy' : 'System needs attention';
+  const statusLabel = error ? 'Dashboard data unavailable' : loading || qaLoading ? 'Checking live systems…' : qaError ? 'QA data unavailable' : !today ? 'Live overview not loaded' : syncFresh ? 'Taskmandu sync and QA healthy' : 'System needs attention';
   const statusTone = error || (!loading && today && !syncFresh) ? 'border-amber-200 bg-amber-50 text-amber-800' : syncFresh ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-600';
 
   return (
@@ -118,10 +118,11 @@ export default function DailyChecklistPanel({
           <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${statusTone}`}>{statusLabel}</span>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
           <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Tasks overdue</div><div className="mt-1 text-xl font-semibold tabular-nums">{today?.metrics.overdue ?? '—'}</div><button onClick={() => onNavigate('tasks', { tq: 'overdue' })} className="mt-1 text-xs font-semibold text-indigo-600">Open overdue →</button></div>
           <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Blocked tasks</div><div className="mt-1 text-xl font-semibold tabular-nums">{today?.metrics.blocked ?? '—'}</div><button onClick={() => onNavigate('tasks', { tq: 'blocked' })} className="mt-1 text-xs font-semibold text-indigo-600">Open blocked →</button></div>
           <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Awaiting QA</div><div className="mt-1 text-xl font-semibold tabular-nums">{qaLoading ? '…' : qaReviews ? awaitingQa : '—'}</div><button onClick={() => onNavigate('qa')} className="mt-1 text-xs font-semibold text-indigo-600">Open QA Inbox →</button></div>
+          <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Failed / retest QA</div><div className="mt-1 text-xl font-semibold tabular-nums">{qaLoading ? '…' : qaReviews ? failedQa : '—'}</div><button onClick={() => onNavigate('qa')} className="mt-1 text-xs font-semibold text-indigo-600">Review failures →</button></div>
           <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Developers over capacity</div><div className="mt-1 text-xl font-semibold tabular-nums">{overloaded ?? '—'}</div><button onClick={() => onNavigate('today')} className="mt-1 text-xs font-semibold text-indigo-600">Open workload →</button></div>
         </div>
 
