@@ -301,8 +301,8 @@ class ReportService
         $businessSummary = [];
         $completedByBusiness = [];
         $projectGroups = $cards->whereNotNull('project_id')->groupBy(fn ($card) => (string) $card->project_id);
-        $qaReviews = \\App\\Models\\PmQaTaskReview::query()->get()->groupBy(fn ($review) => (string) $review->project_id.':'.(string) $review->task_id);
-        $subtaskGroups = \\App\\Models\\PmSubtask::query()->get()->groupBy(fn ($subtask) => (string) $subtask->project_id.':'.(string) $subtask->task_id);
+        $qaReviews = \App\Models\PmQaTaskReview::query()->get()->groupBy(fn ($review) => (string) $review->project_id.':'.(string) $review->task_id);
+        $subtaskGroups = \App\Models\PmSubtask::query()->get()->groupBy(fn ($subtask) => (string) $subtask->project_id.':'.(string) $subtask->task_id);
 
         foreach ($projectGroups as $projectId => $projectCards) {
             $projectName = $projectCards->first()->project_name ?: 'Unnamed project';
