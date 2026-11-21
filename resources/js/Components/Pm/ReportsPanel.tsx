@@ -426,7 +426,7 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
           {report.generated_at && <>{meta ? ' · ' : ''}generated {new Date(report.generated_at).toLocaleString()}</>}
         </p>
         <div className="flex gap-1.5">
-          {report.content.kind && (
+          {report.content.kind && report.content.kind !== 'pack' && (
             <button onClick={() => onCopy('update')} className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700" title="Just the Update section — the one to send to your boss">
               {copied === 'update' ? 'Copied ✓' : 'Copy update'}
             </button>
@@ -453,11 +453,18 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
             <div className="mt-3">{c.kind === 'daily' ? <DailyDetails c={c} /> : <WeeklyDetails c={c} />}</div>
           </details>
         </>
+      ) : c.kind === 'pack' ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <h3 className="text-base font-semibold text-slate-900">{c.title}</h3>
+            <p className="mt-1 text-xs text-slate-500">Period: {c.period?.from} to {c.period?.to}</p>
+            <div className="mt-2 flex flex-wrap gap-2">{Object.entries(c.summary || {}).map(([key,value])=><span key={key} className="rounded-md bg-white px-2 py-1 text-xs text-slate-600">{key.replaceAll('_',' ')}: <strong>{String(value)}</strong></span>)}</div>
+          </div>
+          <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 font-sans text-xs text-slate-700">{report.body}</pre>
+        </div>
       ) : (
         <>
-          <div className="mb-2 rounded-md bg-amber-50 p-2 text-xs text-amber-700">
-            This report was made in the old format. Generate it again for this date to get the new layout.
-          </div>
+          <div className="mb-2 rounded-md bg-amber-50 p-2 text-xs text-amber-700">This report was made in the old format. Generate it again for this date to get the new layout.</div>
           <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700">{report.body}</pre>
         </>
       )}
@@ -495,7 +502,8 @@ export default function ReportsPanel() {
   const [copied, setCopied] = useState<{ id: number; part: 'update' | 'full' } | null>(null);
   const [reportType,setReportType]=useState<'daily'|'weekly'|'range'>('daily');
   const [savedSearch,setSavedSearch]=useState('');
-  const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'>('all');
+  const [savedPeriodFilter,setSavedPeriodFilter]=useState<'all'|'daily'|'weekly'|'date_range'>('all');
+  const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'|'qa'|'minutes'|'performance'>('all');
   const [editId,setEditId]=useState<number|null>(null);
   const [editJson,setEditJson]=useState('');
   const [editNotes,setEditNotes]=useState('');
@@ -529,9 +537,9 @@ export default function ReportsPanel() {
     setPeriodError(null);
     setListError(null);
     try {
-      const { data } = await pmApi.reportPeriod(periodFrom, periodTo);
+      const [{ data }, { data: archive }] = await Promise.all([pmApi.reportPeriod(periodFrom, periodTo), pmApi.reports()]);
       setPeriodData(data);
-      setReports(sorted(data.saved_reports ?? []));
+      setReports(sorted(archive.reports ?? data.saved_reports ?? []));
     } catch (e) {
       const message = errorText(e, "Couldn't load reports for this date range.");
       setPeriodError(message);
@@ -575,6 +583,22 @@ export default function ReportsPanel() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  async function generatePack() {
+    setGenError(null); setWarning(null); setGenerating(true);
+    try {
+      const payload = reportType === 'range'
+        ? { period_type: 'date_range' as const, from: periodFrom, to: periodTo, sync }
+        : { period_type: reportType, date, sync };
+      const { data } = await pmApi.generateReportPack(payload);
+      setReports(prev => sorted([...data.reports, ...prev.filter(old => !data.reports.some((fresh: Report) => fresh.id === old.id))]));
+      setOpenIds(prev => new Set([...prev, ...data.reports.map((r: Report) => r.id)]));
+      setSavedFilter('all');
+      setWarning(data.warning);
+    } catch (e) {
+      setGenError(errorText(e, "Couldn't generate the report pack."));
+    } finally { setGenerating(false); }
   }
 
   async function remove(r: Report) {
@@ -778,9 +802,11 @@ export default function ReportsPanel() {
       </UiSection>
 
 
-      <UiSection id="report-new" title="Generate a report" subtitle="Choose one report type. Only the selected report is generated." tone="brand">
-        <div className="flex flex-wrap gap-2">{(['daily','weekly','range'] as const).map(k=><button key={k} onClick={()=>{setReportType(k);if(k!=='range')setKind(k);}} className={btnChip(reportType===k)}>{k==='range'?'Date range':k==='daily'?'Daily':'Weekly'}</button>)}</div>
-        {reportType!=='range'?<div className="mt-3 flex flex-col gap-3 sm:flex-row"><label className="text-xs text-slate-500">Date<input type="date" max={todayStr()} value={date} onChange={e=>setDate(e.target.value||todayStr())} className={inputCls+' mt-1 block'}/>{reportType==='weekly'&&<span className="block mt-1">Choose any day in the week.</span>}</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} placeholder="Optional operational notes, blockers, decisions, or planned work…" className={inputCls+' min-w-0 flex-1 resize-y'}/><label className="flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={sync} onChange={e=>setSync(e.target.checked)}/>Sync Taskmandu first</label><button onClick={()=>void generate()} disabled={generating} className={btnPrimary}>{generating?'Generating…':existing?'Regenerate report':'Generate report'}</button></div>:<div className="mt-3 flex flex-wrap items-end gap-3"><label className="text-xs text-slate-500">From<input type="date" value={periodFrom} max={periodTo} onChange={e=>setPeriodFrom(e.target.value)} className={inputCls+' mt-1 block'}/></label><label className="text-xs text-slate-500">To<input type="date" value={periodTo} min={periodFrom} max={todayStr()} onChange={e=>setPeriodTo(e.target.value)} className={inputCls+' mt-1 block'}/></label><button onClick={()=>void loadPeriod()} disabled={periodLoading} className={btnPrimary}>{periodLoading?'Loading analysis…':'Generate date-range analysis'}</button><p className="text-xs text-slate-500">Uses the analysis centre below. This date-range analysis is not stored as a daily/weekly snapshot.</p></div>}
+      <UiSection id="report-new" title="Generate report pack" subtitle="Choose a period. One click creates three separate saved reports." tone="brand">
+        <div className="flex flex-wrap gap-2">{(['daily','weekly','range'] as const).map(k=><button key={k} onClick={()=>setReportType(k)} className={btnChip(reportType===k)}>{k==='range'?'Date range':k==='daily'?'Daily':'Weekly'}</button>)}</div>
+        {reportType !== 'range' ? <label className="mt-3 block text-xs text-slate-500">{reportType === 'weekly' ? 'Choose any date in the week' : 'Report date'}<input type="date" max={todayStr()} value={date} onChange={e=>setDate(e.target.value||todayStr())} className={inputCls+' mt-1 block'}/></label> : <div className="mt-3 flex flex-wrap gap-3"><label className="text-xs text-slate-500">From<input type="date" value={periodFrom} max={periodTo} onChange={e=>setPeriodFrom(e.target.value)} className={inputCls+' mt-1 block'}/></label><label className="text-xs text-slate-500">To<input type="date" value={periodTo} min={periodFrom} max={todayStr()} onChange={e=>setPeriodTo(e.target.value)} className={inputCls+' mt-1 block'}/></label></div>}
+        <div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-lg border p-3"><strong className="text-sm">QA Report</strong><p className="text-xs text-slate-500">Findings, severity, pass/fail and fixes.</p></div><div className="rounded-lg border p-3"><strong className="text-sm">Meeting Minutes</strong><p className="text-xs text-slate-500">Meetings, decisions, actions and follow-ups.</p></div><div className="rounded-lg border p-3"><strong className="text-sm">Tasks &amp; Performance</strong><p className="text-xs text-slate-500">Task progress, business, project and team activity.</p></div></div>
+        <div className="mt-3 flex flex-wrap items-center gap-3"><label className="flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={sync} onChange={e=>setSync(e.target.checked)}/>Sync Taskmandu first</label><button onClick={()=>void generatePack()} disabled={generating} className={btnPrimary}>{generating?'Generating three reports…':'Generate report pack'}</button></div>
         {genError&&<Notice tone="danger">{genError}</Notice>}{warning&&<Notice tone="warn">{warning}</Notice>}
       </UiSection>
 
@@ -798,7 +824,7 @@ export default function ReportsPanel() {
           ) : undefined
         }
       >
-        <div className="mb-3 flex flex-wrap gap-2"><input value={savedSearch} onChange={e=>setSavedSearch(e.target.value)} placeholder="Search saved reports…" className={inputCls+" min-w-[12rem] flex-1"}/><select value={savedFilter} onChange={e=>setSavedFilter(e.target.value as any)} className={inputCls}><option value="all">All report types</option><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>
+        <div className="mb-3 flex flex-wrap gap-2"><input value={savedSearch} onChange={e=>setSavedSearch(e.target.value)} placeholder="Search saved reports…" className={inputCls+" min-w-[12rem] flex-1"}/><select value={savedFilter} onChange={e=>setSavedFilter(e.target.value as any)} className={inputCls}><option value="all">All report types</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="qa">QA Report</option><option value="minutes">Meeting Minutes</option><option value="performance">Tasks &amp; Performance</option></select><select value={savedPeriodFilter} onChange={e=>setSavedPeriodFilter(e.target.value as any)} className={inputCls}><option value="all">All periods</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="date_range">Date range</option></select></div>
         {loadingList ? (
           <p className="text-sm text-slate-400">Loading…</p>
         ) : listError ? (
@@ -812,7 +838,7 @@ export default function ReportsPanel() {
           <EmptyState title="No reports yet">Generate one above — after that, a daily report is also created each weekday evening and a weekly one on Fridays.</EmptyState>
         ) : (
           <div className="flex flex-col gap-2">
-            {reports.filter(r=>(savedFilter==='all'||r.kind===savedFilter)&&(`${r.report_date} ${r.kind} ${r.content?.summary_text||''} ${r.notes||''}`).toLowerCase().includes(savedSearch.toLowerCase())).map((r) => {
+            {reports.filter(r=>(savedFilter==='all'||r.kind===savedFilter)&&(savedPeriodFilter==='all'||r.period_type===savedPeriodFilter)&&(`${r.report_date} ${r.period_end||''} ${r.kind} ${JSON.stringify(r.content||{})} ${r.notes||''}`).toLowerCase().includes(savedSearch.toLowerCase())).map((r) => {
               const open = openIds.has(r.id);
               return (
                 <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-slate-300">
@@ -820,11 +846,11 @@ export default function ReportsPanel() {
                     <span className={`text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-slate-900">{r.kind === 'weekly' ? `Week of ${niceDate(r.report_date)}` : niceDate(r.report_date)}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.kind === 'weekly' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>{r.kind}</span>
+                        <span className="text-sm font-medium text-slate-900">{r.period_end && r.period_end !== r.report_date ? `${niceDate(r.report_date)} – ${niceDate(r.period_end)}` : r.kind === 'weekly' ? `Week of ${niceDate(r.report_date)}` : niceDate(r.report_date)}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.kind === 'weekly' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>{r.kind === 'qa' ? 'QA Report' : r.kind === 'minutes' ? 'Meeting Minutes' : r.kind === 'performance' ? 'Tasks & Performance' : r.kind}</span>
                         {r.auto && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">auto</span>}
                       </span>
-                      <span className="block truncate text-xs text-slate-400">{r.content.summary_text}</span>
+                      <span className="block truncate text-xs text-slate-400">{r.content.summary_text || r.content.title || `Reporting period: ${r.period_type || r.kind}`}</span>
                     </span>
                     <span className="hidden flex-wrap justify-end gap-1 md:flex">
                       {(r.content.pills ?? []).map((p) => (
