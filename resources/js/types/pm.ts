@@ -97,7 +97,7 @@ export interface DailyContent extends ReportCommon { kind:'daily'; summary:{comp
 export interface WeeklyContent extends ReportCommon { kind:'weekly'; summary:{completed:number;prev_completed:number;new_tasks:number;prev_new_tasks:number;blocked:number;overdue:number;in_progress:number}; business_summary?:{business:string;completed:number;qa_pending:number;qa_accepted:number;open:number;in_progress:number;blocked:number;overdue:number;subtasks_total?:number;subtasks_completed?:number}[]; completed_by_business?:{business:string;items:ReportItem[]}[]; completed_by_project:{project:string;items:ReportItem[]}[]; in_progress:ReportItem[]; blocked:ReportItem[]; overdue:ReportItem[]; team:{name:string;completed:number;open:number;in_progress:number;blocked:number;overdue:number}[]; }
 export interface LegacyContent { kind?:undefined; label:string; summary_text:string; pills?:ReportPill[]; }
 export type ReportContent=DailyContent|WeeklyContent|LegacyContent;
-export interface Report { id:number; kind:'daily'|'weekly'; report_date:string; auto:boolean; generated_by:string|null; generated_at:string|null; notes:string|null; body:string; content:ReportContent; }
+export interface Report { id:number; kind:'daily'|'weekly'|'qa'|'minutes'|'performance'; report_type?:'daily'|'weekly'|'qa'|'minutes'|'performance'; period_type?:'daily'|'weekly'|'date_range'|null; period_end?:string|null; report_date:string; auto:boolean; generated_by:string|null; generated_at:string|null; notes:string|null; body:string; content:any; }
 export interface Contact { name:string; designation?:string|null; email:string; }
 export interface SendEmailInput { to:string[]; subject:string; body:string; card_id?:number; }
 
