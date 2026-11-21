@@ -123,6 +123,8 @@ export const pmApi = {
 
   reportOverview: () => api.get<any>('/reports/overview'),
 
+  reportPeriod: (from: string, to: string) => api.get<any>('/reports/period', { params: { from, to } }),
+
   reports: () => api.get<{ reports: Report[] }>('/reports'),
 
   /** date = YYYY-MM-DD (defaults to today server-side); notes = custom text to split into the template. */
