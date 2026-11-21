@@ -82,7 +82,7 @@ class ReportController extends Controller
                     'status' => $card->status, 'assignee' => $card->assignee,
                     'due_at' => $card->due_at?->toDateString(), 'url' => $card->url,
                     'subtasks' => $children,
-                    'subtasks_total' => $children->count(),
+                    'subtasks_total' => $children->where('status', '!=', 'Cancelled')->count(),
                     'subtasks_completed' => $children->where('status', 'Completed')->count(),
                     'qa_status' => $qa?->qa_status ?? null,
                     'qa_cycle' => $qa?->cycle ?? null,
