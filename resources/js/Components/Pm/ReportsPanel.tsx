@@ -329,6 +329,7 @@ function healthTone(health: string): string {
 
 function ExecutiveBrief({ c }: { c: DailyContent | WeeklyContent }) {
   const e = c.executive;
+  if (!e) return null;
   const t = e.totals;
   const healthBar = (value: number, color: string) => (
     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
