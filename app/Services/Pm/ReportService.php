@@ -296,54 +296,41 @@ class ReportService
         }
         $team = collect($rows)->sortBy([fn ($a, $b) => $b['completed'] <=> $a['completed'], fn ($a, $b) => $b['open'] <=> $a['open']])->values()->all();
 
-        // Business-wise view: map each Taskmandu project to the business that owns it.
-        // This is a reporting layer only; it does not change task assignment or Kanban workflow.
+        // Business = Taskmandu project, matching the current project scope switcher.
+        // Do not rely on the legacy optional PmBusiness directory for report coverage.
         $businessSummary = [];
         $completedByBusiness = [];
-        $assignedProjectIds = [];
-        $businesses = PmBusiness::query()->with('projectLinks')->orderBy('name')->get();
+        $projectGroups = $cards->whereNotNull('project_id')->groupBy(fn ($card) => (string) $card->project_id);
+        $qaReviews = \\App\\Models\\PmQaTaskReview::query()->get()->groupBy(fn ($review) => (string) $review->project_id.':'.(string) $review->task_id);
+        $subtaskGroups = \\App\\Models\\PmSubtask::query()->get()->groupBy(fn ($subtask) => (string) $subtask->project_id.':'.(string) $subtask->task_id);
 
-        foreach ($businesses as $business) {
-            $projectIds = $business->projectLinks->pluck('project_id')->map(fn ($id) => (string) $id)->all();
-            $assignedProjectIds = array_merge($assignedProjectIds, $projectIds);
-            $businessCards = $cards->filter(fn ($card) => in_array((string) $card->project_id, $projectIds, true));
-            $businessOpen = $businessCards->reject(fn ($card) => in_array($card->status, self::OPEN_EXCLUDED, true));
-            $businessCompleted = $completed->values()
-                ->filter(fn ($item) => in_array((string) ($item['project_id'] ?? ''), $projectIds, true))
-                ->values();
-
+        foreach ($projectGroups as $projectId => $projectCards) {
+            $projectName = $projectCards->first()->project_name ?: 'Unnamed project';
+            $projectOpen = $projectCards->reject(fn ($card) => in_array($card->status, self::OPEN_EXCLUDED, true));
+            $projectCompleted = $completed->values()->filter(fn ($item) => (string) ($item['project_id'] ?? '') === (string) $projectId)->values();
+            $reviewRows = $qaReviews->filter(fn ($rows, $key) => str_starts_with($key, (string) $projectId.':'))->flatten();
+            $subtaskRows = $subtaskGroups->filter(fn ($rows, $key) => str_starts_with($key, (string) $projectId.':'))->flatten();
             $businessSummary[] = [
-                'business' => $business->name,
-                'completed' => $businessCompleted->count(),
-                'qa_pending' => $businessCards->where('status', 'Completed')->filter(fn ($card) => ! $card->verified)->count(),
-                'qa_accepted' => $businessCards->where('status', 'Completed')->filter(fn ($card) => (bool) $card->verified)->count(),
-                'open' => $businessOpen->count(),
-                'in_progress' => $businessOpen->where('status', 'In Progress')->count(),
-                'blocked' => $businessOpen->where('status', 'Blocked')->count(),
-                'overdue' => $businessOpen->filter(fn ($card) => $card->due_at && $card->due_at->lt($asOf->copy()->startOfDay()))->count(),
+                'business' => $projectName,
+                'completed' => $projectCompleted->count(),
+                'qa_pending' => $reviewRows->where('qa_status', 'Awaiting QA')->count(),
+                'qa_accepted' => $reviewRows->where('qa_status', 'Passed')->count(),
+                'open' => $projectOpen->count(),
+                'in_progress' => $projectOpen->where('status', 'In Progress')->count(),
+                'blocked' => $projectOpen->where('status', 'Blocked')->count(),
+                'overdue' => $projectOpen->filter(fn ($card) => $card->due_at && $card->due_at->lt($asOf->copy()->startOfDay()))->count(),
+                'subtasks_total' => $subtaskRows->reject(fn ($subtask) => $subtask->status === 'Cancelled')->count(),
+                'subtasks_completed' => $subtaskRows->where('status', 'Completed')->count(),
             ];
-
-            if ($businessCompleted->isNotEmpty()) {
-                $completedByBusiness[] = ['business' => $business->name, 'items' => $businessCompleted->all()];
+            if ($projectCompleted->isNotEmpty()) {
+                $completedByBusiness[] = ['business' => $projectName, 'items' => $projectCompleted->all()];
             }
         }
 
-        // Keep work without a business/project link visible instead of silently dropping it.
-        $unassignedCompleted = $completed->values()
-            ->filter(fn ($item) => ! in_array((string) ($item['project_id'] ?? ''), $assignedProjectIds, true))
-            ->values();
-        if ($unassignedCompleted->isNotEmpty()) {
-            $completedByBusiness[] = ['business' => 'Unassigned / shared', 'items' => $unassignedCompleted->all()];
-            $businessSummary[] = [
-                'business' => 'Unassigned / shared',
-                'completed' => $unassignedCompleted->count(),
-                'qa_pending' => 0,
-                'qa_accepted' => 0,
-                'open' => 0,
-                'in_progress' => 0,
-                'blocked' => 0,
-                'overdue' => 0,
-            ];
+        // Keep standalone tasks visible as a separate group; they are not a business.
+        $standaloneCompleted = $completed->values()->filter(fn ($item) => empty($item['project_id']))->values();
+        if ($standaloneCompleted->isNotEmpty()) {
+            $completedByBusiness[] = ['business' => 'Standalone / shared', 'items' => $standaloneCompleted->all()];
         }
 
         // Next week.
