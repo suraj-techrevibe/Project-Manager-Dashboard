@@ -1,11 +1,11 @@
 <?php
 
-namespace App\\Services\\Pm;
+namespace App\Services\Pm;
 
-use App\\Models\\PmBusinessProjectLink;
-use App\\Models\\PmCard;
-use App\\Models\\PmQaTaskReview;
-use Illuminate\\Support\\Facades\\DB;
+use App\Models\PmBusinessProjectLink;
+use App\Models\PmCard;
+use App\Models\PmQaTaskReview;
+use Illuminate\Support\Facades\DB;
 
 class TaskQaInboxService
 {

@@ -215,7 +215,7 @@ export default function TaskQAInbox() {
           ['history', 'QA history'],
           ['report', 'Generate report'],
         ] as [View, string][]).map(([key, label]) => (
-          <button key={key} type="button" onClick={() => setView(key)} className={view === key ? 'rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white' : button}>{label}</button>
+          <button key={key} type="button" onClick={() => { setView(key); setQaStatus(key === 'inbox' ? 'Awaiting QA' : 'All'); }} className={view === key ? 'rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white' : button}>{label}</button>
         ))}
       </div>
 
