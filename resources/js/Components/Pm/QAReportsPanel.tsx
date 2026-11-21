@@ -10,6 +10,7 @@ export default function QAReportsPanel(){
  const [issues,setIssues]=useState<Finding[]>([]),[reports,setReports]=useState<Report[]>([]);
  const [business,setBusiness]=useState(''),[site,setSite]=useState('All sites / apps'),[project,setProject]=useState('All projects');
  const [date,setDate]=useState(today),[active,setActive]=useState<Report|null>(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState('');
+ const [editing,setEditing]=useState(false),[editDraft,setEditDraft]=useState<Report|null>(null),[findingsJson,setFindingsJson]=useState('');
  async function load(){setLoading(true);setError('');try{const [qa,saved]=await Promise.all([axios.get('/pm/api/qa'),axios.get('/pm/api/qa/reports')]);setIssues(qa.data.issues??[]);setReports(saved.data.reports??[]);}catch{setError('Unable to load QA Center records.');}finally{setLoading(false);}}
  useEffect(()=>{void load();},[]);
  const businesses=useMemo(()=>Array.from(new Set(issues.map(x=>x.business).filter(Boolean))) as string[],[issues]);
