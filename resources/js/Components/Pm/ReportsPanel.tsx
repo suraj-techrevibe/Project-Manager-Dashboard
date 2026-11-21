@@ -229,6 +229,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
                   <th className="pb-1 pr-3 text-right font-normal">In progress</th>
                   <th className="pb-1 pr-3 text-right font-normal">Blocked</th>
                   <th className="pb-1 text-right font-normal">Overdue</th>
+                  <th className="pb-1 text-right font-normal">Subtasks done / total</th>
                 </tr>
               </thead>
               <tbody className="text-slate-700">
@@ -242,6 +243,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
                     <td className="py-1.5 pr-3 text-right">{b.in_progress}</td>
                     <td className={`py-1.5 pr-3 text-right ${b.blocked ? 'text-red-600 font-medium' : ''}`}>{b.blocked}</td>
                     <td className={`py-1.5 text-right ${b.overdue ? 'text-red-600 font-medium' : ''}`}>{b.overdue}</td>
+                    <td className="py-1.5 text-right">{b.subtasks_completed ?? 0} / {b.subtasks_total ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
