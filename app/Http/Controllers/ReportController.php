@@ -64,7 +64,8 @@ class ReportController extends Controller
     public function overview(): JsonResponse
     {
         $cards = PmCard::query()->whereNotNull('project_id')->orderBy('project_name')->orderBy('title')->get();
-        $subtasks = PmSubtask::query()->orderBy('title')->get()->groupBy(fn ($s) => (string) $s->project_id.':'.(string) $s->task_id);
+        $allSubtasks = PmSubtask::query()->orderBy('title')->get();
+        $subtasks = $allSubtasks->groupBy(fn ($s) => (string) $s->project_id.':'.(string) $s->task_id);
         $reviews = PmQaTaskReview::query()->with('events')->get()->keyBy(fn ($r) => (string) $r->project_id.':'.(string) $r->task_id);
 
         $projectRows = $cards->groupBy(fn ($card) => (string) $card->project_id)->map(function ($items, $projectId) use ($subtasks, $reviews) {
@@ -169,8 +170,8 @@ class ReportController extends Controller
                 'overdue' => $cards->filter(fn ($c) => $c->due_at && $c->due_at->lt(today()) && ! in_array($c->status, ['Completed', 'Cancelled'], true))->count() + $standalone->filter(fn ($c) => $c->due_at && $c->due_at->lt(today()) && ! in_array($c->status, ['Completed', 'Cancelled'], true))->count(),
                 'qa_pending' => PmQaTaskReview::query()->where('qa_status', 'Awaiting QA')->count(),
                 'qa_failed' => PmQaTaskReview::query()->where('qa_status', 'Failed')->count(),
-                'subtasks_total' => $subtasks->where('status', '!=', 'Cancelled')->count(),
-                'subtasks_completed' => $subtasks->where('status', 'Completed')->count(),
+                'subtasks_total' => $allSubtasks->where('status', '!=', 'Cancelled')->count(),
+                'subtasks_completed' => $allSubtasks->where('status', 'Completed')->count(),
             ],
             'data_notes' => ['Business = Taskmandu project, matching the current project scope switcher.', 'Task and subtask counts are separate; subtasks are never counted as parent tasks.', 'QA counts come from task QA review records, not the Taskmandu Completed status.', 'This is a current snapshot, not a historical end-of-period snapshot.'],
         ]);
