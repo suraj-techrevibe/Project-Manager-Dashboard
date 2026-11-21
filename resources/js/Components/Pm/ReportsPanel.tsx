@@ -342,6 +342,30 @@ function ExecutiveBrief({ c }: { c: DailyContent | WeeklyContent }) {
         <div><h3 className="text-base font-semibold text-slate-900">Executive snapshot</h3><p className="text-xs text-slate-500">Company delivery position · as of {new Date(e.as_of).toLocaleString()}</p></div>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{e.businesses.length} projects / businesses</span>
       </div>
+      <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-900">{c.kind === 'weekly' ? 'This week’s movement' : 'Today’s movement'}</div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {(c.kind === 'daily' ? [
+            ['Completed', c.summary.completed, 'text-emerald-700'],
+            ['Moved forward', c.summary.moved, 'text-indigo-700'],
+            ['New tasks', c.summary.new_tasks, 'text-slate-800'],
+            ['Newly blocked', c.summary.newly_blocked, c.summary.newly_blocked ? 'text-red-700' : 'text-slate-800'],
+            ['Newly overdue', c.summary.newly_overdue, c.summary.newly_overdue ? 'text-amber-700' : 'text-slate-800'],
+          ] : [
+            ['Completed', c.summary.completed, 'text-emerald-700'],
+            ['vs previous week', c.summary.completed - c.summary.prev_completed, c.summary.completed >= c.summary.prev_completed ? 'text-emerald-700' : 'text-amber-700'],
+            ['New tasks', c.summary.new_tasks, 'text-slate-800'],
+            ['Blocked now', c.summary.blocked, c.summary.blocked ? 'text-red-700' : 'text-slate-800'],
+            ['Overdue now', c.summary.overdue, c.summary.overdue ? 'text-amber-700' : 'text-slate-800'],
+          ]).map(([label, value, color]) => (
+            <div key={String(label)} className="rounded-md bg-white/80 px-2.5 py-2">
+              <div className="text-[10px] text-slate-500">{label}</div>
+              <div className={`mt-0.5 text-lg font-semibold ${color}`}>{value}</div>
+            </div>
+          ))}
+        </div>
+        {c.kind === 'weekly' && <p className="mt-2 text-[10px] text-slate-500">Previous week: {c.summary.prev_completed} completed · {c.summary.prev_new_tasks} new tasks. This is a volume comparison, not a productivity rating.</p>}
+      </div>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {[
           ['Tasks', t.tasks, 'text-slate-900'],
@@ -373,19 +397,19 @@ function ExecutiveBrief({ c }: { c: DailyContent | WeeklyContent }) {
       </div>
 
       <div className="mt-5">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Team delivery health</h4><span className="text-[11px] text-slate-400">Risk indicator from blocked / overdue tasks, not a productivity score</span></div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Team delivery health</h4><span className="text-[11px] text-slate-400">Share of assigned tasks without a blocked or overdue risk</span></div>
         {e.team.length ? <div className="grid gap-2 md:grid-cols-2">
           {e.team.map((p) => (
             <div key={p.name} className="rounded-lg border border-slate-100 px-3 py-2">
               <div className="flex items-center justify-between gap-2"><span className="text-sm font-medium text-slate-800">{p.name}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${healthTone(p.health)}`}>{p.health}</span></div>
-              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500"><span>{p.completed} completed · {p.open} open</span><span>{p.health_pct}% clear</span></div>
+              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500"><span>{p.completed} completed · {p.open} open</span><span>{p.health_pct}% without risk</span></div>
               <div className="mt-1">{healthBar(p.health_pct, p.health === 'At risk' ? 'bg-red-500' : p.health === 'Watch' ? 'bg-amber-500' : 'bg-emerald-500')}</div>
               <div className="mt-1 text-[11px] text-slate-500">{p.in_progress} in progress · {p.blocked} blocked · {p.overdue} overdue</div>
             </div>
           ))}
         </div> : <Empty>No assigned task data.</Empty>}
       </div>
-      <p className="mt-3 text-[10px] text-slate-400">Snapshot is current when generated, including for backdated reports. Standalone tasks are included in company totals and team workload, but not assigned to a business/project.</p>
+      <p className="mt-3 text-[10px] text-slate-400">Snapshot is current when generated, including for backdated reports. Standalone tasks are included in company totals and team workload, but not assigned to a Taskmandu project. A task blocked and overdue counts as one risk.</p>
     </section>
   );
 }
