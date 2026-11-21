@@ -492,7 +492,7 @@ export default function ReportsPanel() {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  const [copied, setCopied] = useState<{ id: number; part: 'update' | 'full' } | null>(null);
+  const [copied, setCopied] = useState<{ id: number; part: 'update' | 'full' } | null>(null);\n  const [reportType,setReportType]=useState<'daily'|'weekly'|'range'>('daily');\n  const [savedSearch,setSavedSearch]=useState('');\n  const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'>('all');\n  const [editId,setEditId]=useState<number|null>(null);\n  const [editJson,setEditJson]=useState('');\n  const [editNotes,setEditNotes]=useState('');\n  const [editSaving,setEditSaving]=useState(false);
 
   // Newest date first, always — never trust the order the server happened to return.
   const sorted = (list: Report[]) =>
@@ -771,45 +771,13 @@ export default function ReportsPanel() {
       </UiSection>
 
 
-      <UiSection id="report-new" title="New report" subtitle="Generate a daily or weekly report" tone="brand">
-        <div className="mb-3 flex gap-1.5">
-          {(['daily', 'weekly'] as const).map((k) => (
-            <button key={k} onClick={() => setKind(k)} className={`${btnChip(kind === k)} capitalize`}>
-              {k}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="sm:w-48">
-            <input type="date" value={date} max={todayStr()} onChange={(e) => setDate(e.target.value || todayStr())} className={`${inputCls} w-full`} />
-            {kind === 'weekly' && <div className="mt-1 text-[11px] text-slate-400">Any day — covers that whole Mon–Sun week</div>}
-          </div>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={4}
-            placeholder={'Log your operational work as well as task-board activity. e.g.\nPlanning: clarified broker-system requirements with boss\nCoordination: agreed technical approach with Senior Dev\nQA: tested referral and commission calculations\nFollow-up: resolved blocker with developer\nWaiting on: client approval for payment gateway\nNext: prepare business demo'}
-            className={`${inputCls} min-w-0 flex-1 resize-y`}
-          />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500">
-            <input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-            Refresh from Taskmandu first
-          </label>
-          <span className="text-xs text-slate-400">{notes.length.toLocaleString()} / 6,000</span>
-          <button onClick={generate} disabled={generating} className={`${btnPrimary} ml-auto`}>
-            {generating ? 'Generating…' : existing ? `Regenerate ${kind} report` : `Generate ${kind} report`}
-          </button>
-        </div>
-        <div className="mt-2 flex flex-col gap-2 empty:hidden">
-          {existing && !generating && <Notice tone="warn">A {kind} report for this {kind === 'weekly' ? 'week' : 'date'} already exists — generating replaces it.</Notice>}
-          {genError && <Notice tone="danger">{genError}</Notice>}
-          {warning && <Notice tone="warn">{warning}</Notice>}
-        </div>
+      <UiSection id="report-new" title="Generate a report" subtitle="Choose one report type. Only the selected report is generated." tone="brand">
+        <div className="flex flex-wrap gap-2">{(['daily','weekly','range'] as const).map(k=><button key={k} onClick={()=>setReportType(k)} className={btnChip(reportType===k)}>{k==='range'?'Date range':k==='daily'?'Daily':'Weekly'}</button>)}</div>
+        {reportType!=='range'?<div className="mt-3 flex flex-col gap-3 sm:flex-row"><label className="text-xs text-slate-500">Date<input type="date" max={todayStr()} value={date} onChange={e=>setDate(e.target.value||todayStr())} className={inputCls+' mt-1 block'}/>{reportType==='weekly'&&<span className="block mt-1">Choose any day in the week.</span>}</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} placeholder="Optional operational notes, blockers, decisions, or planned work…" className={inputCls+' min-w-0 flex-1 resize-y'}/><label className="flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={sync} onChange={e=>setSync(e.target.checked)}/>Sync Taskmandu first</label><button onClick={()=>{setKind(reportType);void generate();}} disabled={generating} className={btnPrimary}>{generating?'Generating…':existing?'Regenerate report':'Generate report'}</button></div>:<div className="mt-3 flex flex-wrap items-end gap-3"><label className="text-xs text-slate-500">From<input type="date" value={periodFrom} max={periodTo} onChange={e=>setPeriodFrom(e.target.value)} className={inputCls+' mt-1 block'}/></label><label className="text-xs text-slate-500">To<input type="date" value={periodTo} min={periodFrom} max={todayStr()} onChange={e=>setPeriodTo(e.target.value)} className={inputCls+' mt-1 block'}/></label><button onClick={()=>void loadPeriod()} disabled={periodLoading} className={btnPrimary}>{periodLoading?'Loading analysis…':'Generate date-range analysis'}</button><p className="text-xs text-slate-500">Uses the analysis centre below. This date-range analysis is not stored as a daily/weekly snapshot.</p></div>}
+        {genError&&<Notice tone="danger">{genError}</Notice>}{warning&&<Notice tone="warn">{warning}</Notice>}
       </UiSection>
 
-      <UiSection
+<UiSection
         id="report-list"
         title="Saved reports"
         count={reports.length || undefined}
