@@ -54,4 +54,9 @@ class PmPageController extends Controller
     {
         return Inertia::render('Pm/App', ['page' => 'qa']);
     }
+
+    public function checklist(): Response
+    {
+        return Inertia::render('Pm/App', ['page' => 'checklist']);
+    }
 }
