@@ -106,7 +106,7 @@ export default function QAReportsPanel() {
       <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <button onClick={() => setActive(null)} className="rounded-lg border bg-white px-3 py-2 text-sm">← Back to report builder</button>
         <div className="flex flex-wrap gap-2">
-          {!active.handed_over_at && <button onClick={() => void markHandedOver(active)} className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800">Mark sent to developers</button>}
+          {!active.handed_over_at && <button onClick={() => void markHandedOver(active)} className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800">Mark handed over</button>}
           <button onClick={printReport} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white">Print / Save as PDF</button>
         </div>
       </div>
