@@ -115,7 +115,7 @@ export async function send(text: string) {
   try {
     const history = next.slice(-20).map((m) => ({ role: m.role, content: m.content }));
     const { data } = await pmApi.assistantChat(history);
-    const reply: Msg = { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools, suggestions: data.suggestions, engine: data.engine, model: data.model };
+    const reply: Msg = { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools, suggestions: data.suggestions, engine: data.engine, model: data.model ?? undefined };
     set({ messages: [...state.messages, reply], busy: false, unread: !state.open && !state.viewing ? state.unread + 1 : state.unread });
   } catch (e) {
     const msg = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
