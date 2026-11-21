@@ -135,12 +135,15 @@ const ENGINE: Record<AssistantEngine, { label: string; tone: string }> = {
   openrouter: { label: 'OpenRouter', tone: 'bg-violet-50 text-violet-700 ring-violet-200' },
 };
 
-export function EngineBadge({ engine }: { engine?: AssistantEngine }) {
+export function EngineBadge({ engine, model }: { engine?: AssistantEngine; model?: string }) {
   if (!engine || !ENGINE[engine]) return null;
   return (
-    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${ENGINE[engine].tone}`} title={`Answered by ${ENGINE[engine].label}`}>
-      {ENGINE[engine].label}
-    </span>
+    <div className="inline-flex max-w-full flex-wrap items-center gap-2">
+      <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${ENGINE[engine].tone}`} title={`Answered by ${ENGINE[engine].label}`}>
+        {ENGINE[engine].label}
+      </span>
+      {model && <span className="break-all text-[10px] text-slate-500">Model: <code className="font-mono">{model}</code></span>}
+    </div>
   );
 }
 
@@ -246,7 +249,7 @@ export function ChatBody({ active, compact = false }: { active: boolean; compact
                 </div>
                 {!m.error && m.engine && (
                   <div className="mt-1 flex flex-wrap items-center gap-2 pl-1">
-                    <EngineBadge engine={m.engine} />
+                    <EngineBadge engine={m.engine} model={m.model} />
                   </div>
                 )}
                 {(m.actions?.filter((a) => a.status === 'pending').length ?? 0) > 1 && (
