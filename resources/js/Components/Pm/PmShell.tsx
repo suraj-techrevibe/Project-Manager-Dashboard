@@ -16,7 +16,7 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   reports: { icon: 'chart', blurb: 'Progress and delivery reporting' },
   scope: { icon: 'target', blurb: 'Check requests against agreed scope' },
   git: { icon: 'branch', blurb: 'Repository activity and delivery signals' },
-  'qa-reports': { icon: 'file-text', blurb: 'Build developer-ready reports from recorded QA findings' },
+  'qa-reports': { icon: 'notes', blurb: 'Build developer-ready reports from recorded QA findings' },
   qa: { icon: 'target', blurb: 'Verify completed Taskmandu tasks and retest fixes' },
   checklist: { icon: 'check-square', blurb: 'Your repeatable daily PM routine' },
 };
