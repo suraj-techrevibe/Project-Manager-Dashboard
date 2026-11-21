@@ -38,19 +38,21 @@ class AiProviderFallbackTest extends TestCase
         $this->providerConfig();
         Http::fake([
             'api.groq.com/*' => Http::sequence()
-                ->push(['choices' => [[
+                ->push([
                     'model' => 'openai/gpt-oss-120b',
-                    'message' => [
-                        'role' => 'assistant',
-                        'content' => null,
-                        'tool_calls' => [[
-                            'id' => 'call_board_1',
-                            'type' => 'function',
-                            'function' => ['name' => 'board_overview', 'arguments' => '{}'],
-                        ]],
-                    ],
-                    'finish_reason' => 'tool_calls',
-                ]]])
+                    'choices' => [[
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => [[
+                                'id' => 'call_board_1',
+                                'type' => 'function',
+                                'function' => ['name' => 'board_overview', 'arguments' => '{}'],
+                            ]],
+                        ],
+                        'finish_reason' => 'tool_calls',
+                    ]],
+                ])
                 ->push($this->textResponse('Here is your board overview.', 'openai/gpt-oss-120b')),
             'openrouter.ai/*' => Http::response($this->textResponse('Unexpected backup response.'), 200),
         ]);
