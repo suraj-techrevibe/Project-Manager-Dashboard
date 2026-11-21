@@ -62,6 +62,15 @@ const EmptyNote = ({ children }: { children: React.ReactNode }) => (
   <div className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">{children}</div>
 );
 
+function projectsEmptyReason(sync: OperationsTodaySummary['sync'] | undefined): string {
+  if (!sync) return 'No Taskmandu projects synced yet.';
+  if (!sync.configured) return 'Taskmandu is not configured. Set TASKMANDU_BASE_URL, TASKMANDU_EMAIL and TASKMANDU_PASSWORD in .env.';
+  if (sync.error) return `Last sync failed: ${sync.error.message}`;
+  if (sync.warning) return sync.warning.message;
+  if (!sync.last_synced_at) return 'Taskmandu has not synced yet. Run "Sync now" or wait for the next scheduled sync.';
+  return `Sync is working (${sync.standalone_tasks} standalone tasks) but Taskmandu returned no project boards. The sync account needs the projects:manage permission or membership of the projects.`;
+}
+
 export default function OperationsTodayPanel({ summary, onNavigate, onCapture }: Props) {
   const { counts } = summary;
   const projects = summary.projects;
@@ -121,7 +130,7 @@ export default function OperationsTodayPanel({ summary, onNavigate, onCapture }:
               ))}
             </ul>
           ) : (
-            <EmptyNote>Taskmandu projects could not be loaded. Check the Taskmandu connection and refresh.</EmptyNote>
+            <EmptyNote>{projectsEmptyReason(summary.sync)}</EmptyNote>
           )}
         </Card>
 

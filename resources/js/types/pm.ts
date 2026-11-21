@@ -26,6 +26,14 @@ export interface OperationsTodaySummary {
     requested_due_at: string | null;
     updated_at: string | null;
   }[];
+  sync: {
+    configured: boolean;
+    last_synced_at: string | null;
+    error: { message: string; at: string } | null;
+    warning: { message: string; at: string } | null;
+    project_tasks: number;
+    standalone_tasks: number;
+  };
   counts: {
     projects_with_tasks: number;
     open_requests: number;

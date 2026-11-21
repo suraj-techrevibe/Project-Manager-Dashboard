@@ -262,6 +262,14 @@ class PmController extends Controller
         return [
             'projects' => $projects,
             'recent_items' => $recentItems,
+            'sync' => [
+                'configured' => $this->taskmandu->configured(),
+                'last_synced_at' => Cache::get('pm.last_synced_at'),
+                'error' => Cache::get('pm.last_sync_error'),
+                'warning' => Cache::get('pm.last_sync_warning'),
+                'project_tasks' => PmCard::query()->whereNotNull('project_id')->count(),
+                'standalone_tasks' => PmCard::query()->whereNull('project_id')->whereNotNull('task_id')->count(),
+            ],
             'counts' => [
                 'projects_with_tasks' => $projects->count(),
                 'open_requests' => (clone $openRequests)->count(),
