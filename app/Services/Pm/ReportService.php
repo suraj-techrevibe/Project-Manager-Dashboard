@@ -467,7 +467,7 @@ class ReportService
         foreach ($cards as $card) $add($card->assignee, (string) $card->status, $card->due_at);
         $team = collect($teamRows)->map(function ($row) {
             $risk = $row['blocked'] + $row['overdue'];
-            $row['health'] = $risk > 0 ? 'At risk' : ($row['name'] === 'Unassigned' || $row['open'] > 0 ? 'Watch' : 'On track');
+            $row['health'] = $risk > 0 ? 'At risk' : ($row['name'] === 'Unassigned' ? 'Watch' : 'On track');
             $total = $row['completed'] + $row['open'];
             $row['progress'] = $total > 0 ? (int) round(($row['completed'] / $total) * 100) : 0;
             $row['health_pct'] = $total > 0 ? max(0, (int) round((($total - $risk) / $total) * 100)) : 100;
