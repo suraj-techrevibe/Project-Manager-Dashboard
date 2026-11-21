@@ -4,7 +4,7 @@ import PmShell from '@/Components/Pm/PmShell';
 import QuickSearch from '@/Components/Pm/QuickSearch';
 import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
-import { countQuick, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
+import { countQuick, liveFlagCounts, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
 import TasksPage from '@/Components/Pm/TasksPage';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
@@ -195,7 +195,13 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       }, {}))
     : [];
 
-  const counts = today
+  const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
+  // Task counts for the Operations checklist come from the same live Taskmandu rows as the All tasks
+  // page, so the number matches what you see after clicking through. The synced mirror only fills in
+  // until live projects have loaded (it goes stale whenever the background sync is failing).
+  const liveTaskRows = useTaskRows(allTasks, projects, projectsLoading);
+  const liveTaskCounts = projectsLoading || projects.length === 0 ? null : countQuick(liveTaskRows);
+  const mirrorCounts = today
     ? {
         overdue: today.metrics.overdue,
         blocked: today.metrics.blocked,
@@ -207,6 +213,12 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         subtasks_incomplete: today.metrics.subtasks_incomplete,
       }
     : { overdue: 0, blocked: 0, due_today: 0, stuck: 0, unassigned: 0, unverified: 0, due_soon: 0, subtasks_incomplete: 0 };
+
+  // The synced mirror goes stale whenever the background sync fails, so overdue/blocked/due/no-owner/
+  // incomplete-subtask numbers come from the live Taskmandu rows (same as All tasks) once they have loaded.
+  // Stuck and To verify need data only the mirror has, so they stay as synced.
+  const liveFlags = liveTaskCounts ? liveFlagCounts(liveTaskRows) : null;
+  const counts = liveFlags ? { ...mirrorCounts, ...liveFlags } : mirrorCounts;
 
   const cardByFlag = (type: PmFlag['type']) => commandCards.filter((c) => c.flags.some((f) => f.type === type));
   const agingCards = cardByFlag('stuck');
@@ -241,12 +253,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
     { key: 'worst', label: 'Project risk', text: riskProjects.length ? `${riskProjects[0].name} has the most warning signals.` : 'No project warning signals.', count: riskProjects.length },
   ];
   const current = PM_PAGES.find((p) => p.key === page)!;
-  const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
-  // Task counts for the Operations checklist come from the same live Taskmandu rows as the All tasks
-  // page, so the number matches what you see after clicking through. The synced mirror only fills in
-  // until live projects have loaded (it goes stale whenever the background sync is failing).
-  const liveTaskRows = useTaskRows(allTasks, projects, projectsLoading);
-  const liveTaskCounts = projectsLoading || projects.length === 0 ? null : countQuick(liveTaskRows);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {

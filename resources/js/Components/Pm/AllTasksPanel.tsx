@@ -154,6 +154,22 @@ export function countQuick(rows: TaskRow[]): Record<QuickKey, number> {
   return Object.fromEntries(QUICK.map((q) => [q.key, rows.filter((t) => q.test(t, today)).length])) as Record<QuickKey, number>;
 }
 
+/** Flag-style counts (the Today tiles) computed from the same live rows as All tasks. */
+export function liveFlagCounts(rows: TaskRow[]) {
+  const today = startOfToday();
+  const DAY = 86_400_000;
+  const open = rows.filter(isOpen);
+  const due = (t: TaskRow) => dueTime(t);
+  return {
+    overdue: open.filter((t) => (due(t) ?? Infinity) < today).length,
+    blocked: open.filter((t) => t.status.toLowerCase().includes('block')).length,
+    due_today: open.filter((t) => due(t) === today).length,
+    due_soon: open.filter((t) => { const d = due(t); return d !== null && d > today && d <= today + 3 * DAY; }).length,
+    unassigned: open.filter((t) => t.assignees.length === 0).length,
+    subtasks_incomplete: rows.filter((t) => t.status === 'Completed' && t.subs.some((s) => s.status !== 'Completed' && s.status !== 'Cancelled')).length,
+  };
+}
+
 function statusTone(status: string): Tone {
   const s = status.toLowerCase();
   if (s === 'completed') return 'ok';
