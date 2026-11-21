@@ -12,7 +12,8 @@ use App\Models\PmQaTaskReview;
 use App\Services\Pm\ReportService;
 use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;\nuse Illuminate\Validation\Rule;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Carbon;
 use Throwable;
 
