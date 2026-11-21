@@ -330,6 +330,19 @@ class ReportController extends Controller
         ]);
     }
 
+
+    /** Edit a saved daily/weekly snapshot without changing source board data. */
+    public function update(Request $request, PmReport $report): JsonResponse
+    {
+        $data = $request->validate([
+            'content' => 'required|array', 'content.kind' => ['required', Rule::in(['daily','weekly'])],
+            'notes' => 'nullable|string|max:6000',
+        ]);
+        if ($data['content']['kind'] !== $report->kind) return response()->json(['message'=>'Report type cannot be changed.'], 422);
+        $report->update(['content' => $data['content'], 'body' => $this->reports->render($data['content']), 'notes' => $data['notes'] ?? $report->notes, 'auto' => false]);
+        return response()->json(['report' => $this->present($report->fresh())]);
+    }
+
     public function destroy(PmReport $report): JsonResponse
     {
         $report->delete();
