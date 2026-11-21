@@ -13,7 +13,7 @@ export type PmPage = 'today' | 'tasks' | 'operations' | 'projects' | 'minutes' |
 export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'today', label: 'Command center', href: '/pm' },
   { key: 'tasks', label: 'All tasks', href: '/pm/tasks' },
-  { key: 'operations', label: 'Operations', href: '/pm/operations' },
+  { key: 'operations', label: 'Operations & Requests', href: '/pm/operations' },
   { key: 'projects', label: 'Projects', href: '/pm/projects' },
   { key: 'minutes', label: 'Meeting minutes', href: '/pm/minutes' },
   { key: 'brief', label: 'Brief to tickets', href: '/pm/brief' },
@@ -21,7 +21,7 @@ export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'scope', label: 'Scope check', href: '/pm/scope' },
   { key: 'git', label: 'Git', href: '/pm/git' },
   { key: 'qa', label: 'QA Center', href: '/pm/qa' },
-  { key: 'checklist', label: 'Checklist', href: '/pm/checklist' },
+  { key: 'checklist', label: 'Daily Checklist', href: '/pm/checklist' },
 ];
 
 export const isPmPage = (v: string): v is PmPage => PM_PAGES.some((p) => p.key === v);

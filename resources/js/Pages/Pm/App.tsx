@@ -285,6 +285,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           <Pane show={page === 'today'}>
             {today ? (
               <div className="flex flex-col gap-4">
+                <div className="px-2 pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">5 · Pending decisions & incoming work</div>
                 <OperationsTodayPanel
                   summary={today.operations_summary}
                   onNavigate={(tab) => visitPm(tab as PmPage)}
