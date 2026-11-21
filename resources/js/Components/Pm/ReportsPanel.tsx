@@ -798,7 +798,8 @@ export default function ReportsPanel() {
           ) : undefined
         }
       >
-        <div className="mb-3 flex flex-wrap gap-2"><input value={savedSearch} onChange={e=>setSavedSearch(e.target.value)} placeholder="Search saved reports…" className={inputCls+" min-w-[12rem] flex-1"}/><select value={savedFilter} onChange={e=>setSavedFilter(e.target.value as any)} className={inputCls}><option value="all">All report types</option><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>\n        {loadingList ? (
+        <div className="mb-3 flex flex-wrap gap-2"><input value={savedSearch} onChange={e=>setSavedSearch(e.target.value)} placeholder="Search saved reports…" className={inputCls+" min-w-[12rem] flex-1"}/><select value={savedFilter} onChange={e=>setSavedFilter(e.target.value as any)} className={inputCls}><option value="all">All report types</option><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>
+        {loadingList ? (
           <p className="text-sm text-slate-400">Loading…</p>
         ) : listError ? (
           <Notice tone="danger">
