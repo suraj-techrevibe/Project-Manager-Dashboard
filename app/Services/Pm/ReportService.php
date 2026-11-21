@@ -468,8 +468,9 @@ class ReportService
         $team = collect($teamRows)->map(function ($row) {
             $risk = $row['blocked'] + $row['overdue'];
             $row['health'] = $risk > 0 ? 'At risk' : ($row['name'] === 'Unassigned' || $row['open'] > 0 ? 'Watch' : 'On track');
-            $row['progress'] = ($row['completed'] + $row['open']) > 0
-                ? (int) round(($row['completed'] / ($row['completed'] + $row['open'])) * 100) : 0;
+            $total = $row['completed'] + $row['open'];
+            $row['progress'] = $total > 0 ? (int) round(($row['completed'] / $total) * 100) : 0;
+            $row['health_pct'] = $total > 0 ? max(0, (int) round((($total - $risk) / $total) * 100)) : 100;
             return $row;
         })->sortBy('health')->values()->all();
 
