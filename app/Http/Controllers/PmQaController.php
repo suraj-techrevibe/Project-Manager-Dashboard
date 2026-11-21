@@ -274,6 +274,25 @@ QA_PROMPT;
         return response()->json(['report' => $report], 201);
     }
 
+    /** Update the user's saved QA report snapshot; edits never alter source QA issues. */
+    public function updateReport(Request $request, PmQaReport $report): JsonResponse
+    {
+        abort_unless($report->created_by === $request->user()->id, 404);
+        $data = $request->validate([
+            'areas_tested' => 'nullable|string|max:5000', 'environment' => 'nullable|string|max:1000',
+            'summary' => 'nullable|string|max:5000', 'fix_first' => 'nullable|string|max:5000',
+            'open_questions' => 'nullable|string|max:5000', 'findings' => 'required|array|max:200',
+            'findings.*.title' => 'required|string|max:200', 'findings.*.severity' => ['required', Rule::in(['Critical','High','Medium','Low'])],
+            'findings.*.status' => 'required|string|max:100', 'findings.*.description' => 'nullable|string|max:5000',
+            'findings.*.expected_behaviour' => 'nullable|string|max:5000', 'findings.*.developer_notes' => 'nullable|string|max:5000',
+            'findings.*.retest_notes' => 'nullable|string|max:5000', 'findings.*.assignee' => 'nullable|string|max:160',
+            'findings.*.page_url' => 'nullable|string|max:500', 'findings.*.evidence_url' => 'nullable|string|max:1000',
+            'findings.*.pm_task_url' => 'nullable|string|max:1000',
+        ]);
+        $report->update($data);
+        return response()->json(['report' => $report->fresh()]);
+    }
+
     public function handoverReport(Request $request, PmQaReport $report): JsonResponse
     {
         abort_unless($report->created_by === $request->user()->id, 404);
