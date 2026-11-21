@@ -426,7 +426,7 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
           {report.generated_at && <>{meta ? ' · ' : ''}generated {new Date(report.generated_at).toLocaleString()}</>}
         </p>
         <div className="flex gap-1.5">
-          {report.content.kind && (
+          {report.content.kind && report.content.kind !== 'pack' && (
             <button onClick={() => onCopy('update')} className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700" title="Just the Update section — the one to send to your boss">
               {copied === 'update' ? 'Copied ✓' : 'Copy update'}
             </button>
@@ -537,9 +537,9 @@ export default function ReportsPanel() {
     setPeriodError(null);
     setListError(null);
     try {
-      const { data } = await pmApi.reportPeriod(periodFrom, periodTo);
+      const [{ data }, { data: archive }] = await Promise.all([pmApi.reportPeriod(periodFrom, periodTo), pmApi.reports()]);
       setPeriodData(data);
-      setReports(sorted(data.saved_reports ?? []));
+      setReports(sorted(archive.reports ?? data.saved_reports ?? []));
     } catch (e) {
       const message = errorText(e, "Couldn't load reports for this date range.");
       setPeriodError(message);
