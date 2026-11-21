@@ -108,7 +108,7 @@ class ReportController extends Controller
                         $subOwners = filled($sub['assignee']) ? array_filter(array_map('trim', explode(',', $sub['assignee']))) : ['Unassigned'];
                         foreach ($subOwners as $owner) {
                             $rows[$owner] ??= ['name' => $owner, 'tasks_completed' => 0, 'tasks_open' => 0, 'subtasks_completed' => 0, 'subtasks_open' => 0];
-                            $rows[$owner][$sub['status'] === 'Completed' ? 'subtasks_completed' : 'subtasks_open']++;
+                            if ($sub['status'] !== 'Cancelled') $rows[$owner][$sub['status'] === 'Completed' ? 'subtasks_completed' : 'subtasks_open']++;
                         }
                     }
                     return array_values($rows);
@@ -120,6 +120,7 @@ class ReportController extends Controller
         $unassigned = $cards->filter(fn ($c) => ! filled($c->project_id))->merge($standalone);
         $teamRows = [];
         $addPerson = function (?string $name, string $type, string $status) use (&$teamRows) {
+            if ($status === 'Cancelled') return;
             $people = filled($name) ? array_values(array_filter(array_map('trim', explode(',', $name)))) : ['Unassigned'];
             foreach ($people as $person) {
                 $teamRows[$person] ??= ['name' => $person, 'tasks_open' => 0, 'tasks_completed' => 0, 'subtasks_open' => 0, 'subtasks_completed' => 0, 'blocked' => 0, 'overdue' => 0];
@@ -128,7 +129,7 @@ class ReportController extends Controller
                 if ($type === 'task' && $status === 'Blocked') $teamRows[$person]['blocked']++;
             }
         };
-        foreach ($cards as $card) {
+        foreach ($cards->concat($standalone) as $card) {
             $addPerson($card->assignee, 'task', (string) $card->status);
             if ($card->due_at && $card->due_at->lt(today()) && ! in_array($card->status, ['Completed', 'Cancelled'], true)) {
                 foreach (filled($card->assignee) ? array_map('trim', explode(',', $card->assignee)) : ['Unassigned'] as $person) {
