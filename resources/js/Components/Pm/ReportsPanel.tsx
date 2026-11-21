@@ -853,7 +853,7 @@ export default function ReportsPanel() {
                       <span className="block truncate text-xs text-slate-400">{r.content.summary_text || r.content.title || `Reporting period: ${r.period_type || r.kind}`}</span>
                     </span>
                     <span className="hidden flex-wrap justify-end gap-1 md:flex">
-                      {(r.content.pills ?? []).map((p) => (
+                      {(r.content.pills ?? []).map((p: ReportPill) => (
                         <span key={p.text} className={`rounded-full px-2 py-0.5 text-[11px] ${tone[p.tone]}`}>
                           {p.text}
                         </span>
