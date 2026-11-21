@@ -15,6 +15,7 @@ import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
 import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
+import OperationsChecklist from '@/Components/Pm/OperationsChecklist';
 import QACenter from '@/Components/Pm/QACenter';
 import { pmApi } from '@/lib/pmApi';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
@@ -277,6 +278,14 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   summary={today.operations_summary}
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onCapture={(kind) => visitPm('operations', { new: kind })}
+                />
+                <OperationsChecklist
+                  summary={today.operations_summary}
+                  riskProject={riskProjects[0] ? { id: riskProjects[0].id, name: riskProjects[0].name } : null}
+                  overloadedCount={(today.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length}
+                  onNavigate={(tab) => visitPm(tab as PmPage)}
+                  onOpenProject={(id) => visitPm('projects', { project: id })}
+                  onShowWorkload={() => requestAnimationFrame(() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
                 />
                 <details open className="group rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                   <summary className="cursor-pointer list-none px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">

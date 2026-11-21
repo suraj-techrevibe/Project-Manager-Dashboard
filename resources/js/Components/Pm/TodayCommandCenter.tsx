@@ -217,32 +217,6 @@ function AssignRow({ title, meta, staff, onOpen, onAssign }: { title: string; me
   );
 }
 
-/* ---------------- the checklist ---------------- */
-
-interface CheckItem {
-  key: string; // matches a CcAnswer key
-  tone: Tone;
-  title: string;
-  why: string;
-  /** Where the secondary button goes: another tab, or a section further down this page. */
-  go?: { label: string; tab?: string; section?: string };
-  /** Free-capacity rows are good news, not a problem to clear. */
-  positive?: boolean;
-}
-
-// Ascending order of importance: what hurts delivery most comes first.
-const CHECKLIST: CheckItem[] = [
-  { key: 'overdue', tone: 'red', title: 'Clear what is overdue', why: 'Late work is already costing you.', go: { label: 'Open Projects', tab: 'projects' } },
-  { key: 'blocking', tone: 'orange', title: 'Unblock blocked tasks', why: 'Someone is waiting on a decision from you.', go: { label: 'Open Projects', tab: 'projects' } },
-  { key: 'duesoon', tone: 'blue', title: 'Check what is due today and in 3 days', why: 'Catch slips before they become overdue.', go: { label: 'Act now list', section: 'act-now' } },
-  { key: 'unowned', tone: 'violet', title: 'Give every task an owner', why: 'No owner means nobody is working on it.', go: { label: 'Assign now', section: 'no-owner' } },
-  { key: 'stuck', tone: 'amber', title: 'Move work that has stopped', why: 'No movement in 3+ days.', go: { label: 'See stalled', section: 'stalled' } },
-  { key: 'unverified', tone: 'teal', title: 'Verify finished work', why: 'Done is not delivered until you have checked it.', go: { label: 'Open Projects', tab: 'projects' } },
-  { key: 'overloaded', tone: 'rose', title: 'Rebalance overloaded people', why: 'Overloaded people cause the next round of delays.', go: { label: 'Team capacity', section: 'capacity' } },
-  { key: 'free', tone: 'emerald', title: 'Hand work to people with room', why: 'Idle capacity is free delivery.', go: { label: 'Team capacity', section: 'capacity' }, positive: true },
-  { key: 'worst', tone: 'indigo', title: 'Review the riskiest project', why: 'Most flagged tasks sit here.', go: { label: 'Project risk', section: 'project-risk' } },
-];
-
 /* ---------------- the component ---------------- */
 
 export interface CommandCenterProps {
@@ -312,10 +286,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   const weekHours = p.workload.reduce((n, w) => n + (w.week_hours ?? 0), 0);
   const free = p.workload.filter((w) => w.open === 0);
   const over = p.workload.filter((w) => levelOf(w, p.overloadAt) === 'over');
-  const active = CHECKLIST.find((i) => i.key === p.activeKey);
   const [glanceOpen, setGlanceOpen] = useState(true);
-  const [checklistOpen, setChecklistOpen] = useState(true);
-  const activeAnswer = p.answers.find((a) => a.key === p.activeKey);
 
   // Completed nested subtasks come from the live project data, not parent-task counts.
   const completedSubtasks = useCompletedSubtasks(p.timelineProjects);
@@ -326,11 +297,6 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       document.getElementById('morning-digest')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }, [p.showDigest]);
-
-  const goTo = (item: CheckItem) => {
-    if (item.go?.tab) p.onNavigate?.(item.go.tab);
-    else if (item.go?.section) jump(item.go.section);
-  };
 
   const KPIS: { key: FlagType; label: string; hint: string; tone: Tone; value: number }[] = [
     { key: 'overdue', label: 'Overdue', hint: 'Past the due date', tone: 'red', value: counts.overdue },
@@ -369,7 +335,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
             </h2>
             <p className="mt-2 text-sm text-slate-300">
               {attention
-                ? `${counts.overdue} overdue · ${counts.blocked} blocked · ${counts.due_today} due today · ${noOwner} without an owner. Work the checklist below from 1 down.`
+                ? `${counts.overdue} overdue · ${counts.blocked} blocked · ${counts.due_today} due today · ${noOwner} without an owner.`
                 : 'Nothing is overdue, blocked or unowned. Use the time to check capacity and upcoming work.'}
             </p>
           </div>
@@ -518,64 +484,6 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           </div>
         )}
       </Panel>
-
-      {/* ===== 4. PM checklist (ordered) ===== */}
-      <section id="pm-checklist" className="scroll-mt-20 rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <button type="button" onClick={() => setChecklistOpen((v) => !v)} className="text-left"><h3 className="text-sm font-semibold tracking-tight text-slate-900 sm:text-base">Your checklist · work it from 1 down <span className="ml-1 text-sm text-slate-400">{checklistOpen ? "▾" : "▸"}</span></h3></button>
-            <p className="mt-0.5 text-sm text-slate-500">Each line is a question. Press <b>Show tasks</b> to filter the list below to the answer.</p>
-          </div>
-          {p.activeKey && (
-            <button onClick={p.onClearAsk} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
-              Clear question ✕
-            </button>
-          )}
-        </div>
-
-        {checklistOpen && <ol className="space-y-3">
-          {CHECKLIST.map((item, i) => {
-            const a = p.answers.find((x) => x.key === item.key);
-            if (!a) return null;
-            const t = TONES[item.tone];
-            const clear = !item.positive && a.count === 0;
-            const isActive = p.activeKey === item.key;
-            return (
-              <li key={item.key} className={`flex flex-wrap items-center gap-4 rounded-xl border p-4 transition ${isActive ? `bg-white ring-2 ${t.ring} ${t.panel}` : clear ? 'border-slate-100 bg-slate-50/60' : t.panel}`}>
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold ${clear ? 'bg-emerald-100 text-emerald-600' : `${t.chip}`}`}>{clear ? '✓' : i + 1}</div>
-                <div className="min-w-0 flex-1 basis-64">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`text-base font-semibold ${clear ? 'text-slate-500' : 'text-slate-900'}`}>{item.title}</span>
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${clear ? 'bg-emerald-100 text-emerald-700' : t.chip}`}>
-                      {clear ? 'All clear' : item.positive ? `${a.count} available` : a.count}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-sm text-slate-500">{clear ? a.text : `${item.why} ${a.text}`}</div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {item.go && (
-                    <button onClick={() => p.onShowTaskList(item.key)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
-                      {item.go.label} →
-                    </button>
-                  )}
-                  <button onClick={() => (isActive ? p.onClearAsk() : p.onShowTaskList(item.key))} className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold ${isActive ? 'bg-slate-900 text-white' : t.btn}`}>
-                    {isActive ? 'Showing ✓' : 'Show tasks'}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ol>}
-
-        {checklistOpen && active && activeAnswer && (
-          <div className={`mt-4 rounded-xl border p-4 text-sm ${TONES[active.tone].panel}`}>
-            <b className={TONES[active.tone].head}>{active.title}:</b> {activeAnswer.text}{' '}
-            <button onClick={() => p.onShowTaskList(active.key)} className="font-semibold text-slate-900 underline">
-              Open in All tasks →
-            </button>
-          </div>
-        )}
-      </section>
 
       {/* ===== 4. Act now ===== */}
       <CollapsibleSection id="act-now" title="Act now" sub="Open the task list with the correct filter.">
