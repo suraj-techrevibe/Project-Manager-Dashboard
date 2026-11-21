@@ -426,7 +426,7 @@ class ReportService
                     ->reject(fn ($subtask) => $subtask->status === 'Cancelled');
                 $projectQa = $qa->where('project_id', (string) $projectId);
                 $total = $live->count();
-                $risk = $blockedCount + $overdueCount;
+                $risk = $open->filter(fn ($card) => $card->status === 'Blocked' || ($card->due_at && $card->due_at->lt($asOf->copy()->startOfDay())))->count();
                 $health = $risk > 0 ? 'At risk' : ($unassignedCount > 0 ? 'Watch' : 'On track');
 
                 return [
@@ -452,7 +452,7 @@ class ReportService
         $add = function (?string $assignees, string $status, ?object $dueAt = null) use (&$teamRows, $asOf) {
             $names = filled($assignees) ? array_values(array_filter(array_map('trim', explode(',', $assignees)))) : ['Unassigned'];
             foreach ($names as $name) {
-                $teamRows[$name] ??= ['name' => $name, 'completed' => 0, 'open' => 0, 'in_progress' => 0, 'blocked' => 0, 'overdue' => 0];
+                $teamRows[$name] ??= ['name' => $name, 'completed' => 0, 'open' => 0, 'in_progress' => 0, 'blocked' => 0, 'overdue' => 0, 'risk_tasks' => 0];
                 if ($status === 'Cancelled') continue;
                 if ($status === 'Completed') {
                     $teamRows[$name]['completed']++;
@@ -461,16 +461,17 @@ class ReportService
                     if ($status === 'In Progress') $teamRows[$name]['in_progress']++;
                     if ($status === 'Blocked') $teamRows[$name]['blocked']++;
                     if ($dueAt && $dueAt->lt($asOf->copy()->startOfDay())) $teamRows[$name]['overdue']++;
+                    if ($status === 'Blocked' || ($dueAt && $dueAt->lt($asOf->copy()->startOfDay()))) $teamRows[$name]['risk_tasks']++;
                 }
             }
         };
         foreach ($cards as $card) $add($card->assignee, (string) $card->status, $card->due_at);
         $team = collect($teamRows)->map(function ($row) {
-            $risk = $row['blocked'] + $row['overdue'];
+            $risk = $row['risk_tasks'];
             $row['health'] = $risk > 0 ? 'At risk' : ($row['name'] === 'Unassigned' ? 'Watch' : 'On track');
             $total = $row['completed'] + $row['open'];
             $row['progress'] = $total > 0 ? (int) round(($row['completed'] / $total) * 100) : 0;
-            $row['health_pct'] = $total > 0 ? max(0, (int) round((($total - $risk) / $total) * 100)) : 100;
+            $row['health_pct'] = $total > 0 ? (int) round((($total - $risk) / $total) * 100) : 100;
             return $row;
         })->sortBy('health')->values()->all();
 
@@ -763,10 +764,32 @@ class ReportService
         $out[] = '';
     }
 
+    /** Period-specific movement is kept separate from the live company snapshot. */
+    private function appendPeriodHighlights(array &$out, array $content): void
+    {
+        $summary = $content['summary'] ?? [];
+        $out[] = 'PERIOD HIGHLIGHTS';
+        if (($content['kind'] ?? 'daily') === 'weekly') {
+            $out[] = 'Completed: '.($summary['completed'] ?? 0).' (previous week: '.($summary['prev_completed'] ?? 0).')'
+                .' | New tasks: '.($summary['new_tasks'] ?? 0).' (previous week: '.($summary['prev_new_tasks'] ?? 0).')'
+                .' | In progress: '.($summary['in_progress'] ?? 0)
+                .' | Blocked: '.($summary['blocked'] ?? 0)
+                .' | Overdue: '.($summary['overdue'] ?? 0);
+        } else {
+            $out[] = 'Completed: '.($summary['completed'] ?? 0)
+                .' | Moved forward: '.($summary['moved'] ?? 0)
+                .' | New tasks: '.($summary['new_tasks'] ?? 0)
+                .' | Newly blocked: '.($summary['newly_blocked'] ?? 0)
+                .' | Newly overdue: '.($summary['newly_overdue'] ?? 0);
+        }
+        $out[] = '';
+    }
+
     private function renderDaily(array $c): string
     {
         $out = ['DAILY REPORT — '.$c['label'], 'Prepared by: '.$c['prepared_by'], ''];
         $this->appendExecutive($out, $c['executive'] ?? []);
+        $this->appendPeriodHighlights($out, $c);
         $t = fn (array $x) => $this->taskLine($x);
 
         $out[] = 'TODAY AT A GLANCE';
@@ -816,6 +839,7 @@ class ReportService
     {
         $out = ['WEEKLY REPORT — '.$c['label'], 'Prepared by: '.$c['prepared_by'], ''];
         $this->appendExecutive($out, $c['executive'] ?? []);
+        $this->appendPeriodHighlights($out, $c);
         $t = fn (array $x) => $this->taskLine($x);
         $days = fn (array $x) => ($x['days'] ?? null) === null ? '' : ' — '.$x['days'].'d';
 
