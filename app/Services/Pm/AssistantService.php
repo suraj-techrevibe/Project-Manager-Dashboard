@@ -187,7 +187,10 @@ TXT;
     private function converseWithFallback(string $provider, string $system, array $messages, array $tools, int $maxTokens): array
     {
         try {
-            return $this->converse($provider, $system, $messages, $tools, $maxTokens) + ['provider' => $provider];
+            return $this->converse($provider, $system, $messages, $tools, $maxTokens) + [
+                'provider' => $provider,
+                'model' => (string) config("services.{$provider}.model", ''),
+            ];
         } catch (AiProviderUnavailableException $e) {
             $fallback = $this->fallbackProvider();
             if ($provider !== 'groq' || ! $fallback || ! $this->providerConfigured($fallback)) {
@@ -199,7 +202,10 @@ TXT;
             ]);
 
             try {
-                return $this->converse($fallback, $system, $messages, $tools, $maxTokens) + ['provider' => $fallback];
+                return $this->converse($fallback, $system, $messages, $tools, $maxTokens) + [
+                    'provider' => $fallback,
+                    'model' => (string) config("services.{$fallback}.model", ''),
+                ];
             } catch (\Throwable $fallbackError) {
                 throw new RuntimeException('Groq is unavailable and the OpenRouter fallback also failed: '.$fallbackError->getMessage(), 0, $fallbackError);
             }
@@ -239,17 +245,25 @@ TXT;
         $actions = [];
         $used = [];
         $activeProvider = $this->startingProvider();
+        $activeModel = null;
 
         for ($step = 0; $step < self::MAX_STEPS; $step++) {
             $res = $this->converseWithFallback($activeProvider, self::SYSTEM, $messages, $this->toolDefinitions(), 2000);
             $activeProvider = (string) ($res['provider'] ?? $activeProvider);
+            $activeModel = trim((string) ($res['model'] ?? $activeModel ?? ''));
             $blocks = $res['content'] ?? [];
             $messages[] = ['role' => 'assistant', 'content' => $blocks];
 
             if (($res['stop_reason'] ?? null) !== 'tool_use') {
                 $text = trim(collect($blocks)->where('type', 'text')->pluck('text')->implode("\n"));
 
-                return ['reply' => $text !== '' ? $text : 'I have nothing to add.', 'actions' => $actions, 'tools' => array_values(array_unique($used)), 'engine' => $this->engineName($activeProvider)];
+                return [
+                    'reply' => $text !== '' ? $text : 'I have nothing to add.',
+                    'actions' => $actions,
+                    'tools' => array_values(array_unique($used)),
+                    'engine' => $this->engineName($activeProvider),
+                    'model' => $activeModel !== '' ? $activeModel : null,
+                ];
             }
 
             $results = [];
@@ -278,6 +292,8 @@ TXT;
             'reply' => "I reached my step limit before finishing. Here's what I did queue so far — try narrowing the question.",
             'actions' => $actions,
             'tools' => array_values(array_unique($used)),
+            'engine' => $this->engineName($activeProvider),
+            'model' => $activeModel !== '' ? $activeModel : null,
         ];
     }
 
