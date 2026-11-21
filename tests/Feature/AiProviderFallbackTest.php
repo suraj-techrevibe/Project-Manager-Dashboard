@@ -11,9 +11,9 @@ class AiProviderFallbackTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function textResponse(string $text): array
+    private function textResponse(string $text, string $model = 'test-model'): array
     {
-        return ['choices' => [[
+        return ['model' => $model, 'choices' => [[
             'message' => ['role' => 'assistant', 'content' => $text],
             'finish_reason' => 'stop',
         ]]];
@@ -39,6 +39,7 @@ class AiProviderFallbackTest extends TestCase
         Http::fake([
             'api.groq.com/*' => Http::sequence()
                 ->push(['choices' => [[
+                    'model' => 'openai/gpt-oss-120b',
                     'message' => [
                         'role' => 'assistant',
                         'content' => null,
@@ -50,7 +51,7 @@ class AiProviderFallbackTest extends TestCase
                     ],
                     'finish_reason' => 'tool_calls',
                 ]]])
-                ->push($this->textResponse('Here is your board overview.')),
+                ->push($this->textResponse('Here is your board overview.', 'openai/gpt-oss-120b')),
             'openrouter.ai/*' => Http::response($this->textResponse('Unexpected backup response.'), 200),
         ]);
 
@@ -61,6 +62,7 @@ class AiProviderFallbackTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('reply', 'Here is your board overview.')
             ->assertJsonPath('engine', 'groq')
+            ->assertJsonPath('model', 'openai/gpt-oss-120b')
             ->assertJsonPath('tools.0', 'board_overview');
 
         Http::assertSentCount(2);
@@ -75,7 +77,7 @@ class AiProviderFallbackTest extends TestCase
         $this->providerConfig();
         Http::fake([
             'api.groq.com/*' => Http::response(['error' => ['message' => 'rate limit']], 429),
-            'openrouter.ai/*' => Http::response($this->textResponse('Answered by OpenRouter.'), 200),
+            'openrouter.ai/*' => Http::response($this->textResponse('Answered by OpenRouter.', 'mock-openrouter-model:free'), 200),
         ]);
 
         $response = $this->actingAs(User::factory()->create())->postJson('/pm/api/assistant/chat', [
@@ -84,7 +86,8 @@ class AiProviderFallbackTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('reply', 'Answered by OpenRouter.')
-            ->assertJsonPath('engine', 'openrouter');
+            ->assertJsonPath('engine', 'openrouter')
+            ->assertJsonPath('model', 'mock-openrouter-model:free');
 
         Http::assertSent(fn ($request) => str_contains($request->url(), 'api.groq.com'));
         Http::assertSent(fn ($request) => str_contains($request->url(), 'openrouter.ai')
@@ -98,14 +101,16 @@ class AiProviderFallbackTest extends TestCase
         config(['services.groq.key' => null]);
 
         Http::fake([
-            'openrouter.ai/*' => Http::response($this->textResponse('OpenRouter is active.'), 200),
+            'openrouter.ai/*' => Http::response($this->textResponse('OpenRouter is active.', 'mock-openrouter-model:free'), 200),
         ]);
 
         $response = $this->actingAs(User::factory()->create())->postJson('/pm/api/assistant/chat', [
             'messages' => [['role' => 'user', 'content' => 'Hello']],
         ]);
 
-        $response->assertOk()->assertJsonPath('engine', 'openrouter');
+        $response->assertOk()
+            ->assertJsonPath('engine', 'openrouter')
+            ->assertJsonPath('model', 'mock-openrouter-model:free');
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => str_contains($request->url(), 'openrouter.ai'));
     }
