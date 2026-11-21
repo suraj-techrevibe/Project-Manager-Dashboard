@@ -453,11 +453,18 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
             <div className="mt-3">{c.kind === 'daily' ? <DailyDetails c={c} /> : <WeeklyDetails c={c} />}</div>
           </details>
         </>
+      ) : c.kind === 'pack' ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <h3 className="text-base font-semibold text-slate-900">{c.title}</h3>
+            <p className="mt-1 text-xs text-slate-500">Period: {c.period?.from} to {c.period?.to}</p>
+            <div className="mt-2 flex flex-wrap gap-2">{Object.entries(c.summary || {}).map(([key,value])=><span key={key} className="rounded-md bg-white px-2 py-1 text-xs text-slate-600">{key.replaceAll('_',' ')}: <strong>{String(value)}</strong></span>)}</div>
+          </div>
+          <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 font-sans text-xs text-slate-700">{report.body}</pre>
+        </div>
       ) : (
         <>
-          <div className="mb-2 rounded-md bg-amber-50 p-2 text-xs text-amber-700">
-            This report was made in the old format. Generate it again for this date to get the new layout.
-          </div>
+          <div className="mb-2 rounded-md bg-amber-50 p-2 text-xs text-amber-700">This report was made in the old format. Generate it again for this date to get the new layout.</div>
           <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700">{report.body}</pre>
         </>
       )}
@@ -495,6 +502,7 @@ export default function ReportsPanel() {
   const [copied, setCopied] = useState<{ id: number; part: 'update' | 'full' } | null>(null);
   const [reportType,setReportType]=useState<'daily'|'weekly'|'range'>('daily');
   const [savedSearch,setSavedSearch]=useState('');
+  const [savedPeriodFilter,setSavedPeriodFilter]=useState<'all'|'daily'|'weekly'|'date_range'>('all');
   const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'|'qa'|'minutes'|'performance'>('all');
   const [editId,setEditId]=useState<number|null>(null);
   const [editJson,setEditJson]=useState('');
@@ -816,7 +824,7 @@ export default function ReportsPanel() {
           ) : undefined
         }
       >
-        <div className="mb-3 flex flex-wrap gap-2"><input value={savedSearch} onChange={e=>setSavedSearch(e.target.value)} placeholder="Search saved reports…" className={inputCls+" min-w-[12rem] flex-1"}/><select value={savedFilter} onChange={e=>setSavedFilter(e.target.value as any)} className={inputCls}><option value="all">All report types</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="qa">QA Report</option><option value="minutes">Meeting Minutes</option><option value="performance">Tasks &amp; Performance</option></select></div>
+        <div className="mb-3 flex flex-wrap gap-2"><input value={savedSearch} onChange={e=>setSavedSearch(e.target.value)} placeholder="Search saved reports…" className={inputCls+" min-w-[12rem] flex-1"}/><select value={savedFilter} onChange={e=>setSavedFilter(e.target.value as any)} className={inputCls}><option value="all">All report types</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="qa">QA Report</option><option value="minutes">Meeting Minutes</option><option value="performance">Tasks &amp; Performance</option></select><select value={savedPeriodFilter} onChange={e=>setSavedPeriodFilter(e.target.value as any)} className={inputCls}><option value="all">All periods</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="date_range">Date range</option></select></div>
         {loadingList ? (
           <p className="text-sm text-slate-400">Loading…</p>
         ) : listError ? (
@@ -830,7 +838,7 @@ export default function ReportsPanel() {
           <EmptyState title="No reports yet">Generate one above — after that, a daily report is also created each weekday evening and a weekly one on Fridays.</EmptyState>
         ) : (
           <div className="flex flex-col gap-2">
-            {reports.filter(r=>(savedFilter==='all'||r.kind===savedFilter)&&(`${r.report_date} ${r.kind} ${r.content?.summary_text||r.content?.title||r.kind||''} ${r.notes||''}`).toLowerCase().includes(savedSearch.toLowerCase())).map((r) => {
+            {reports.filter(r=>(savedFilter==='all'||r.kind===savedFilter)&&(savedPeriodFilter==='all'||r.period_type===savedPeriodFilter)&&(`${r.report_date} ${r.period_end||''} ${r.kind} ${JSON.stringify(r.content||{})} ${r.notes||''}`).toLowerCase().includes(savedSearch.toLowerCase())).map((r) => {
               const open = openIds.has(r.id);
               return (
                 <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-slate-300">
