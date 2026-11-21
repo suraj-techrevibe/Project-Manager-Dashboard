@@ -139,6 +139,23 @@ class ReportController extends Controller
         }
         foreach (PmSubtask::query()->get() as $subtask) $addPerson($subtask->assignee, 'subtask', (string) $subtask->status);
 
+        $businessByPerson = [];
+        foreach ($projectRows as $project) {
+            foreach ($project['team'] as $member) {
+                $businessByPerson[$member['name']][] = [
+                    'project_name' => $project['project_name'],
+                    'tasks_completed' => $member['tasks_completed'],
+                    'tasks_open' => $member['tasks_open'],
+                    'subtasks_completed' => $member['subtasks_completed'],
+                    'subtasks_open' => $member['subtasks_open'],
+                ];
+            }
+        }
+        foreach ($teamRows as $name => &$row) {
+            $row['businesses'] = $businessByPerson[$name] ?? [];
+        }
+        unset($row);
+
         return response()->json([
             'generated_at' => now()->toIso8601String(),
             'projects' => $projectRows,
