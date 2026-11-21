@@ -74,6 +74,7 @@ class ReportService
         $activities = $this->activities($day, $dayEnd);
 
         $cards = PmCard::query()->get();
+        $executive = $this->executiveSnapshot($cards, now());
         $byId = $cards->keyBy('id');
         $open = $cards->reject(fn ($c) => in_array($c->status, self::OPEN_EXCLUDED, true));
 
@@ -144,6 +145,7 @@ class ReportService
             'date' => $day->toDateString(),
             'label' => $day->format('l, j F Y'),
             'prepared_by' => $preparedBy,
+            'executive' => $executive,
             'summary' => $summary,
             'summary_text' => $this->dailySummaryText($summary, $unblocked->count()),
             'pills' => $this->pills([
@@ -242,6 +244,7 @@ class ReportService
         $prevActivities = $this->activities($prevStart, $prevEnd);
 
         $cards = PmCard::query()->get();
+        $executive = $this->executiveSnapshot($cards, now());
         $byId = $cards->keyBy('id');
         $open = $cards->reject(fn ($c) => in_array($c->status, self::OPEN_EXCLUDED, true));
 
@@ -360,6 +363,7 @@ class ReportService
             'date' => $start->toDateString(),
             'label' => $label,
             'prepared_by' => $preparedBy,
+            'executive' => $executive,
             'summary' => $stats,
             'summary_text' => implode(' · ', [
                 $stats['completed'].' completed (last week '.$stats['prev_completed'].')',
@@ -392,6 +396,102 @@ class ReportService
     /* ================================================================== */
     /* Shared helpers                                                       */
     /* ================================================================== */
+
+
+    /**
+     * Compact management snapshot shared by daily and weekly reports.
+     * Health labels reflect delivery risk signals only, never an individual productivity score.
+     */
+    private function executiveSnapshot(Collection $cards, Carbon $asOf): array
+    {
+        $active = $cards->reject(fn ($card) => in_array($card->status, ['Cancelled'], true));
+        $completed = $active->where('status', 'Completed')->count();
+        $open = $active->reject(fn ($card) => $card->status === 'Completed');
+        $blocked = $open->where('status', 'Blocked')->count();
+        $overdue = $open->filter(fn ($card) => $card->due_at && $card->due_at->lt($asOf->copy()->startOfDay()))->count();
+        $unassigned = $open->filter(fn ($card) => ! filled($card->assignee))->count();
+
+        $subtasks = \App\Models\PmSubtask::query()->get();
+        $qa = \App\Models\PmQaTaskReview::query()->get();
+        $businesses = $cards->whereNotNull('project_id')->groupBy(fn ($card) => (string) $card->project_id)
+            ->map(function ($items, $projectId) use ($subtasks, $qa, $asOf) {
+                $first = $items->first();
+                $live = $items->reject(fn ($card) => in_array($card->status, ['Cancelled'], true));
+                $done = $live->where('status', 'Completed')->count();
+                $open = $live->reject(fn ($card) => $card->status === 'Completed');
+                $blockedCount = $open->where('status', 'Blocked')->count();
+                $overdueCount = $open->filter(fn ($card) => $card->due_at && $card->due_at->lt($asOf->copy()->startOfDay()))->count();
+                $unassignedCount = $open->filter(fn ($card) => ! filled($card->assignee))->count();
+                $projectSubtasks = $subtasks->where('project_id', (string) $projectId)
+                    ->reject(fn ($subtask) => $subtask->status === 'Cancelled');
+                $projectQa = $qa->where('project_id', (string) $projectId);
+                $total = $live->count();
+                $risk = $open->filter(fn ($card) => $card->status === 'Blocked' || ($card->due_at && $card->due_at->lt($asOf->copy()->startOfDay())))->count();
+                $health = $risk > 0 ? 'At risk' : ($unassignedCount > 0 ? 'Watch' : 'On track');
+
+                return [
+                    'project_id' => (string) $projectId,
+                    'business' => $first->project_name ?: 'Unnamed project',
+                    'total' => $total,
+                    'completed' => $done,
+                    'open' => $open->count(),
+                    'in_progress' => $open->where('status', 'In Progress')->count(),
+                    'blocked' => $blockedCount,
+                    'overdue' => $overdueCount,
+                    'unassigned' => $unassignedCount,
+                    'qa_pending' => $projectQa->where('qa_status', 'Awaiting QA')->count(),
+                    'qa_failed' => $projectQa->where('qa_status', 'Failed')->count(),
+                    'subtasks_total' => $projectSubtasks->count(),
+                    'subtasks_completed' => $projectSubtasks->where('status', 'Completed')->count(),
+                    'progress' => $total > 0 ? (int) round(($done / $total) * 100) : 0,
+                    'health' => $health,
+                ];
+            })->sortBy('health')->values()->all();
+
+        $teamRows = [];
+        $add = function (?string $assignees, string $status, ?object $dueAt = null) use (&$teamRows, $asOf) {
+            $names = filled($assignees) ? array_values(array_filter(array_map('trim', explode(',', $assignees)))) : ['Unassigned'];
+            foreach ($names as $name) {
+                $teamRows[$name] ??= ['name' => $name, 'completed' => 0, 'open' => 0, 'in_progress' => 0, 'blocked' => 0, 'overdue' => 0, 'risk_tasks' => 0];
+                if ($status === 'Cancelled') continue;
+                if ($status === 'Completed') {
+                    $teamRows[$name]['completed']++;
+                } else {
+                    $teamRows[$name]['open']++;
+                    if ($status === 'In Progress') $teamRows[$name]['in_progress']++;
+                    if ($status === 'Blocked') $teamRows[$name]['blocked']++;
+                    if ($dueAt && $dueAt->lt($asOf->copy()->startOfDay())) $teamRows[$name]['overdue']++;
+                    if ($status === 'Blocked' || ($dueAt && $dueAt->lt($asOf->copy()->startOfDay()))) $teamRows[$name]['risk_tasks']++;
+                }
+            }
+        };
+        foreach ($cards as $card) $add($card->assignee, (string) $card->status, $card->due_at);
+        $team = collect($teamRows)->map(function ($row) {
+            $risk = $row['risk_tasks'];
+            $row['health'] = $risk > 0 ? 'At risk' : ($row['name'] === 'Unassigned' ? 'Watch' : 'On track');
+            $total = $row['completed'] + $row['open'];
+            $row['progress'] = $total > 0 ? (int) round(($row['completed'] / $total) * 100) : 0;
+            $row['health_pct'] = $total > 0 ? (int) round((($total - $risk) / $total) * 100) : 100;
+            return $row;
+        })->sortBy('health')->values()->all();
+
+        return [
+            'as_of' => $asOf->toIso8601String(),
+            'totals' => [
+                'projects' => count($businesses),
+                'tasks' => $active->count(),
+                'completed' => $completed,
+                'open' => $open->count(),
+                'blocked' => $blocked,
+                'overdue' => $overdue,
+                'unassigned' => $unassigned,
+                'qa_pending' => $qa->where('qa_status', 'Awaiting QA')->count(),
+                'qa_failed' => $qa->where('qa_status', 'Failed')->count(),
+            ],
+            'businesses' => $businesses,
+            'team' => $team,
+        ];
+    }
 
     private function activities(Carbon $from, Carbon $to): Collection
     {
@@ -642,9 +742,54 @@ class ReportService
         return $t['title'].(($t['project'] ?? null) ? ' ['.$t['project'].']' : '').' — '.($t['assignee'] ?? 'unassigned');
     }
 
+    private function appendExecutive(array &$out, array $executive): void
+    {
+        if (! $executive) return;
+        $totals = $executive['totals'] ?? [];
+        $out[] = 'EXECUTIVE SNAPSHOT';
+        $out[] = 'Tasks: '.($totals['tasks'] ?? 0).' | Completed: '.($totals['completed'] ?? 0).' | Open: '.($totals['open'] ?? 0)
+            .' | Blocked: '.($totals['blocked'] ?? 0).' | Overdue: '.($totals['overdue'] ?? 0)
+            .' | QA pending: '.($totals['qa_pending'] ?? 0).' | QA failed: '.($totals['qa_failed'] ?? 0);
+        $out[] = 'BUSINESS / PROJECT HEALTH';
+        foreach (($executive['businesses'] ?? []) as $business) {
+            $out[] = ($business['business'] ?? 'Project').' — '.($business['progress'] ?? 0).'% complete | '.($business['health'] ?? 'Unknown')
+                .' | '.$business['blocked'].' blocked | '.$business['overdue'].' overdue | '.$business['qa_pending'].' QA pending';
+        }
+        $out[] = 'TEAM DELIVERY HEALTH';
+        foreach (($executive['team'] ?? []) as $person) {
+            $out[] = ($person['name'] ?? 'Unassigned').' — '.($person['health'] ?? 'Unknown').' | '.($person['health_pct'] ?? 0).'% clear'
+                .' | '.$person['completed'].' completed | '.$person['open'].' open | '.$person['blocked'].' blocked | '.$person['overdue'].' overdue';
+        }
+        $out[] = 'Snapshot as of: '.($executive['as_of'] ?? 'generation time');
+        $out[] = '';
+    }
+
+    /** Period-specific movement is kept separate from the live company snapshot. */
+    private function appendPeriodHighlights(array &$out, array $content): void
+    {
+        $summary = $content['summary'] ?? [];
+        $out[] = 'PERIOD HIGHLIGHTS';
+        if (($content['kind'] ?? 'daily') === 'weekly') {
+            $out[] = 'Completed: '.($summary['completed'] ?? 0).' (previous week: '.($summary['prev_completed'] ?? 0).')'
+                .' | New tasks: '.($summary['new_tasks'] ?? 0).' (previous week: '.($summary['prev_new_tasks'] ?? 0).')'
+                .' | In progress: '.($summary['in_progress'] ?? 0)
+                .' | Blocked: '.($summary['blocked'] ?? 0)
+                .' | Overdue: '.($summary['overdue'] ?? 0);
+        } else {
+            $out[] = 'Completed: '.($summary['completed'] ?? 0)
+                .' | Moved forward: '.($summary['moved'] ?? 0)
+                .' | New tasks: '.($summary['new_tasks'] ?? 0)
+                .' | Newly blocked: '.($summary['newly_blocked'] ?? 0)
+                .' | Newly overdue: '.($summary['newly_overdue'] ?? 0);
+        }
+        $out[] = '';
+    }
+
     private function renderDaily(array $c): string
     {
         $out = ['DAILY REPORT — '.$c['label'], 'Prepared by: '.$c['prepared_by'], ''];
+        $this->appendExecutive($out, $c['executive'] ?? []);
+        $this->appendPeriodHighlights($out, $c);
         $t = fn (array $x) => $this->taskLine($x);
 
         $out[] = 'TODAY AT A GLANCE';
@@ -693,6 +838,8 @@ class ReportService
     private function renderWeekly(array $c): string
     {
         $out = ['WEEKLY REPORT — '.$c['label'], 'Prepared by: '.$c['prepared_by'], ''];
+        $this->appendExecutive($out, $c['executive'] ?? []);
+        $this->appendPeriodHighlights($out, $c);
         $t = fn (array $x) => $this->taskLine($x);
         $days = fn (array $x) => ($x['days'] ?? null) === null ? '' : ' — '.$x['days'].'d';
 
