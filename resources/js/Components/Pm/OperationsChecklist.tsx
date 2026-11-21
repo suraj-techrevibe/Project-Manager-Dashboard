@@ -16,6 +16,8 @@ interface Props {
   counts: ChecklistCounts;
   riskProject: { id: string; name: string } | null;
   overloadedCount: number;
+  /** Where overdue/blocked/due/no-owner counts came from. */
+  taskSource: 'live' | 'last sync';
   syncing: boolean;
   onSync: () => void;
   /** Same navigation the sidebar uses: page key plus optional query. */
@@ -57,7 +59,7 @@ const TONE: Record<Tone, { badge: string; btn: string }> = {
 
 const STALE_AFTER_MS = 30 * 60 * 1000;
 
-export default function OperationsChecklist({ summary, counts, riskProject, overloadedCount, syncing, onSync, go, onOpenProject, onShowWorkload }: Props) {
+export default function OperationsChecklist({ summary, counts, riskProject, overloadedCount, taskSource, syncing, onSync, go, onOpenProject, onShowWorkload }: Props) {
   const { counts: ops, qa, meetings, sync } = summary;
 
   const syncProblem = sync.error?.message
@@ -79,11 +81,11 @@ export default function OperationsChecklist({ summary, counts, riskProject, over
     },
     {
       title: 'Delivery',
-      sub: 'Task health across all Taskmandu work.',
+      sub: taskSource === 'live' ? 'Task health from live Taskmandu data, same as All tasks.' : 'Task health from the last sync. Live data is still loading.',
       items: [
         { key: 'overdue-tasks', title: 'Clear overdue tasks', why: 'Past their due date and not completed.', count: counts.overdue, clearText: 'No task is overdue.', link: 'Overdue tasks', onClick: tasks('overdue'), tone: 'rose' },
         { key: 'blocked', title: 'Unblock blocked tasks', why: 'Someone is waiting on a decision.', count: counts.blocked, clearText: 'Nothing is blocked.', link: 'Blocked tasks', onClick: tasks('blocked'), tone: 'amber' },
-        { key: 'due-soon', title: 'Check what is due in the next 3 days', why: 'Catch slips before they become overdue.', count: counts.due_soon, clearText: 'No near-term due dates.', link: 'Due this week', onClick: tasks('week'), tone: 'sky' },
+        { key: 'due-soon', title: 'Check what is due this week', why: 'Catch slips before they become overdue.', count: counts.due_soon, clearText: 'No near-term due dates.', link: 'Due this week', onClick: tasks('week'), tone: 'sky' },
         { key: 'no-owner', title: 'Give every task an owner', why: 'No owner means nobody is working on it.', count: counts.no_owner, clearText: 'Everything has an owner.', link: 'Unassigned tasks', onClick: tasks('unassigned'), tone: 'violet' },
         { key: 'verify', title: 'Verify completed tasks', why: 'Done is not delivered until it has been checked.', count: counts.to_verify + counts.incomplete_subtasks, clearText: 'Nothing is waiting for verification.', link: 'Completed tasks', onClick: tasks('done'), tone: 'teal' },
         { key: 'stuck', title: 'Move work that has stopped', why: 'No movement in 3+ days.', count: counts.stuck, clearText: 'No task is stalled.', link: 'Open tasks', onClick: tasks('open'), tone: 'amber' },

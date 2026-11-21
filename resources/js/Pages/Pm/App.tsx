@@ -4,7 +4,7 @@ import PmShell from '@/Components/Pm/PmShell';
 import QuickSearch from '@/Components/Pm/QuickSearch';
 import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
-import type { AllTask } from '@/Components/Pm/AllTasksPanel';
+import { countQuick, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
 import TasksPage from '@/Components/Pm/TasksPage';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
@@ -242,6 +242,11 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   ];
   const current = PM_PAGES.find((p) => p.key === page)!;
   const allTasks = ((today as (TodayData & { tasks?: AllTask[] }) | null)?.tasks ?? []);
+  // Task counts for the Operations checklist come from the same live Taskmandu rows as the All tasks
+  // page, so the number matches what you see after clicking through. The synced mirror only fills in
+  // until live projects have loaded (it goes stale whenever the background sync is failing).
+  const liveTaskRows = useTaskRows(allTasks, projects, projectsLoading);
+  const liveTaskCounts = projectsLoading || projects.length === 0 ? null : countQuick(liveTaskRows);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -282,10 +287,10 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                 <OperationsChecklist
                   summary={today.operations_summary}
                   counts={{
-                    overdue: counts.overdue,
-                    blocked: counts.blocked,
-                    due_soon: counts.due_today + counts.due_soon,
-                    no_owner: counts.unassigned + today.subtasks.length,
+                    overdue: liveTaskCounts ? liveTaskCounts.overdue : counts.overdue,
+                    blocked: liveTaskCounts ? liveTaskCounts.blocked : counts.blocked,
+                    due_soon: liveTaskCounts ? liveTaskCounts.week : counts.due_today + counts.due_soon,
+                    no_owner: liveTaskCounts ? liveTaskCounts.unassigned : counts.unassigned + today.subtasks.length,
                     to_verify: counts.unverified,
                     incomplete_subtasks: counts.subtasks_incomplete,
                     stuck: counts.stuck,
@@ -295,6 +300,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   }}
                   riskProject={riskProjects[0] ? { id: riskProjects[0].id, name: riskProjects[0].name } : null}
                   overloadedCount={(today.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length}
+                  taskSource={liveTaskCounts ? 'live' : 'last sync'}
                   syncing={syncing}
                   onSync={() => void handleSync()}
                   go={(page, params) => visitPm(page as PmPage, params)}

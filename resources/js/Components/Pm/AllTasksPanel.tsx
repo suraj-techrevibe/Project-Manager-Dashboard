@@ -148,6 +148,12 @@ const QUICK: { key: QuickKey; label: string; test: (t: TaskRow, today: number) =
   { key: 'done', label: 'Completed', test: (t) => t.status === 'Completed' },
 ];
 
+/** Same counts as the quick-filter chips on All tasks, so other screens can show matching numbers. */
+export function countQuick(rows: TaskRow[]): Record<QuickKey, number> {
+  const today = startOfToday();
+  return Object.fromEntries(QUICK.map((q) => [q.key, rows.filter((t) => q.test(t, today)).length])) as Record<QuickKey, number>;
+}
+
 function statusTone(status: string): Tone {
   const s = status.toLowerCase();
   if (s === 'completed') return 'ok';
