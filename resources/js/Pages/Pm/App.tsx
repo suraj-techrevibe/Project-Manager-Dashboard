@@ -17,13 +17,14 @@ import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
 import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
 import DailyChecklistPanel from '@/Components/Pm/DailyChecklistPanel';
 import QACenter from '@/Components/Pm/QACenter';
+import QAReportsPanel from '@/Components/Pm/QAReportsPanel';
 import { pmApi } from '@/lib/pmApi';
 import { scopeProjects, scopeToday, useBusinessScope } from '@/lib/businessScope';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { PmFlag, TaskFocus, TodayData, Project } from '@/types/pm';
 
 /** Tabs whose data is loaded on mount; they are re-mounted every time you come back so they never show stale data. Their place (open project / meeting) lives in the URL, so nothing is lost. */
-const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'reports'];
+const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'reports', 'qa-reports'];
 
 /** A tab's panel, mounted the first time you open it and then only hidden — so coming back is instant. */
 function Pane({ show, children }: { show: boolean; children: ReactNode }) {
@@ -419,6 +420,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
+        {mounted('qa-reports') && <Pane show={page === 'qa-reports'}><QAReportsPanel key={gen['qa-reports'] ?? 0} /></Pane>}
         {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
         {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} taskCounts={{ overdue: counts.overdue, blocked: counts.blocked, no_owner: counts.unassigned }} scopeLabel={business.selected?.name ?? null} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
       </div>

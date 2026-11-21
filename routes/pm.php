@@ -27,6 +27,7 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('scope', [PmPageController::class, 'scope'])->name('page.scope');
     Route::get('git', [PmPageController::class, 'git'])->name('page.git');
     Route::get('qa', [PmPageController::class, 'qa'])->name('page.qa');
+    Route::get('qa-reports', [PmPageController::class, 'qaReports'])->name('page.qa-reports');
     Route::get('checklist', [PmPageController::class, 'checklist'])->name('page.checklist');
 });
 
@@ -71,6 +72,9 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::post('drafts/{draft}/verify', [PmDraftController::class, 'verify'])->name('drafts.verify');
     Route::delete('drafts/{draft}', [PmDraftController::class, 'destroy'])->name('drafts.destroy');
     Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
+    Route::get('qa/reports', [PmQaController::class, 'reports'])->name('qa.reports.index');
+    Route::post('qa/reports', [PmQaController::class, 'storeReport'])->name('qa.reports.store');
+    Route::patch('qa/reports/{report}/handover', [PmQaController::class, 'handoverReport'])->name('qa.reports.handover');
     Route::get('qa/task-inbox', [PmQaController::class, 'taskInbox'])->name('qa.task-inbox');
     Route::patch('qa/task-inbox/{review}', [PmQaController::class, 'updateTaskReview'])->name('qa.task-inbox.update');
     Route::post('qa', [PmQaController::class, 'store'])->name('qa.store');

@@ -16,14 +16,16 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   reports: { icon: 'chart', blurb: 'Progress and delivery reporting' },
   scope: { icon: 'target', blurb: 'Check requests against agreed scope' },
   git: { icon: 'branch', blurb: 'Repository activity and delivery signals' },
-  qa: { icon: 'target', blurb: 'Capture, track and retest quality issues' },
+  'qa-reports': { icon: 'notes', blurb: 'Build developer-ready reports from recorded QA findings' },
+  qa: { icon: 'target', blurb: 'Verify completed Taskmandu tasks and retest fixes' },
   checklist: { icon: 'check-square', blurb: 'Your repeatable daily PM routine' },
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
-  { title: '1 · Daily workflow', keys: ['today', 'tasks', 'minutes', 'projects', 'operations', 'qa', 'brief', 'reports'] },
-  { title: '2 · Project controls', keys: ['scope', 'git'] },
-  { title: '3 · Daily routine', keys: ['checklist'] },
+  { title: '1 · Daily workflow', keys: ['today', 'tasks', 'minutes', 'projects', 'operations', 'brief', 'reports'] },
+  { title: '2 · Quality assurance', keys: ['qa-reports', 'qa'] },
+  { title: '3 · Project controls', keys: ['scope', 'git'] },
+  { title: '4 · Daily routine', keys: ['checklist'] },
 ];
 
 interface Props {

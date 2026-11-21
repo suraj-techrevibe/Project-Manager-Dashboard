@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\PmQaIssue;
+use App\Models\PmQaReport;
+use Illuminate\Support\Str;
 use App\Models\PmBusiness;
 use App\Models\PmCard;
 use App\Models\PmQaTaskReview;
@@ -100,6 +102,7 @@ class PmQaController extends Controller
             'task_title'=>'nullable|string|max:200','subtask_id'=>'nullable|string|max:24','subtask_title'=>'nullable|string|max:200',
             'page_url'=>'nullable|string|max:500',
             'title'=>'required|string|max:200','description'=>'nullable|string|max:5000',
+            'expected_behaviour'=>'nullable|string|max:5000','developer_notes'=>'nullable|string|max:5000',
             'severity'=>['required',Rule::in(['Critical','High','Medium','Low'])],
             'status'=>['required',Rule::in(['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'])],
             'assignee'=>'nullable|string|max:160','evidence_url'=>'nullable|string|max:1000','pm_task_url'=>'nullable|url|max:1000','retest_notes'=>'nullable|string|max:5000',
@@ -115,6 +118,7 @@ class PmQaController extends Controller
             'task_title'=>'nullable|string|max:200','subtask_id'=>'nullable|string|max:24','subtask_title'=>'nullable|string|max:200',
             'page_url'=>'nullable|string|max:500',
             'title'=>'required|string|max:200','description'=>'nullable|string|max:5000',
+            'expected_behaviour'=>'nullable|string|max:5000','developer_notes'=>'nullable|string|max:5000',
             'severity'=>['required',Rule::in(['Critical','High','Medium','Low'])],
             'status'=>['required',Rule::in(['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'])],
             'assignee'=>'nullable|string|max:160','evidence_url'=>'nullable|string|max:1000','pm_task_url'=>'nullable|url|max:1000','retest_notes'=>'nullable|string|max:5000',
@@ -127,4 +131,48 @@ class PmQaController extends Controller
         $issue->delete();
         return response()->json(['deleted'=>true]);
     }
+
+    public function reports(Request $request): JsonResponse
+    {
+        return response()->json(['reports' => PmQaReport::where('created_by', $request->user()->id)->latest('report_date')->latest()->limit(100)->get()]);
+    }
+
+    public function storeReport(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'business' => 'required|string|max:160', 'site_app' => 'nullable|string|max:200',
+            'report_date' => 'required|date', 'areas_tested' => 'nullable|string|max:5000',
+            'environment' => 'nullable|string|max:1000', 'summary' => 'nullable|string|max:5000',
+            'fix_first' => 'nullable|string|max:5000', 'open_questions' => 'nullable|string|max:5000',
+            'issue_ids' => 'required|array|min:1|max:200', 'issue_ids.*' => 'required|integer|distinct',
+            'checklist' => 'nullable|array', 'checklist.*.label' => 'required_with:checklist|string|max:300',
+            'checklist.*.result' => ['required_with:checklist', Rule::in(['Pass', 'Fail', 'Not tested', 'Retest required'])],
+        ]);
+        $findings = PmQaIssue::where('created_by', $request->user()->id)->whereIn('id', $data['issue_ids'])->orderBy('id')->get();
+        if ($findings->count() !== count($data['issue_ids'])) {
+            return response()->json(['message' => 'One or more selected findings could not be found. Refresh and try again.'], 422);
+        }
+        if ($findings->contains(fn (PmQaIssue $issue) => $issue->business !== $data['business'])) {
+            return response()->json(['message' => 'All findings in a report must belong to the selected business.'], 422);
+        }
+        $report = PmQaReport::create([
+            'created_by' => $request->user()->id,
+            'report_code' => 'QA-' . now()->format('Ymd') . '-' . Str::upper(Str::random(5)),
+            'business' => $data['business'], 'site_app' => $data['site_app'] ?? null,
+            'report_date' => $data['report_date'], 'areas_tested' => $data['areas_tested'] ?? null,
+            'environment' => $data['environment'] ?? null, 'summary' => $data['summary'] ?? null,
+            'fix_first' => $data['fix_first'] ?? null, 'open_questions' => $data['open_questions'] ?? null,
+            'findings' => $findings->map(fn (PmQaIssue $issue) => $issue->toArray())->values()->all(),
+            'checklist' => $data['checklist'] ?? [],
+        ]);
+        return response()->json(['report' => $report], 201);
+    }
+
+    public function handoverReport(Request $request, PmQaReport $report): JsonResponse
+    {
+        abort_unless($report->created_by === $request->user()->id, 404);
+        $report->update(['handed_over_at' => $report->handed_over_at ?? now()]);
+        return response()->json(['report' => $report->fresh()]);
+    }
+
 }
