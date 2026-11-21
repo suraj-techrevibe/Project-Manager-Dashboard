@@ -78,8 +78,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
 
     if (seen.current.has(page)) {
       if (REFETCH_ON_OPEN.includes(page)) setGen((g) => ({ ...g, [page]: (g[page] ?? 0) + 1 }));
-      if (page === 'today' || page === 'tasks') void loadToday();
-    } else if ((page === 'today' || page === 'tasks') && !props.flags) {
+      if (page === 'today' || page === 'tasks' || page === 'checklist') void loadToday();
+    } else if ((page === 'today' || page === 'tasks' || page === 'checklist') && !props.flags) {
       void loadToday(); // /pm/projects etc. load without Today's payload
     }
     seen.current.add(page);
@@ -113,7 +113,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
 
   // Load once per tab visit (and only until the first success) — keyed on `page` alone.
   useEffect(() => {
-    if ((page === 'today' || page === 'tasks') && !projectsLoaded.current) void loadProjects();
+    if ((page === 'today' || page === 'tasks' || page === 'checklist') && !projectsLoaded.current) void loadProjects();
   }, [page, loadProjects]);
 
   const handleSync = async () => {
@@ -401,7 +401,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
         {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
-        {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel onNavigate={(target) => visitPm(target)} /></Pane>}
+        {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
       </div>
     </PmShell>
   );
