@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\PmReport;
+use App\Models\PmQaReport;
+use App\Models\MeetingMinutes;
+use App\Models\PmActivity;
 use App\Models\PmCard;
 use App\Models\PmSubtask;
 use App\Models\PmQaTaskReview;
@@ -24,6 +27,156 @@ class ReportController extends Controller
     {
         return response()->json([
             'reports' => PmReport::query()->orderByDesc('report_date')->orderBy('kind')->limit(120)->get()->map(fn ($r) => $this->present($r))->all(),
+        ]);
+    }
+
+    /** Date-scoped reporting across QA handovers, meeting minutes and task activity. */
+    public function period(Request $r): JsonResponse
+    {
+        $data = $r->validate([
+            'from' => 'required|date_format:Y-m-d',
+            'to' => 'required|date_format:Y-m-d|after_or_equal:from',
+        ]);
+        $from = Carbon::parse($data['from'])->startOfDay();
+        $to = Carbon::parse($data['to'])->endOfDay();
+
+        $qaReports = PmQaReport::query()->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])
+            ->orderByDesc('report_date')->orderByDesc('id')->get()
+            ->map(function (PmQaReport $report) {
+                $findings = collect($report->findings ?? []);
+                $counts = collect(['Critical', 'High', 'Medium', 'Low'])->mapWithKeys(fn ($severity) => [
+                    strtolower($severity) => $findings->where('severity', $severity)->count(),
+                ]);
+                return [
+                    'id' => $report->id, 'report_code' => $report->report_code,
+                    'business' => $report->business, 'site_app' => $report->site_app,
+                    'report_date' => $report->report_date?->toDateString(),
+                    'finding_count' => $findings->count(), 'severity_counts' => $counts,
+                    'handed_over_at' => $report->handed_over_at?->toIso8601String(),
+                    'summary' => $report->summary,
+                    'areas_tested' => $report->areas_tested,
+                    'environment' => $report->environment,
+                    'fix_first' => $report->fix_first,
+                    'open_questions' => $report->open_questions,
+                    'checklist' => $report->checklist ?? [],
+                    'findings' => $findings->values(),
+                ];
+            })->values();
+
+        $minutes = MeetingMinutes::query()->whereBetween('meeting_date', [$from->toDateString(), $to->toDateString()])
+            ->orderByDesc('meeting_date')->orderByDesc('id')->get()
+            ->map(fn (MeetingMinutes $minute) => [
+                'id' => $minute->id, 'title' => $minute->title,
+                'status' => $minute->status ?? 'final',
+                'meeting_date' => $minute->meeting_date?->toDateString(),
+                'attendees' => $minute->attendees ?? [],
+                'decisions' => $minute->decisions ?? [],
+                'agenda_items' => $minute->agenda_items ?? [],
+                'discussion' => $minute->discussion,
+                'topics' => $minute->topics ?? [],
+                'action_items' => $minute->action_items ?? [],
+                'work_items' => $minute->work_items ?? [],
+                'created_by' => $minute->created_by,
+            ])->values();
+
+        $activities = PmActivity::query()->whereBetween('occurred_at', [$from, $to])
+            ->orderByDesc('occurred_at')->get();
+        $cardIds = $activities->pluck('card_id')->filter()->unique()->values();
+        $cards = $cardIds->isEmpty() ? collect() : PmCard::query()->whereIn('id', $cardIds)->get()->keyBy('id');
+
+        $events = $activities->map(function (PmActivity $activity) use ($cards) {
+            $card = $cards->get($activity->card_id);
+            $meta = $activity->meta ?? [];
+            return [
+                'id' => $activity->id, 'type' => $activity->type,
+                'title' => $activity->title ?: $card?->title ?: 'Activity',
+                'occurred_at' => $activity->occurred_at?->toIso8601String(),
+                'business' => $card?->project_name ?? ($meta['project'] ?? 'Standalone / shared'),
+                'assignee' => $meta['assignee'] ?? ($card?->assignee ?? 'Unassigned'),
+                'from' => $meta['from'] ?? null, 'to' => $meta['to'] ?? null,
+            ];
+        })->values();
+
+        $businessRows = $events->groupBy('business')->map(fn ($rows, $business) => [
+            'business' => $business,
+            'activity_count' => $rows->count(),
+            'tasks_created' => $rows->filter(fn ($e) => in_array($e['type'], ['created', 'pushed'], true))->count(),
+            'tasks_completed' => $rows->filter(fn ($e) => $e['type'] === 'status_change' && $e['to'] === 'Completed')->count(),
+            'blocked' => $rows->filter(fn ($e) => $e['type'] === 'status_change' && $e['to'] === 'Blocked')->count(),
+            'comments' => $rows->where('type', 'comment')->count(),
+        ])->sortByDesc('activity_count')->values();
+
+        $teamRows = $events->flatMap(function ($event) {
+            $names = filled($event['assignee']) ? array_map('trim', explode(',', $event['assignee'])) : ['Unassigned'];
+            return collect($names)->filter()->map(fn ($name) => [
+                'name' => $name, 'activity_count' => 1,
+                'tasks_created' => in_array($event['type'], ['created', 'pushed'], true) ? 1 : 0,
+                'tasks_completed' => $event['type'] === 'status_change' && $event['to'] === 'Completed' ? 1 : 0,
+                'blocked' => $event['type'] === 'status_change' && $event['to'] === 'Blocked' ? 1 : 0,
+            ]);
+        })->groupBy('name')->map(fn ($rows, $name) => [
+            'name' => $name, 'activity_count' => $rows->sum('activity_count'),
+            'tasks_created' => $rows->sum('tasks_created'),
+            'tasks_completed' => $rows->sum('tasks_completed'),
+            'blocked' => $rows->sum('blocked'),
+        ])->sortByDesc('activity_count')->values();
+
+        $subtaskRows = PmSubtask::query()
+            ->where(function ($query) use ($from, $to) {
+                $query->whereBetween('remote_created_at', [$from, $to])
+                    ->orWhereBetween('completed_at', [$from, $to]);
+            })->get();
+        $subtaskCreated = $subtaskRows->filter(fn ($subtask) => $subtask->remote_created_at && $subtask->remote_created_at->between($from, $to));
+        $subtaskCompleted = $subtaskRows->filter(fn ($subtask) => $subtask->completed_at && $subtask->completed_at->between($from, $to));
+        $projectNames = PmCard::query()->whereNotNull('project_id')->get(['project_id', 'project_name'])
+            ->unique('project_id')->keyBy(fn ($card) => (string) $card->project_id);
+        $subtaskByProject = $subtaskRows->groupBy(fn ($subtask) => (string) $subtask->project_id)->map(function ($rows, $projectId) use ($projectNames, $from, $to) {
+            return [
+                'project_id' => $projectId,
+                'project' => $projectNames->get($projectId)?->project_name ?? 'Unknown project',
+                'created' => $rows->filter(fn ($subtask) => $subtask->remote_created_at && $subtask->remote_created_at->between($from, $to))->count(),
+                'completed' => $rows->filter(fn ($subtask) => $subtask->completed_at && $subtask->completed_at->between($from, $to))->count(),
+            ];
+        })->values();
+        $subtaskByTeam = [];
+        foreach (['created' => $subtaskCreated, 'completed' => $subtaskCompleted] as $metric => $rows) {
+            foreach ($rows as $subtask) {
+                $owners = filled($subtask->assignee) ? array_filter(array_map('trim', explode(',', $subtask->assignee))) : ['Unassigned'];
+                foreach ($owners as $owner) {
+                    $subtaskByTeam[$owner] ??= ['name' => $owner, 'created' => 0, 'completed' => 0];
+                    $subtaskByTeam[$owner][$metric]++;
+                }
+            }
+        }
+
+        $summary = [
+            'activity_events' => $events->count(),
+            'tasks_created' => $events->filter(fn ($e) => in_array($e['type'], ['created', 'pushed'], true))->count(),
+            'tasks_completed' => $events->filter(fn ($e) => $e['type'] === 'status_change' && $e['to'] === 'Completed')->count(),
+            'tasks_blocked' => $events->filter(fn ($e) => $e['type'] === 'status_change' && $e['to'] === 'Blocked')->count(),
+            'comments' => $events->where('type', 'comment')->count(),
+            'follow_ups' => $events->where('type', 'nudge')->count(),
+            'verified' => $events->where('type', 'verify')->count(),
+            'subtasks_created' => $subtaskCreated->count(),
+            'subtasks_completed' => $subtaskCompleted->count(),
+        ];
+
+        $savedReports = PmReport::query()->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])
+            ->orderByDesc('report_date')->orderBy('kind')->get()->map(fn ($report) => $this->present($report))->values();
+
+        return response()->json([
+            'range' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+            'qa' => ['count' => $qaReports->count(), 'reports' => $qaReports],
+            'minutes' => ['count' => $minutes->count(), 'meetings' => $minutes],
+            'performance' => [
+                'summary' => $summary, 'businesses' => $businessRows, 'team' => $teamRows,
+                'subtasks' => ['created' => $subtaskCreated->count(), 'completed' => $subtaskCompleted->count(), 'by_project' => $subtaskByProject, 'by_team' => collect($subtaskByTeam)->sortByDesc(fn ($row) => $row['created'] + $row['completed'])->values()],
+                'activities' => $events->take(500)->values(),
+                'activity_total' => $events->count(),
+                'activity_truncated' => $events->count() > 500,
+                'data_note' => 'Performance counts show recorded activity within the selected dates. Taskmandu changes are only as complete as the sync/activity history; current open workload is not presented as historical data. Subtask creation and completion use Taskmandu remote-created and completion timestamps; assignee attribution reflects the mirrored assignee, not historical assignment changes.',
+            ],
+            'saved_reports' => $savedReports,
         ]);
     }
 

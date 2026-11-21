@@ -475,6 +475,15 @@ export default function ReportsPanel() {
   const [openIds, setOpenIds] = useState<Set<number>>(new Set());
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  const [periodFrom, setPeriodFrom] = useState(() => {
+    const d = new Date(); d.setDate(1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  });
+  const [periodTo, setPeriodTo] = useState(todayStr());
+  const [periodType, setPeriodType] = useState<'qa' | 'minutes' | 'performance'>('performance');
+  const [periodData, setPeriodData] = useState<any | null>(null);
+  const [periodLoading, setPeriodLoading] = useState(false);
+  const [periodError, setPeriodError] = useState<string | null>(null);
 
   const [kind, setKind] = useState<'daily' | 'weekly'>('daily');
   const [date, setDate] = useState(todayStr());
@@ -489,19 +498,9 @@ export default function ReportsPanel() {
   const sorted = (list: Report[]) =>
     [...list].sort((a, b) => b.report_date.localeCompare(a.report_date) || (a.kind === b.kind ? 0 : a.kind === 'weekly' ? -1 : 1));
 
-  function load() {
-    setLoadingList(true);
-    setListError(null);
-    pmApi
-      .reports()
-      .then(({ data }) => setReports(sorted(data.reports ?? [])))
-      .catch((e) => setListError(errorText(e, "Couldn't load reports.")))
-      .finally(() => setLoadingList(false));
-  }
-
   useEffect(() => {
-    load();
     loadOverview();
+    loadPeriod();
   }, []);
 
   function loadOverview() {
@@ -511,6 +510,29 @@ export default function ReportsPanel() {
       .then(({ data }) => setOverview(data))
       .catch((e) => setOverviewError(errorText(e, "Couldn't load the business overview.")))
       .finally(() => setOverviewLoading(false));
+  }
+
+  async function loadPeriod() {
+    if (!periodFrom || !periodTo || periodFrom > periodTo) {
+      setPeriodError('Choose a valid date range. The start date must be before or equal to the end date.');
+      return;
+    }
+    setPeriodLoading(true);
+    setLoadingList(true);
+    setPeriodError(null);
+    setListError(null);
+    try {
+      const { data } = await pmApi.reportPeriod(periodFrom, periodTo);
+      setPeriodData(data);
+      setReports(sorted(data.saved_reports ?? []));
+    } catch (e) {
+      const message = errorText(e, "Couldn't load reports for this date range.");
+      setPeriodError(message);
+      setListError(message);
+    } finally {
+      setPeriodLoading(false);
+      setLoadingList(false);
+    }
   }
 
   // A weekly report is dated by its Monday, so "does one already exist?" compares Mondays.
@@ -597,7 +619,89 @@ export default function ReportsPanel() {
           { id: 'report-list', label: 'Saved reports', count: reports.length },
         ]}
       />
-      <UiSection id="report-overview" title="Management overview" subtitle="Live snapshot from Taskmandu projects, subtasks and the QA review inbox." tone="info" actions={<button onClick={loadOverview} className={btnSecondary}>Refresh</button>}>
+      <UiSection id="report-period" title="Date-range report centre" subtitle="Choose a period, then switch between QA, meeting minutes and task / team / project performance." tone="brand">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-slate-500">From<input type="date" value={periodFrom} max={periodTo || undefined} onChange={e => setPeriodFrom(e.target.value)} className={`${inputCls} mt-1 block`} /></label>
+          <label className="text-xs text-slate-500">To<input type="date" value={periodTo} min={periodFrom || undefined} max={todayStr()} onChange={e => setPeriodTo(e.target.value)} className={`${inputCls} mt-1 block`} /></label>
+          <button onClick={() => void loadPeriod()} disabled={periodLoading} className={btnPrimary}>{periodLoading ? 'Loading…' : 'Apply date range'}</button>
+          {periodData && <span className="text-xs text-slate-400">{periodData.range.from} → {periodData.range.to}</span>}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {([{id:'qa',label:'QA reports',count:periodData?.qa?.count},{id:'minutes',label:'Meeting minutes',count:periodData?.minutes?.count},{id:'performance',label:'Tasks & performance',count:periodData?.performance?.summary?.activity_events}] as const).map(item => (
+            <button key={item.id} onClick={() => setPeriodType(item.id)} className={`${btnChip(periodType === item.id)}`}>
+              {item.label}{item.count !== undefined ? ` · ${item.count}` : ''}
+            </button>
+          ))}
+        </div>
+        {periodError && <Notice tone="danger">{periodError}</Notice>}
+        {periodLoading && <p className="mt-3 text-sm text-slate-400">Loading records in this date range…</p>}
+        {!periodLoading && periodData && periodType === 'qa' && (
+          <div className="mt-3">
+            {periodData.qa.reports.length ? <div className="divide-y divide-slate-100">
+              {periodData.qa.reports.map((r:any) => <div key={r.id} className="py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="text-sm font-semibold text-slate-800">{r.business} · {r.report_code}</div><div className="mt-0.5 text-xs text-slate-500">{r.report_date} · {r.site_app || 'Website / app'} · {r.finding_count} findings</div><div className="mt-1 flex flex-wrap gap-2 text-xs"><span className="text-red-700">{r.severity_counts.critical} Critical</span><span className="text-orange-700">{r.severity_counts.high} High</span><span className="text-amber-700">{r.severity_counts.medium} Medium</span><span className="text-slate-500">{r.severity_counts.low} Low</span></div></div>
+                <span className={r.handed_over_at ? 'text-xs font-medium text-emerald-700' : 'text-xs text-amber-700'}>{r.handed_over_at ? 'Handed over' : 'Not handed over'}</span></div>
+                <details className="mt-2 rounded-lg border border-slate-100 px-3 py-2"><summary className="cursor-pointer text-xs font-medium text-indigo-700">View report details · {r.findings?.length || 0} findings</summary>
+                  {r.summary && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{r.summary}</p>}
+                  {r.areas_tested && <p className="mt-2 text-xs text-slate-600"><strong>Areas tested:</strong> {r.areas_tested}</p>}
+                  {r.environment && <p className="mt-1 text-xs text-slate-600"><strong>Environment:</strong> {r.environment}</p>}
+                  {r.fix_first && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600"><strong>Fix first:</strong> {r.fix_first}</p>}
+                  {r.findings?.map((f:any,i:number)=><div key={f.id ?? i} className="mt-3 border-t border-slate-100 pt-2 text-xs"><div className="font-semibold text-slate-800">QA-{String(i+1).padStart(2,'0')} · {f.title} <span className="font-normal text-slate-500">· {f.severity} · {f.status}</span></div>{f.page_url && <div className="mt-1 break-all text-slate-500">{f.page_url}</div>}{f.description && <p className="mt-1 whitespace-pre-wrap text-slate-600"><strong>Actual:</strong> {f.description}</p>}{f.expected_behaviour && <p className="mt-1 whitespace-pre-wrap text-slate-600"><strong>Expected:</strong> {f.expected_behaviour}</p>}{f.developer_notes && <p className="mt-1 whitespace-pre-wrap text-slate-600"><strong>Developer notes:</strong> {f.developer_notes}</p>}{f.assignee && <p className="mt-1 text-slate-500">Assigned: {f.assignee}</p>}{f.evidence_url && <a className="mt-1 inline-block break-all text-indigo-700 underline" href={f.evidence_url} target="_blank" rel="noreferrer">Open evidence</a>}</div>)}
+                  {r.checklist?.length > 0 && <div className="mt-3 border-t border-slate-100 pt-2 text-xs"><strong>Checklist</strong>{r.checklist.map((item:any,i:number)=><div key={i} className="mt-1 flex justify-between gap-3"><span>{item.label}</span><span>{item.result}</span></div>)}</div>}
+                  {r.open_questions && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600"><strong>Open questions:</strong> {r.open_questions}</p>}
+                </details>
+              </div>)}
+            </div> : <EmptyState title="No QA reports in this period">Saved QA reports will appear here when their report date falls inside the selected range.</EmptyState>}
+          </div>
+        )}
+        {!periodLoading && periodData && periodType === 'minutes' && (
+          <div className="mt-3">
+            {periodData.minutes.meetings.length ? <div className="divide-y divide-slate-100">
+              {periodData.minutes.meetings.map((m:any) => <div key={m.id} className="py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2"><div className="text-sm font-semibold text-slate-800">{m.title}</div><span className="text-xs text-slate-500">{m.meeting_date} · {m.status}</span></div>
+                <div className="mt-1 text-xs text-slate-500">Attendees: {m.attendees?.join(', ') || 'Not recorded'} · {m.action_items?.length || 0} action items · {m.work_items?.length || 0} work items</div>
+                {m.agenda_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Agenda:</strong> {m.agenda_items.join(' · ')}</div>}
+                {m.discussion && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600"><strong>Discussion:</strong> {m.discussion}</p>}
+                {m.decisions?.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">{m.decisions.map((d:string,i:number)=><li key={i}>{d}</li>)}</ul>}
+                {m.work_items?.map((w:any,i:number)=><div key={i} className="mt-3 rounded-md bg-slate-50 p-2 text-xs"><div className="font-semibold text-slate-700">{w.project || 'General'} · {w.owner || 'Owner not assigned'}</div><div className="mt-1 text-slate-700">{w.requirement}</div>{w.discussion && <p className="mt-1 whitespace-pre-wrap text-slate-500">{w.discussion}</p>}{w.action_items?.length > 0 && <ul className="mt-1 list-disc pl-4 text-slate-600">{w.action_items.map((a:any,j:number)=><li key={j}>{a.task}{a.due_date ? ` · due ${a.due_date}` : ''}</li>)}</ul>}</div>)}
+                {m.action_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Action items:</strong> {m.action_items.map((a:any)=>`${a.task} — ${a.owner || 'Unassigned'}${a.due_date ? ` (due ${a.due_date})` : ''}`).join(' · ')}</div>}
+              </div>)}
+            </div> : <EmptyState title="No meeting minutes in this period">Meeting minutes are matched using the meeting date, not the date they were last edited.</EmptyState>}
+          </div>
+        )}
+        {!periodLoading && periodData && periodType === 'performance' && (
+          <div className="mt-3 space-y-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+              {[
+                ['Activity events',periodData.performance.summary.activity_events],
+                ['Tasks created',periodData.performance.summary.tasks_created],
+                ['Tasks completed',periodData.performance.summary.tasks_completed],
+                ['Newly blocked',periodData.performance.summary.tasks_blocked],
+                ['Comments',periodData.performance.summary.comments],
+                ['Follow-ups',periodData.performance.summary.follow_ups],
+                ['Verified',periodData.performance.summary.verified],
+                ['Subtasks created',periodData.performance.summary.subtasks_created],
+                ['Subtasks completed',periodData.performance.summary.subtasks_completed],
+              ].map(([label,value])=><div key={String(label)} className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-semibold text-slate-900">{value}</div></div>)}
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div><h4 className="mb-2 text-sm font-semibold text-slate-800">Business / project performance</h4>{periodData.performance.businesses.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Business / project</th><th className="pb-2 text-right">Activity</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th><th className="pb-2 text-right">Blocked</th></tr></thead><tbody>{periodData.performance.businesses.map((b:any)=><tr key={b.business} className="border-t border-slate-100"><td className="py-2 pr-2 font-medium">{b.business}</td><td className="py-2 text-right">{b.activity_count}</td><td className="py-2 text-right">{b.tasks_created}</td><td className="py-2 text-right">{b.tasks_completed}</td><td className="py-2 text-right">{b.blocked}</td></tr>)}</tbody></table></div>:<Empty>No task activity recorded.</Empty>}</div>
+              <div><h4 className="mb-2 text-sm font-semibold text-slate-800">Team performance / contribution</h4>{periodData.performance.team.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Team member</th><th className="pb-2 text-right">Activity</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th><th className="pb-2 text-right">Blocked</th></tr></thead><tbody>{periodData.performance.team.map((p:any)=><tr key={p.name} className="border-t border-slate-100"><td className="py-2 pr-2 font-medium">{p.name}</td><td className="py-2 text-right">{p.activity_count}</td><td className="py-2 text-right">{p.tasks_created}</td><td className="py-2 text-right">{p.tasks_completed}</td><td className="py-2 text-right">{p.blocked}</td></tr>)}</tbody></table></div>:<Empty>No team activity recorded.</Empty>}</div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div><h4 className="mb-2 text-sm font-semibold text-slate-800">Subtask activity by project</h4>{periodData.performance.subtasks.by_project.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Project</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th></tr></thead><tbody>{periodData.performance.subtasks.by_project.map((s:any)=><tr key={s.project_id} className="border-t border-slate-100"><td className="py-2 pr-2">{s.project}</td><td className="py-2 text-right">{s.created}</td><td className="py-2 text-right">{s.completed}</td></tr>)}</tbody></table></div>:<Empty>No subtask activity recorded.</Empty>}</div>
+              <div><h4 className="mb-2 text-sm font-semibold text-slate-800">Subtask activity by team member</h4>{periodData.performance.subtasks.by_team.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Team member</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th></tr></thead><tbody>{periodData.performance.subtasks.by_team.map((s:any)=><tr key={s.name} className="border-t border-slate-100"><td className="py-2 pr-2">{s.name}</td><td className="py-2 text-right">{s.created}</td><td className="py-2 text-right">{s.completed}</td></tr>)}</tbody></table></div>:<Empty>No subtask activity recorded.</Empty>}</div>
+            </div>
+            <div><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-semibold text-slate-800">Activity log</h4><span className="text-xs text-slate-400">Showing {periodData.performance.activities.length} of {periodData.performance.activity_total}</span></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[38rem] text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Date / time</th><th className="pb-2">Business / project</th><th className="pb-2">Task / activity</th><th className="pb-2">Team member</th><th className="pb-2">Change</th></tr></thead><tbody>{periodData.performance.activities.map((a:any)=><tr key={a.id} className="border-t border-slate-100"><td className="py-2 pr-2 whitespace-nowrap">{a.occurred_at ? new Date(a.occurred_at).toLocaleString() : '—'}</td><td className="py-2 pr-2">{a.business}</td><td className="py-2 pr-2">{a.title}<span className="block text-slate-400">{a.type.replaceAll('_',' ')}</span></td><td className="py-2 pr-2">{a.assignee}</td><td className="py-2">{a.from || a.to ? `${a.from || '—'} → ${a.to || '—'}` : '—'}</td></tr>)}</tbody></table></div>
+              {periodData.performance.activity_truncated && <p className="mt-2 text-xs text-amber-700">Activity log is limited to the latest 500 events in this range; summary totals include all events.</p>}
+            </div>
+            <p className="text-xs text-slate-500">{periodData.performance.data_note}</p>
+          </div>
+        )}
+      </UiSection>
+
+      <UiSection id="report-overview" title="Management overview" subtitle="Current board snapshot, independent of the selected historical date range above." tone="info" actions={<button onClick={loadOverview} className={btnSecondary}>Refresh</button>}>
         <div className="mb-4 flex flex-wrap gap-1.5">
           {(['company', 'business', 'team'] as const).map((v) => (
             <button key={v} onClick={() => setReportView(v)} className={`${btnChip(reportView === v)} capitalize`}>{v === 'company' ? 'Company overview' : v === 'business' ? 'Business reports' : 'Team reports'}</button>
@@ -724,7 +828,7 @@ export default function ReportsPanel() {
         ) : listError ? (
           <Notice tone="danger">
             {listError}{' '}
-            <button onClick={load} className="font-medium underline">
+            <button onClick={() => void loadPeriod()} className="font-medium underline">
               Retry
             </button>
           </Notice>
