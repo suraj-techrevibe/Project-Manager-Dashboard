@@ -281,9 +281,23 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                 />
                 <OperationsChecklist
                   summary={today.operations_summary}
+                  counts={{
+                    overdue: counts.overdue,
+                    blocked: counts.blocked,
+                    due_soon: counts.due_today + counts.due_soon,
+                    no_owner: counts.unassigned + today.subtasks.length,
+                    to_verify: counts.unverified,
+                    incomplete_subtasks: counts.subtasks_incomplete,
+                    stuck: counts.stuck,
+                    followups_open: today.meeting_followup
+                      ? (['blocked', 'overdue', 'subtasks_incomplete', 'stuck', 'not_pushed', 'not_started'] as const).reduce((sum, k) => sum + (today.meeting_followup?.counts[k] ?? 0), 0)
+                      : 0,
+                  }}
                   riskProject={riskProjects[0] ? { id: riskProjects[0].id, name: riskProjects[0].name } : null}
                   overloadedCount={(today.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length}
-                  onNavigate={(tab) => visitPm(tab as PmPage)}
+                  syncing={syncing}
+                  onSync={() => void handleSync()}
+                  go={(page, params) => visitPm(page as PmPage, params)}
                   onOpenProject={(id) => visitPm('projects', { project: id })}
                   onShowWorkload={() => requestAnimationFrame(() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
                 />

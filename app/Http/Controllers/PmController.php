@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MeetingMinutes;
 use App\Models\PmActivity;
 use App\Models\PmIntake;
 use App\Models\PmCard;
+use App\Models\PmQaIssue;
 use App\Models\PmSubtask;
 use App\Services\Pm\ClaudeClient;
 use App\Services\Pm\DigestService;
@@ -262,6 +264,15 @@ class PmController extends Controller
         return [
             'projects' => $projects,
             'recent_items' => $recentItems,
+            'qa' => [
+                'open' => PmQaIssue::query()->where('status', '!=', 'Passed')->count(),
+                'urgent' => PmQaIssue::query()->where('status', '!=', 'Passed')->whereIn('severity', ['Critical', 'High'])->count(),
+                'ready_for_retest' => PmQaIssue::query()->where('status', 'Ready for Retest')->count(),
+                'failed' => PmQaIssue::query()->where('status', 'Failed')->count(),
+            ],
+            'meetings' => [
+                'draft_minutes' => MeetingMinutes::query()->where('status', 'draft')->count(),
+            ],
             'sync' => [
                 'configured' => $this->taskmandu->configured(),
                 'last_synced_at' => Cache::get('pm.last_synced_at'),

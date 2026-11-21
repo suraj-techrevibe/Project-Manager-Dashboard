@@ -26,6 +26,8 @@ export interface OperationsTodaySummary {
     requested_due_at: string | null;
     updated_at: string | null;
   }[];
+  qa: { open: number; urgent: number; ready_for_retest: number; failed: number };
+  meetings: { draft_minutes: number };
   sync: {
     configured: boolean;
     last_synced_at: string | null;
