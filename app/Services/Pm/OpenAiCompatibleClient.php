@@ -19,7 +19,7 @@ class OpenAiCompatibleClient
     /**
      * @param array<int, array<string, mixed>> $messages
      * @param array<int, array<string, mixed>> $tools
-     * @return array{content: array<int, array<string, mixed>>, stop_reason: string}
+     * @return array{content: array<int, array<string, mixed>>, stop_reason: string, model: string}
      */
     public function converse(string $provider, string $system, array $messages, array $tools = [], int $maxTokens = 2000): array
     {
@@ -129,6 +129,7 @@ class OpenAiCompatibleClient
         return [
             'content' => $blocks,
             'stop_reason' => $toolCalls ? 'tool_use' : 'end_turn',
+            'model' => trim((string) ($response->json('model') ?: $model)),
         ];
     }
 
