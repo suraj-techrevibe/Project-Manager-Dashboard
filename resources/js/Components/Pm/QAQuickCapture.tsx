@@ -56,7 +56,7 @@ export default function QAQuickCapture({ onSaved }: { onSaved: () => void }) {
   const [expanded, setExpanded] = useState<number|null>(null);
 
   function insertGuidedTemplate() {
-    setNotes(current => current.trim() ? current.trimEnd() + '\\n\\n' + guidedNoteTemplate : guidedNoteTemplate);
+    setNotes(current => current.trim() ? current.trimEnd() + '\n\n' + guidedNoteTemplate : guidedNoteTemplate);
     setError('');
   }
 
