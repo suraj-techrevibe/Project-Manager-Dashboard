@@ -822,7 +822,7 @@ export default function ReportsPanel() {
         ) : listError ? (
           <Notice tone="danger">
             {listError}{' '}
-            <button onClick={load} className="font-medium underline">
+            <button onClick={() => void loadPeriod()} className="font-medium underline">
               Retry
             </button>
           </Notice>
