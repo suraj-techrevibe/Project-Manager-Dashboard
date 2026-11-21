@@ -65,7 +65,7 @@ class ReportController extends Controller
     {
         $cards = PmCard::query()->whereNotNull('project_id')->orderBy('project_name')->orderBy('title')->get();
         $subtasks = PmSubtask::query()->orderBy('title')->get()->groupBy(fn ($s) => (string) $s->project_id.':'.(string) $s->task_id);
-        $reviews = PmQaTaskReview::query()->get()->keyBy(fn ($r) => (string) $r->project_id.':'.(string) $r->task_id);
+        $reviews = PmQaTaskReview::query()->with('events')->get()->keyBy(fn ($r) => (string) $r->project_id.':'.(string) $r->task_id);
 
         $projectRows = $cards->groupBy(fn ($card) => (string) $card->project_id)->map(function ($items, $projectId) use ($subtasks, $reviews) {
             $first = $items->first();
@@ -84,7 +84,7 @@ class ReportController extends Controller
                     'subtasks_total' => $children->count(),
                     'subtasks_completed' => $children->where('status', 'Completed')->count(),
                     'qa_status' => $qa?->qa_status ?? null,
-                    'qa_cycle' => $qa?->cycle ?? null,
+                    'qa_cycle' => $qa?->cycle ?? null,\n                    'qa_history' => $qa?->events?->map(fn ($event) => ['cycle' => $event->cycle, 'result' => $event->result, 'severity' => $event->severity, 'notes' => $event->notes, 'at' => $event->created_at?->toIso8601String()])->values() ?? [],
                 ];
             })->values();
             $active = $items->filter(fn ($c) => ! in_array($c->status, ['Completed', 'Cancelled'], true));
@@ -98,7 +98,7 @@ class ReportController extends Controller
                 'overdue' => $active->filter(fn ($c) => $c->due_at && $c->due_at->lt(today()))->count(),
                 'qa_pending' => $reviews->filter(fn ($r) => (string) $r->project_id === $projectId && $r->qa_status === 'Awaiting QA')->count(),
                 'qa_failed' => $reviews->filter(fn ($r) => (string) $r->project_id === $projectId && $r->qa_status === 'Failed')->count(),
-                'tasks' => $tasks,
+                'tasks' => $tasks,\n                'team' => $tasks->flatMap(function ($task) {\n                    $rows = [];\n                    $owners = filled($task['assignee']) ? array_filter(array_map('trim', explode(',', $task['assignee']))) : ['Unassigned'];\n                    foreach ($owners as $owner) $rows[$owner] = ['name' => $owner, 'tasks_completed' => $task['status'] === 'Completed' ? 1 : 0, 'tasks_open' => ! in_array($task['status'], ['Completed', 'Cancelled'], true) ? 1 : 0, 'subtasks_completed' => 0, 'subtasks_open' => 0];\n                    foreach ($task['subtasks'] as $sub) {\n                        $subOwners = filled($sub['assignee']) ? array_filter(array_map('trim', explode(',', $sub['assignee']))) : ['Unassigned'];\n                        foreach ($subOwners as $owner) {\n                            $rows[$owner] ??= ['name' => $owner, 'tasks_completed' => 0, 'tasks_open' => 0, 'subtasks_completed' => 0, 'subtasks_open' => 0];\n                            $rows[$owner][$sub['status'] === 'Completed' ? 'subtasks_completed' : 'subtasks_open']++;\n                        }\n                    }\n                    return array_values($rows);\n                })->groupBy('name')->map(fn ($rows, $name) => ['name' => $name, 'tasks_completed' => $rows->sum('tasks_completed'), 'tasks_open' => $rows->sum('tasks_open'), 'subtasks_completed' => $rows->sum('subtasks_completed'), 'subtasks_open' => $rows->sum('subtasks_open')])->values(),
             ];
         })->values();
 
