@@ -31,6 +31,10 @@ interface Props {
   /** Overdue + blocked tasks; shown as a badge on the Command center link. */
   attention?: number;
   onOpenSearch: () => void;
+  /** Global business switcher. Omit to hide it. */
+  businesses?: { id: number; name: string }[];
+  businessId?: string;
+  onBusinessChange?: (id: string) => void;
   children: ReactNode;
 }
 
@@ -115,7 +119,7 @@ function UserCard({ name, email }: { name: string; email: string }) {
  * The frame around the whole PM dashboard: a fixed dark sidebar on desktop, a top bar with a slide-over
  * menu on phones/tablets, and a sticky page header (title, search, shortcut) over the content.
  */
-export default function PmShell({ page, attention = 0, onOpenSearch, children }: Props) {
+export default function PmShell({ page, attention = 0, onOpenSearch, businesses = [], businessId = 'all', onBusinessChange, children }: Props) {
   const user = usePage().props.auth.user;
   const [drawer, setDrawer] = useState(false);
   const current = PM_PAGES.find((p) => p.key === page)!;
@@ -166,6 +170,24 @@ export default function PmShell({ page, attention = 0, onOpenSearch, children }:
             <h1 className="truncate text-base font-semibold tracking-tight text-slate-900">{current.label}</h1>
             <p className="hidden truncate text-xs text-slate-500 sm:block">{PM_LOOK[page].blurb}</p>
           </div>
+          {onBusinessChange && businesses.length > 0 && (
+            <label className="flex shrink-0 items-center gap-2">
+              <span className="sr-only">Business</span>
+              <select
+                value={businessId}
+                onChange={(e) => onBusinessChange(e.target.value)}
+                aria-label="Business"
+                className={`max-w-[11rem] rounded-lg border px-2.5 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:max-w-[14rem] ${
+                  businessId === 'all' ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-indigo-300 bg-indigo-50 text-indigo-800'
+                }`}
+              >
+                <option value="all">All businesses</option>
+                {businesses.map((b) => (
+                  <option key={b.id} value={String(b.id)}>{b.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <button
             type="button"
             onClick={onOpenSearch}
