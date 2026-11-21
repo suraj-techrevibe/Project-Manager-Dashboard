@@ -489,7 +489,7 @@ export default function ReportsPanel() {
       <PageHeader
         icon="chart"
         title="Reports"
-        description="Daily and weekly summaries built from what actually happened on the board."
+        description="Business performance, delivery risks, team workload and boss-facing daily or weekly updates."
         status={reports.length ? `${reports.length} saved · ${weeklyCount} weekly` : undefined}
         links={[
           { label: 'Today', tab: 'today' },
@@ -500,6 +500,7 @@ export default function ReportsPanel() {
 
       <JumpNav
         items={[
+          { id: 'report-overview', label: 'Management overview' },
           { id: 'report-new', label: 'New report' },
           { id: 'report-list', label: 'Saved reports', count: reports.length },
         ]}
