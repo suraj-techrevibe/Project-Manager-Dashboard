@@ -741,9 +741,32 @@ class ReportService
         return $t['title'].(($t['project'] ?? null) ? ' ['.$t['project'].']' : '').' — '.($t['assignee'] ?? 'unassigned');
     }
 
+    private function appendExecutive(array &$out, array $executive): void
+    {
+        if (! $executive) return;
+        $totals = $executive['totals'] ?? [];
+        $out[] = 'EXECUTIVE SNAPSHOT';
+        $out[] = 'Tasks: '.($totals['tasks'] ?? 0).' | Completed: '.($totals['completed'] ?? 0).' | Open: '.($totals['open'] ?? 0)
+            .' | Blocked: '.($totals['blocked'] ?? 0).' | Overdue: '.($totals['overdue'] ?? 0)
+            .' | QA pending: '.($totals['qa_pending'] ?? 0).' | QA failed: '.($totals['qa_failed'] ?? 0);
+        $out[] = 'BUSINESS / PROJECT HEALTH';
+        foreach (($executive['businesses'] ?? []) as $business) {
+            $out[] = ($business['business'] ?? 'Project').' — '.($business['progress'] ?? 0).'% complete | '.($business['health'] ?? 'Unknown')
+                .' | '.$business['blocked'].' blocked | '.$business['overdue'].' overdue | '.$business['qa_pending'].' QA pending';
+        }
+        $out[] = 'TEAM DELIVERY HEALTH';
+        foreach (($executive['team'] ?? []) as $person) {
+            $out[] = ($person['name'] ?? 'Unassigned').' — '.($person['health'] ?? 'Unknown').' | '.($person['health_pct'] ?? 0).'% clear'
+                .' | '.$person['completed'].' completed | '.$person['open'].' open | '.$person['blocked'].' blocked | '.$person['overdue'].' overdue';
+        }
+        $out[] = 'Snapshot as of: '.($executive['as_of'] ?? 'generation time');
+        $out[] = '';
+    }
+
     private function renderDaily(array $c): string
     {
         $out = ['DAILY REPORT — '.$c['label'], 'Prepared by: '.$c['prepared_by'], ''];
+        $this->appendExecutive($out, $c['executive'] ?? []);
         $t = fn (array $x) => $this->taskLine($x);
 
         $out[] = 'TODAY AT A GLANCE';
@@ -792,6 +815,7 @@ class ReportService
     private function renderWeekly(array $c): string
     {
         $out = ['WEEKLY REPORT — '.$c['label'], 'Prepared by: '.$c['prepared_by'], ''];
+        $this->appendExecutive($out, $c['executive'] ?? []);
         $t = fn (array $x) => $this->taskLine($x);
         $days = fn (array $x) => ($x['days'] ?? null) === null ? '' : ' — '.$x['days'].'d';
 
