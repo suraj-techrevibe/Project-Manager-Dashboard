@@ -44,7 +44,9 @@ export default function QAQuickCapture({ onSaved }: { onSaved: () => void }) {
     setDraft(current => current ? ({...current, findings: current.findings.map((item,i) => i===index ? ({...item,[key]:value} as DraftFinding) : item)}) : current);
   }
 
-  function removeFinding(index: number) { setDraft(current => current ? ({...current, findings: current.findings.filter((_,i)=>i!==index)}) : current); }\n\n  async function saveFindings() {
+  function removeFinding(index: number) { setDraft(current => current ? ({...current, findings: current.findings.filter((_,i)=>i!==index)}) : current); }
+
+  async function saveFindings() {
     if (!draft?.findings.length) return;
     setSaving(true); setError('');
     try {
