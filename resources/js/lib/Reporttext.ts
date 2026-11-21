@@ -13,6 +13,13 @@ function section(out: string[], title: string, lines: string[], empty: string | 
 export function updateText(c: Content): string {
   const out: string[] = [`${c.kind === 'weekly' ? 'WEEKLY' : 'DAILY'} REPORT — ${c.label}`, `Prepared by: ${c.prepared_by}`, ''];
   const e = c.executive;
+  if (c.kind === 'daily') {
+    out.push('PERIOD HIGHLIGHTS');
+    out.push(`Completed ${c.summary.completed} | Moved forward ${c.summary.moved} | New tasks ${c.summary.new_tasks} | Newly blocked ${c.summary.newly_blocked} | Newly overdue ${c.summary.newly_overdue}`, '');
+  } else {
+    out.push('PERIOD HIGHLIGHTS');
+    out.push(`Completed ${c.summary.completed} (previous week ${c.summary.prev_completed}) | New tasks ${c.summary.new_tasks} (previous week ${c.summary.prev_new_tasks}) | In progress ${c.summary.in_progress} | Blocked ${c.summary.blocked} | Overdue ${c.summary.overdue}`, '');
+  }
   if (e) {
     const t = e.totals;
     out.push('EXECUTIVE SNAPSHOT');
