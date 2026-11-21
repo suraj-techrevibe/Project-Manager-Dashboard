@@ -414,7 +414,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
         {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
-        {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
+        {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} taskCounts={{ overdue: counts.overdue, blocked: counts.blocked, no_owner: counts.unassigned }} scopeLabel={business.selected?.name ?? null} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
       </div>
     </PmShell>
   );
