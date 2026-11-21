@@ -41,10 +41,10 @@ export default function QAQuickCapture({ onSaved }: { onSaved: () => void }) {
   }
 
   function update(index: number, key: keyof DraftFinding, value: string|boolean) {
-    setDraft(current => current ? ({...current, findings: current.findings.map((item,i) => i===index ? ({...item,[key]:value}) : item)}) : current);
+    setDraft(current => current ? ({...current, findings: current.findings.map((item,i) => i===index ? ({...item,[key]:value} as DraftFinding) : item)}) : current);
   }
 
-  async function saveFindings() {
+  function removeFinding(index: number) { setDraft(current => current ? ({...current, findings: current.findings.filter((_,i)=>i!==index)}) : current); }\n\n  async function saveFindings() {
     if (!draft?.findings.length) return;
     setSaving(true); setError('');
     try {
@@ -81,11 +81,11 @@ export default function QAQuickCapture({ onSaved }: { onSaved: () => void }) {
       {draft.summary&&<p className="rounded-lg bg-slate-50 p-3 text-sm">{draft.summary}</p>}
       {draft.questions?.length>0&&<div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><div className="text-sm font-medium text-amber-900">Needs your attention</div><ul className="mt-1 list-disc pl-5 text-sm text-amber-900">{draft.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></div>}
       {draft.findings.map((item,index)=><article key={index} className="rounded-lg border p-3 space-y-3">
-        <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="text-xs text-slate-500">Finding {String(index+1).padStart(2,'0')} · {item.finding_type} · AI confidence {item.confidence}</div><div className="font-medium">{item.title}</div><div className="mt-1 flex flex-wrap gap-1 text-xs"><span className="rounded bg-slate-100 px-2 py-1">{item.business||'Business not identified'}</span><span className="rounded bg-slate-100 px-2 py-1">{item.site_app||'Site/app not identified'}</span>{item.needs_review&&<span className="rounded bg-amber-100 px-2 py-1 text-amber-800">Review suggested</span>}</div></div><button onClick={()=>setExpanded(expanded===index?null:index)} className="shrink-0 rounded border px-2 py-1 text-xs">{expanded===index?'Less':'Review / edit'}</button></div>
+        <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="text-xs text-slate-500">Finding {String(index+1).padStart(2,'0')} · {item.finding_type} · AI confidence {item.confidence}</div><div className="font-medium">{item.title}</div><div className="mt-1 flex flex-wrap gap-1 text-xs"><span className="rounded bg-slate-100 px-2 py-1">{item.business||'Business not identified'}</span><span className="rounded bg-slate-100 px-2 py-1">{item.site_app||'Site/app not identified'}</span>{item.needs_review&&<span className="rounded bg-amber-100 px-2 py-1 text-amber-800">Review suggested</span>}</div></div><div className="flex shrink-0 gap-2"><button onClick={()=>removeFinding(index)} className="rounded border px-2 py-1 text-xs text-rose-700">Remove</button><button onClick={()=>setExpanded(expanded===index?null:index)} className="rounded border px-2 py-1 text-xs">{expanded===index?'Less':'Review / edit'}</button></div></div>
         <div className="grid gap-2 sm:grid-cols-2"><label className="text-xs text-slate-500">Business<input className={field+' mt-1'} value={item.business} onChange={e=>update(index,'business',e.target.value)}/></label><label className="text-xs text-slate-500">Severity suggestion<select className={field+' mt-1'} value={item.severity} onChange={e=>update(index,'severity',e.target.value)}>{severityOptions.map(s=><option key={s}>{s}</option>)}</select></label></div>
         <p className="whitespace-pre-wrap text-sm text-slate-700">{item.description}</p>
         {expanded===index&&<div className="grid gap-2 sm:grid-cols-2">
-          <label className="text-xs text-slate-500">Finding title<input className={field+' mt-1'} value={item.title} onChange={e=>update(index,'title',e.target.value)}/></label>
+          <label className="text-xs text-slate-500">Finding type<select className={field+' mt-1'} value={item.finding_type} onChange={e=>update(index,'finding_type',e.target.value)}>{['Bug','UI/UX','Content','Performance','Functional','Enhancement','Observation'].map(t=><option key={t}>{t}</option>)}</select></label>\n          <label className="text-xs text-slate-500">Finding title<input className={field+' mt-1'} value={item.title} onChange={e=>update(index,'title',e.target.value)}/></label>
           <label className="text-xs text-slate-500">Website / app<input className={field+' mt-1'} value={item.site_app} onChange={e=>update(index,'site_app',e.target.value)}/></label>
           <label className="text-xs text-slate-500">Project<input className={field+' mt-1'} value={item.project_name} onChange={e=>update(index,'project_name',e.target.value)}/></label>
           <label className="text-xs text-slate-500">Related task (optional)<input className={field+' mt-1'} value={item.task_title} onChange={e=>update(index,'task_title',e.target.value)}/></label>
