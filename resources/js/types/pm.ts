@@ -170,7 +170,7 @@ export interface PmIntakeInput {
 
 export type AssistantActionStatus = 'pending' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface AssistantAction { id: string; tool: string; summary: string; details: Record<string, unknown>; status: AssistantActionStatus; message?: string; }
-export type AssistantEngine = 'builtin' | 'gemini' | 'claude';
+export type AssistantEngine = 'gemini' | 'claude';
 export interface AssistantReply { reply: string; actions: AssistantAction[]; tools: string[]; suggestions?: string[]; engine?: AssistantEngine; }
 export interface AssistantStatus { driver: string; provider: string; ai_ready: boolean; label: string; }
 export interface AssistantActionResult { ok: boolean; message: string; status: 'done' | 'failed' | 'cancelled'; }

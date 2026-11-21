@@ -2,14 +2,13 @@ import { useEffect, type KeyboardEvent } from 'react';
 import { ChatBody } from '@/Components/Pm/AssistantPanel';
 import { Icon } from '@/Components/Pm/ui/kit';
 import { clearChat, loadStatus, setOpen, useAssistant } from '@/lib/assistantStore';
-import { visitPm } from '@/lib/pmNav';
 
 /**
  * The assistant, always one click away: a round button bottom-right on every PM page that opens a
- * chat window and minimises back to the button. Shares its conversation with the full assistant page.
+ * chat window and minimises back to the button.
  * Ctrl/Cmd + / toggles it; Esc minimises.
  */
-export default function AssistantBubble({ hidden }: { hidden: boolean }) {
+export default function AssistantBubble() {
   const { open, unread, pending, busy, messages, status } = useAssistant();
 
   useEffect(() => {
@@ -26,8 +25,6 @@ export default function AssistantBubble({ hidden }: { hidden: boolean }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
-
-  if (hidden) return null;
 
   const onPanelKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') setOpen(false);
@@ -50,24 +47,13 @@ export default function AssistantBubble({ hidden }: { hidden: boolean }) {
             </span>
             <div className="min-w-0 flex-1 leading-tight">
               <div className="truncate text-sm font-semibold text-slate-900">PM assistant</div>
-              <div className="truncate text-[11px] text-slate-500">{status?.label ?? 'Built-in assistant'}</div>
+              <div className="truncate text-[11px] text-slate-500">{status?.label ?? 'Gemini'}</div>
             </div>
             {messages.length > 0 && (
               <button type="button" onClick={clearChat} disabled={busy} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50">
                 New
               </button>
             )}
-            <button
-              type="button"
-              title="Open full page"
-              aria-label="Open full page"
-              onClick={() => { setOpen(false); visitPm('assistant', {}); }}
-              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M15 3h6v6M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              </svg>
-            </button>
             <button
               type="button"
               title="Minimise (Esc)"

@@ -74,39 +74,20 @@ TXT;
             throw new RuntimeException('Send a message first.');
         }
 
-        // PM_ASSISTANT_DRIVER: builtin (rules only) | hybrid (rules first, AI only for what they can't understand) | ai (AI for everything).
-        // The AI provider is PM_AI_PROVIDER: gemini (free tier works) or anthropic. Without a key everything falls back to the built-in bot.
-        $driver = config('pm.assistant.driver', 'hybrid');
-        $aiReady = $this->aiReady();
+        // Every message goes straight to the AI model (PM_AI_PROVIDER: gemini by default, or anthropic).
+        // There is no built-in rule bot to fall back to: if the model is unavailable the person gets
+        // a clear error instead of a different, weaker answer.
+        if (! $this->aiReady()) {
+            throw new RuntimeException($this->status()['label'].'.');
+        }
 
-        // "/ai …", "ask gemini …", "gemini: …" — the person wants the AI model, not the rules.
+        // Older "/ai …", "ask gemini …" or "gemini: …" prefixes still work; they are now just the normal path.
         $last = array_key_last($clean);
-        if (preg_match('#^\s*(?:/ai|/gemini|ask (?:the )?(?:ai|gemini)[:,]?|(?:ai|gemini):)\s*(.*)$#is', $clean[$last]['content'], $m)) {
-            $clean[$last]['content'] = trim($m[1]) !== '' ? trim($m[1]) : $clean[$last]['content'];
-            if (! $aiReady || $driver === 'builtin') {
-                return ['reply' => 'The AI model is off, so I can only use the built-in assistant. '.$this->status()['label'].'.', 'actions' => [], 'tools' => [], 'suggestions' => [], 'engine' => 'builtin'];
-            }
-
-            return $this->chatWithAi($clean, $user) + ['suggestions' => [], 'engine' => $this->engineName()];
+        if (preg_match('#^\s*(?:/ai|/gemini|ask (?:the )?(?:ai|gemini)[:,]?|(?:ai|gemini):)\s*(.*)$#is', $clean[$last]['content'], $m) && trim($m[1]) !== '') {
+            $clean[$last]['content'] = trim($m[1]);
         }
 
-        if ($driver === 'ai' && $aiReady) {
-            return $this->chatWithAi($clean, $user) + ['engine' => $this->engineName()];
-        }
-
-        $bot = app(RuleBot::class)->respond($clean, $user, fn (string $tool, array $args, User $u) => $this->queue($tool, $args, $u));
-
-        if ($driver === 'hybrid' && $aiReady && ($bot['unhandled'] ?? false) && empty($bot['actions'])) {
-            try {
-                return $this->chatWithAi($clean, $user) + ['suggestions' => [], 'engine' => $this->engineName()];
-            } catch (\Throwable $e) {
-                report($e);
-                $bot['reply'] .= "\n\n*(I also tried the AI model but it isn't available right now: ".Str::limit($e->getMessage(), 140).')*';
-            }
-        }
-        unset($bot['unhandled']);
-
-        return $bot + ['engine' => 'builtin'];
+        return $this->chatWithAi($clean, $user) + ['suggestions' => [], 'engine' => $this->engineName()];
     }
 
     private function engineName(): string
@@ -117,19 +98,13 @@ TXT;
     /** What is answering right now — shown in the chat header so it is never a mystery. */
     public function status(): array
     {
-        $driver = config('pm.assistant.driver', 'hybrid');
         $ready = $this->aiReady();
         $ai = $this->engineName() === 'claude' ? 'Claude' : 'Gemini';
         $envKey = $this->engineName() === 'claude' ? 'ANTHROPIC_API_KEY' : 'GEMINI_API_KEY';
 
-        $label = match (true) {
-            $driver === 'builtin' => 'Built-in assistant only',
-            ! $ready => "Built-in assistant only — {$ai} is off (no {$envKey})",
-            $driver === 'ai' => $ai,
-            default => "Built-in + {$ai} fallback",
-        };
+        $label = $ready ? $ai : "{$ai} is off — add {$envKey} to your environment settings to use the assistant";
 
-        return ['driver' => $driver, 'provider' => $this->engineName(), 'ai_ready' => $ready && $driver !== 'builtin', 'label' => $label];
+        return ['driver' => 'ai', 'provider' => $this->engineName(), 'ai_ready' => $ready, 'label' => $label];
     }
 
     private function aiReady(): bool

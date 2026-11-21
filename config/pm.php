@@ -1,12 +1,8 @@
 <?php
 
 return [
-    // 'builtin' = rule-based assistant (no API key needed). 'ai' = Claude via ANTHROPIC_API_KEY.
     'assistant' => [
-        // builtin = rules only · hybrid = rules first, AI for what they can't understand · ai = AI for everything.
-        // With no AI key, hybrid behaves exactly like builtin.
-        'driver' => env('PM_ASSISTANT_DRIVER', 'hybrid'),
-        // gemini (free tier works) or anthropic
+        // The assistant always talks directly to this AI model: gemini (default) or anthropic.
         'provider' => env('PM_AI_PROVIDER', 'gemini'),
     ],
     'weekly_capacity_hours' => (float) env('PM_WEEKLY_CAPACITY_HOURS', 40),

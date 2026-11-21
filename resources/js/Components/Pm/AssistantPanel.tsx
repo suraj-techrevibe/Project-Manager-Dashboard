@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { clearChat, loadStatus, runAction, runAll, send, setViewing, useAssistant } from '@/lib/assistantStore';
+import { loadStatus, runAction, runAll, send, useAssistant } from '@/lib/assistantStore';
 import { Icon } from '@/Components/Pm/ui/kit';
 import type { AssistantAction, AssistantEngine } from '@/types/pm';
 
@@ -129,7 +129,6 @@ function ActionCard({ a, onConfirm, onCancel }: { a: AssistantAction; onConfirm:
 /* ---------- who answered ---------- */
 
 const ENGINE: Record<AssistantEngine, { label: string; tone: string }> = {
-  builtin: { label: 'Built-in', tone: 'bg-slate-100 text-slate-600 ring-slate-200' },
   gemini: { label: 'Gemini', tone: 'bg-sky-50 text-sky-700 ring-sky-200' },
   claude: { label: 'Claude', tone: 'bg-amber-50 text-amber-700 ring-amber-200' },
 };
@@ -137,7 +136,7 @@ const ENGINE: Record<AssistantEngine, { label: string; tone: string }> = {
 export function EngineBadge({ engine }: { engine?: AssistantEngine }) {
   if (!engine || !ENGINE[engine]) return null;
   return (
-    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${ENGINE[engine].tone}`} title={engine === 'builtin' ? 'Answered by the built-in rules — no AI model' : `Answered by ${ENGINE[engine].label}`}>
+    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${ENGINE[engine].tone}`} title={`Answered by ${ENGINE[engine].label}`}>
       {ENGINE[engine].label}
     </span>
   );
@@ -246,15 +245,6 @@ export function ChatBody({ active, compact = false }: { active: boolean; compact
                 {!m.error && m.engine && (
                   <div className="mt-1 flex flex-wrap items-center gap-2 pl-1">
                     <EngineBadge engine={m.engine} />
-                    {m.engine === 'builtin' && status?.ai_ready && !busy && messages[idx - 1]?.role === 'user' && (
-                      <button
-                        type="button"
-                        onClick={() => submit(`/ai ${messages[idx - 1].content.replace(/^\/ai\s+/i, '')}`)}
-                        className="text-[11px] font-medium text-sky-700 hover:underline"
-                      >
-                        Not right? Ask {status.provider === 'anthropic' ? 'Claude' : 'Gemini'} instead
-                      </button>
-                    )}
                   </div>
                 )}
                 {(m.actions?.filter((a) => a.status === 'pending').length ?? 0) > 1 && (
@@ -319,43 +309,5 @@ export function ChatBody({ active, compact = false }: { active: boolean; compact
         {!compact && <p className="mt-1.5 px-1 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line. Always check a change before you confirm it.</p>}
       </form>
     </>
-  );
-}
-
-/* ---------- full page ---------- */
-
-export default function AssistantPanel({ active }: { active: boolean }) {
-  const { messages, busy, status } = useAssistant();
-
-  useEffect(() => {
-    void loadStatus();
-  }, []);
-
-  // While this page is showing, the floating bubble steps aside.
-  useEffect(() => {
-    setViewing(active);
-    return () => setViewing(false);
-  }, [active]);
-
-  return (
-    <section className="mx-auto flex h-[calc(100dvh-8rem)] min-h-[420px] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100">
-            <Icon name="spark" className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-semibold text-slate-900">PM assistant</div>
-            <div className="truncate text-xs text-slate-500">{status?.label ?? 'Built-in assistant'} · reads live data · changes need your confirmation</div>
-          </div>
-        </div>
-        {messages.length > 0 && (
-          <button type="button" onClick={clearChat} disabled={busy} className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-            New chat
-          </button>
-        )}
-      </header>
-      <ChatBody active={active} />
-    </section>
   );
 }

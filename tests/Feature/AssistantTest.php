@@ -33,7 +33,7 @@ class AssistantTest extends TestCase
 
     public function test_read_tool_results_reach_the_model_and_reply_comes_back(): void
     {
-        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'anthropic']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.provider' => 'anthropic']);
         $this->card('Fix login');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('search_tasks', ['overdue' => true]))
@@ -49,7 +49,7 @@ class AssistantTest extends TestCase
 
     public function test_write_tools_are_queued_not_executed_and_confirm_runs_once(): void
     {
-        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'anthropic']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.provider' => 'anthropic']);
         $card = $this->card('Noisy task');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('snooze_task', ['summary' => 'Snooze Noisy task for 3 days', 'card_id' => $card->id]))
@@ -70,7 +70,7 @@ class AssistantTest extends TestCase
 
     public function test_another_user_cannot_confirm_my_action_and_cancel_changes_nothing(): void
     {
-        config(['services.anthropic.key' => 'test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'anthropic']);
+        config(['services.anthropic.key' => 'test', 'pm.assistant.provider' => 'anthropic']);
         $card = $this->card('Mine');
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push($this->toolUse('snooze_task', ['summary' => 'Snooze', 'card_id' => $card->id]))
@@ -91,7 +91,7 @@ class AssistantTest extends TestCase
 
     public function test_gemini_tool_loop_round_trips_signatures_and_results(): void
     {
-        config(['services.gemini.key' => 'g-test', 'pm.assistant.driver' => 'ai', 'pm.assistant.provider' => 'gemini']);
+        config(['services.gemini.key' => 'g-test', 'pm.assistant.provider' => 'gemini']);
         Http::fake(['generativelanguage.googleapis.com/*' => Http::sequence()
             ->push(['candidates' => [['content' => ['parts' => [['functionCall' => ['name' => 'lookup_pm_data', 'args' => ['kind' => 'meeting_templates']], 'thoughtSignature' => 'SIG123']]]]]])
             ->push(['candidates' => [['content' => ['parts' => [['text' => 'You have no templates yet.']]]]]]),
@@ -108,5 +108,43 @@ class AssistantTest extends TestCase
         $this->assertSame('lookup_pm_data', $parts->firstWhere('functionResponse')['functionResponse']['name']);
         $this->assertSame('OBJECT', collect($second['tools'][0]['functionDeclarations'])->firstWhere('name', 'search_tasks')['parameters']['type'] ?? null);
         $this->assertArrayNotHasKey('parameters', collect($second['tools'][0]['functionDeclarations'])->firstWhere('name', 'board_overview'));
+    }
+
+    public function test_without_a_gemini_key_the_assistant_says_so_instead_of_falling_back(): void
+    {
+        config(['services.gemini.key' => null, 'pm.assistant.provider' => 'gemini']);
+        Http::fake();
+
+        $res = $this->actingAs(User::factory()->create())->postJson('/pm/api/assistant/chat', ['messages' => [['role' => 'user', 'content' => "What's overdue?"]]]);
+
+        $res->assertStatus(422);
+        $this->assertStringContainsString('GEMINI_API_KEY', $res->json('error'));
+        Http::assertNothingSent();
+
+        $status = $this->actingAs(User::factory()->create())->getJson('/pm/api/assistant/status')->assertOk()->json();
+        $this->assertFalse($status['ai_ready']);
+        $this->assertStringContainsString('Gemini is off', $status['label']);
+    }
+
+    public function test_every_message_goes_to_gemini_and_the_ai_prefix_is_stripped(): void
+    {
+        config(['services.gemini.key' => 'g-test', 'pm.assistant.provider' => 'gemini']);
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(['candidates' => [['content' => ['parts' => [['text' => 'Gemini here']]]]]])]);
+        $user = User::factory()->create();
+
+        $plain = $this->actingAs($user)->postJson('/pm/api/assistant/chat', ['messages' => [['role' => 'user', 'content' => 'show my tasks']]])->assertOk()->json();
+        $this->assertSame('Gemini here', $plain['reply']);
+        $this->assertSame('gemini', $plain['engine']);
+
+        $this->actingAs($user)->postJson('/pm/api/assistant/chat', ['messages' => [['role' => 'user', 'content' => '/ai what is overdue']]])->assertOk();
+        Http::assertSentCount(2);
+        $sent = json_encode(Http::recorded()[1][0]->data());
+        $this->assertStringContainsString('what is overdue', $sent);
+        $this->assertStringNotContainsString('/ai what', $sent);
+    }
+
+    public function test_old_assistant_page_url_redirects_to_the_command_center(): void
+    {
+        $this->actingAs(User::factory()->create())->get('/pm/assistant')->assertRedirect('/pm');
     }
 }

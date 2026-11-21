@@ -23,7 +23,7 @@ use Illuminate\Support\Str;
  * meeting templates, ticket packs, minutes, drafts, reports, QA issues, businesses, waiting-on-client,
  * project health, contacts, sub-tasks, Taskmandu activity and Git.
  *
- * Both the built-in bot (RuleBot) and the AI tool (`lookup_pm_data`) read through this class,
+ * The AI tool (`lookup_pm_data`) reads through this class,
  * so they always agree. Every method returns plain arrays: ['total' => int, 'rows' => array].
  */
 class PmKnowledge

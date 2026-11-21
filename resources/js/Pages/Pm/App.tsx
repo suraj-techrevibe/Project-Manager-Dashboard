@@ -2,7 +2,6 @@ import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import PmShell from '@/Components/Pm/PmShell';
 import QuickSearch from '@/Components/Pm/QuickSearch';
-import AssistantPanel from '@/Components/Pm/AssistantPanel';
 import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import type { AllTask } from '@/Components/Pm/AllTasksPanel';
@@ -367,8 +366,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
             )}
           </Pane>
         )}
-
-        {mounted('assistant') && <Pane show={page === 'assistant'}><AssistantPanel active={page === 'assistant'} /></Pane>}
 
         {mounted('tasks') && (
           <Pane show={page === 'tasks'}>
