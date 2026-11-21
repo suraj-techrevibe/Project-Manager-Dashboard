@@ -87,6 +87,7 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::get('reports/overview', [ReportController::class, 'overview'])->name('reports.overview');
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::post('reports', [ReportController::class, 'store'])->name('reports.store');
+    Route::patch('reports/{report}', [ReportController::class, 'update'])->name('reports.update');
     Route::delete('reports/{report}', [ReportController::class, 'destroy'])->name('reports.destroy');
     Route::post('scope', [PmController::class, 'scope'])->name('scope');
     Route::post('scope/email', [PmController::class, 'scopeEmail'])->name('scope.email');
