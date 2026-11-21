@@ -41,7 +41,13 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
 
   const [rawToday, setToday] = useState<TodayData | null>(props.flags ? (props as TodayData) : null);
   const [rawProjects, setProjects] = useState<Project[]>([]);
-  const business = useBusinessScope();
+  const scopeOptions = (() => {
+    const byId = new Map<string, string>();
+    rawProjects.forEach((p) => byId.set(p._id, p.name));
+    rawToday?.flags.forEach((f) => f.project_id && !byId.has(f.project_id) && byId.set(f.project_id, f.project_name ?? f.project_id));
+    return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+  const business = useBusinessScope(scopeOptions);
   // Everything below the page (tiles, lists, counts, All tasks) reads the scoped copies, so one switch filters it all.
   const today = scopeToday(rawToday, business.projectIds);
   const projects = scopeProjects(rawProjects, business.projectIds);
@@ -276,7 +282,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       page={page}
       attention={attention}
       onOpenSearch={() => setQuickSearchOpen(true)}
-      businesses={business.businesses.filter((b) => b.status === 'active')}
+      businesses={business.options}
       businessId={business.selectedId}
       onBusinessChange={business.setSelectedId}
     >

@@ -31,8 +31,8 @@ interface Props {
   /** Overdue + blocked tasks; shown as a badge on the Command center link. */
   attention?: number;
   onOpenSearch: () => void;
-  /** Global business switcher. Omit to hide it. */
-  businesses?: { id: number; name: string }[];
+  /** Global project (business) switcher. Hidden when there are no options. */
+  businesses?: { id: string; name: string }[];
   businessId?: string;
   onBusinessChange?: (id: string) => void;
   children: ReactNode;
@@ -172,18 +172,18 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
           </div>
           {onBusinessChange && businesses.length > 0 && (
             <label className="flex shrink-0 items-center gap-2">
-              <span className="sr-only">Business</span>
+              <span className="sr-only">Project</span>
               <select
                 value={businessId}
                 onChange={(e) => onBusinessChange(e.target.value)}
-                aria-label="Business"
+                aria-label="Project"
                 className={`max-w-[11rem] rounded-lg border px-2.5 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:max-w-[14rem] ${
                   businessId === 'all' ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-indigo-300 bg-indigo-50 text-indigo-800'
                 }`}
               >
-                <option value="all">All businesses</option>
+                <option value="all">All projects</option>
                 {businesses.map((b) => (
-                  <option key={b.id} value={String(b.id)}>{b.name}</option>
+                  <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
             </label>

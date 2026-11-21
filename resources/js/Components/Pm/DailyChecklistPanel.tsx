@@ -216,7 +216,7 @@ export default function DailyChecklistPanel({
             <h2 className="mt-1 text-xl font-bold text-slate-900">{done === steps.length ? 'All done for today' : `${done} of ${steps.length} steps done`}</h2>
             <p className="mt-1 text-sm text-slate-500">
               Go top to bottom. A step finishes by itself when its number reaches 0, or when you tick it after acting.
-              {scopeLabel ? ` Task numbers are for ${scopeLabel} only; requests, QA, meetings and capacity cover all businesses.` : ''}
+              {scopeLabel ? ` Task numbers are for ${scopeLabel} only; requests, QA, meetings and capacity cover all projects.` : ''}
             </p>
           </div>
           <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${syncBadge}`}>

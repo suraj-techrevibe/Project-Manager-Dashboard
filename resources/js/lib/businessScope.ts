@@ -1,8 +1,7 @@
-import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { PmBusiness, Project, TodayData } from '@/types/pm';
+import type { Project, TodayData } from '@/types/pm';
 
-const STORAGE_KEY = 'pm:business';
+const STORAGE_KEY = 'pm:scope-project';
 const EVENT = 'pm:business-change';
 
 /** 'all' or a business id as a string. Shared by every component that calls the hook. */
@@ -14,36 +13,33 @@ function read(): string {
   }
 }
 
+export interface ScopeOption {
+  /** Taskmandu project id. */
+  id: string;
+  name: string;
+}
+
 export interface BusinessScope {
-  businesses: PmBusiness[];
-  /** 'all' or the selected business id. */
+  options: ScopeOption[];
+  /** 'all' or the selected Taskmandu project id. */
   selectedId: string;
-  selected: PmBusiness | null;
+  selected: ScopeOption | null;
   setSelectedId: (id: string) => void;
-  /** Taskmandu project ids that belong to the selected business; null means no filtering. */
+  /** Project ids in scope; null means no filtering. */
   projectIds: Set<string> | null;
 }
 
-export function useBusinessScope(): BusinessScope {
-  const [businesses, setBusinesses] = useState<PmBusiness[]>([]);
+/**
+ * Each Taskmandu project is a business here, so the switcher lists projects.
+ * Options come from the live project list, plus any project seen on synced tasks.
+ */
+export function useBusinessScope(options: ScopeOption[]): BusinessScope {
   const [selectedId, setSelected] = useState<string>(() => (typeof window === 'undefined' ? 'all' : read()));
 
   useEffect(() => {
-    let live = true;
-    axios
-      .get('/pm/api/businesses')
-      .then(({ data }) => {
-        if (live) setBusinesses((data.businesses ?? []) as PmBusiness[]);
-      })
-      .catch(() => {
-        /* Without businesses the switcher simply stays on "All businesses". */
-      });
     const sync = () => setSelected(read());
     window.addEventListener(EVENT, sync);
-    return () => {
-      live = false;
-      window.removeEventListener(EVENT, sync);
-    };
+    return () => window.removeEventListener(EVENT, sync);
   }, []);
 
   const setSelectedId = useCallback((id: string) => {
@@ -56,17 +52,18 @@ export function useBusinessScope(): BusinessScope {
     window.dispatchEvent(new Event(EVENT));
   }, []);
 
-  const selected = useMemo(() => businesses.find((b) => String(b.id) === selectedId) ?? null, [businesses, selectedId]);
-  const projectIds = useMemo(() => (selected ? new Set(selected.project_links.map((l) => l.project_id)) : null), [selected]);
+  const selected = useMemo(() => options.find((o) => o.id === selectedId) ?? null, [options, selectedId]);
+  // A saved project that is no longer in the list is ignored rather than hiding everything.
+  const projectIds = useMemo(() => (selected ? new Set([selected.id]) : null), [selected]);
 
-  return { businesses, selectedId: selected ? selectedId : 'all', selected, setSelectedId, projectIds };
+  return { options, selectedId: selected ? selectedId : 'all', selected, setSelectedId, projectIds };
 }
 
 const METRIC_TYPES = ['overdue', 'stuck', 'blocked', 'unverified', 'unassigned', 'due_today', 'due_soon', 'subtasks_incomplete'] as const;
 
 /**
- * Narrows the task-level parts of the Today payload to one business's projects.
- * Tasks that are not on any project board (standalone) belong to no business, so they drop out
+ * Narrows the task-level parts of the Today payload to the selected project (business).
+ * Tasks that are not on any project board (standalone) belong to no project, so they drop out
  * while a business is selected. Workload, requests and meeting follow-ups are not task-level and
  * are left as they are.
  */
