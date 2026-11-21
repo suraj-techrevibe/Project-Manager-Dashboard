@@ -75,16 +75,15 @@ TXT;
             throw new RuntimeException('Send a message first.');
         }
 
-        // Every message goes straight to the AI model (PM_AI_PROVIDER: gemini by default, or anthropic).
-        // There is no built-in rule bot to fall back to: if the model is unavailable the person gets
-        // a clear error instead of a different, weaker answer.
+        // AI handles natural-language interpretation; dashboard tools still read live records and
+        // queue every write for the signed-in user to confirm. Groq falls back to OpenRouter on outages.
         if (! $this->aiReady()) {
             throw new RuntimeException($this->status()['label'].'.');
         }
 
         // Older "/ai …", "ask gemini …" or "gemini: …" prefixes still work; they are now just the normal path.
         $last = array_key_last($clean);
-        if (preg_match('#^\s*(?:/ai|/gemini|ask (?:the )?(?:ai|gemini)[:,]?|(?:ai|gemini):)\s*(.*)$#is', $clean[$last]['content'], $m) && trim($m[1]) !== '') {
+        if (preg_match('#^\s*(?:/ai|/gemini|/groq|/openrouter|ask (?:the )?(?:ai|gemini|groq|openrouter)[:,]?|(?:ai|gemini|groq|openrouter):)\s*(.*)$#is', $clean[$last]['content'], $m) && trim($m[1]) !== '') {
             $clean[$last]['content'] = trim($m[1]);
         }
 
