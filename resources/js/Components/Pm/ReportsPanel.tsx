@@ -527,7 +527,7 @@ export default function ReportsPanel() {
                 </div>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[50rem] text-left text-sm">
-                    <thead className="text-xs text-slate-400"><tr>{['Business / project','Tasks','Completed','Open','Blocked','Overdue','QA pending','QA failed'].map(x => <th key={x} className="pb-2 pr-3 font-medium">{x}</th>)}</tr></thead>
+                    <thead className="text-xs text-slate-400"><tr>{['Business / project','Tasks','Completed','Open','Blocked','Overdue','QA pending','QA failed','Subtasks done / total'].map(x => <th key={x} className="pb-2 pr-3 font-medium">{x}</th>)}</tr></thead>
                     <tbody>{overview.projects.map((p: any) => <tr key={p.project_id} className="border-t border-slate-100"><td className="py-2 pr-3 font-medium text-slate-800">{p.project_name}</td><td className="py-2 pr-3">{p.task_count}</td><td className="py-2 pr-3">{p.completed}</td><td className="py-2 pr-3">{p.open}</td><td className={`py-2 pr-3 ${p.blocked ? 'font-semibold text-red-600' : ''}`}>{p.blocked}</td><td className={`py-2 pr-3 ${p.overdue ? 'font-semibold text-red-600' : ''}`}>{p.overdue}</td><td className={`py-2 pr-3 ${p.qa_pending ? 'font-semibold text-amber-600' : ''}`}>{p.qa_pending}</td><td className={`py-2 pr-3 ${p.qa_failed ? 'font-semibold text-red-600' : ''}`}>{p.qa_failed}</td><td className="py-2 pr-3">{p.subtasks_completed ?? 0} / {p.subtasks_total ?? 0}</td></tr>)}</tbody>
                   </table>
                 </div>
