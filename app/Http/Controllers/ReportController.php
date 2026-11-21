@@ -54,6 +54,12 @@ class ReportController extends Controller
                     'finding_count' => $findings->count(), 'severity_counts' => $counts,
                     'handed_over_at' => $report->handed_over_at?->toIso8601String(),
                     'summary' => $report->summary,
+                    'areas_tested' => $report->areas_tested,
+                    'environment' => $report->environment,
+                    'fix_first' => $report->fix_first,
+                    'open_questions' => $report->open_questions,
+                    'checklist' => $report->checklist ?? [],
+                    'findings' => $findings->values(),
                 ];
             })->values();
 
@@ -65,6 +71,9 @@ class ReportController extends Controller
                 'meeting_date' => $minute->meeting_date?->toDateString(),
                 'attendees' => $minute->attendees ?? [],
                 'decisions' => $minute->decisions ?? [],
+                'agenda_items' => $minute->agenda_items ?? [],
+                'discussion' => $minute->discussion,
+                'topics' => $minute->topics ?? [],
                 'action_items' => $minute->action_items ?? [],
                 'work_items' => $minute->work_items ?? [],
                 'created_by' => $minute->created_by,
@@ -83,7 +92,7 @@ class ReportController extends Controller
                 'title' => $activity->title ?: $card?->title ?: 'Activity',
                 'occurred_at' => $activity->occurred_at?->toIso8601String(),
                 'business' => $card?->project_name ?? ($meta['project'] ?? 'Standalone / shared'),
-                'assignee' => $card?->assignee ?? ($meta['assignee'] ?? 'Unassigned'),
+                'assignee' => $meta['assignee'] ?? ($card?->assignee ?? 'Unassigned'),
                 'from' => $meta['from'] ?? null, 'to' => $meta['to'] ?? null,
             ];
         })->values();
