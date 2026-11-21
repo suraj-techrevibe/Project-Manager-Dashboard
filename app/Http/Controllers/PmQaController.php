@@ -9,6 +9,7 @@ use App\Models\PmBusiness;
 use App\Models\PmCard;
 use App\Models\PmQaTaskReview;
 use App\Models\PmSubtask;
+use App\Services\Pm\ClaudeClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\DB;
 
 class PmQaController extends Controller
 {
+    public function __construct(private ClaudeClient $claude) {}
+
     public function index(Request $request): JsonResponse
     {
         $projects = PmCard::query()->whereNotNull('project_id')->select('project_id', 'project_name')->distinct()->orderBy('project_name')->get();
@@ -130,6 +133,76 @@ class PmQaController extends Controller
         abort_unless($issue->created_by === $request->user()->id, 404);
         $issue->delete();
         return response()->json(['deleted'=>true]);
+    }
+
+
+    /** Turn free-form inspection notes into editable QA finding drafts. Nothing is persisted here. */
+    public function draftQuickCapture(Request $request): JsonResponse
+    {
+        $data = $request->validate(['notes' => 'required|string|min:5|max:12000']);
+        $businesses = PmBusiness::query()->orderBy('name')->pluck('name')->all();
+        $projects = PmCard::query()->whereNotNull('project_name')->distinct()->orderBy('project_name')->limit(150)->pluck('project_name')->all();
+
+        $system = 'You organise QA investigation notes for a multi-business software company. Return only structured JSON. Never invent facts, URLs, business names, project names, task names, expected behaviour, or test results. Split distinct defects/observations into separate findings. Keep uncertain items as observations and ask a question rather than turning them into confirmed bugs. Infer business/project/site only when clearly supported by the notes or the supplied known names. Severity is a suggested triage value, not a fact: Critical only for major outage, security/data loss or core flow completely unusable; High for major feature broken; Medium for partial/functionality or usability defect; Low for minor cosmetic/content issue. Enhancement/idea must not be represented as a defect. For incomplete investigations, preserve that uncertainty. Return JSON shape: {"summary":"short capture summary","findings":[{"title":"","business":"","site_app":"","project_name":"","task_title":"","page_url":"","description":"","expected_behaviour":"","developer_notes":"","severity":"Medium","finding_type":"Bug","confidence":"Low","needs_review":true}],"questions":[]}. finding_type must be one of Bug, UI/UX, Content, Performance, Functional, Enhancement, Observation. confidence must be High, Medium or Low. Use empty strings for unknown text. Description should capture observed actual behaviour. Expected behaviour must remain empty unless explicit or unambiguous. Questions should list only genuinely useful missing details.';
+        $prompt = "Known businesses: ".json_encode($businesses, JSON_UNESCAPED_UNICODE)."\nKnown projects: ".json_encode($projects, JSON_UNESCAPED_UNICODE)."\n\nRaw notes:\n".$data['notes'];
+        $out = $this->claude->json($system, $prompt, 3000);
+        $allowedSeverity = ['Critical', 'High', 'Medium', 'Low'];
+        $allowedTypes = ['Bug', 'UI/UX', 'Content', 'Performance', 'Functional', 'Enhancement', 'Observation'];
+        $findings = collect($out['findings'] ?? [])->filter(fn ($f) => is_array($f) && filled($f['title'] ?? null))
+            ->take(40)->map(fn ($f) => [
+                'title' => mb_substr((string) ($f['title'] ?? ''), 0, 200),
+                'business' => mb_substr((string) ($f['business'] ?? ''), 0, 160),
+                'site_app' => mb_substr((string) ($f['site_app'] ?? ''), 0, 200),
+                'project_name' => mb_substr((string) ($f['project_name'] ?? ''), 0, 200),
+                'task_title' => mb_substr((string) ($f['task_title'] ?? ''), 0, 200),
+                'page_url' => mb_substr((string) ($f['page_url'] ?? ''), 0, 500),
+                'description' => mb_substr((string) ($f['description'] ?? ''), 0, 5000),
+                'expected_behaviour' => mb_substr((string) ($f['expected_behaviour'] ?? ''), 0, 5000),
+                'developer_notes' => mb_substr((string) ($f['developer_notes'] ?? ''), 0, 5000),
+                'severity' => in_array($f['severity'] ?? null, $allowedSeverity, true) ? $f['severity'] : 'Medium',
+                'finding_type' => in_array($f['finding_type'] ?? null, $allowedTypes, true) ? $f['finding_type'] : 'Observation',
+                'confidence' => in_array($f['confidence'] ?? null, ['High', 'Medium', 'Low'], true) ? $f['confidence'] : 'Low',
+                'needs_review' => (bool) ($f['needs_review'] ?? true),
+            ])->values();
+
+        return response()->json(['draft' => [
+            'summary' => mb_substr((string) ($out['summary'] ?? ''), 0, 1000),
+            'findings' => $findings,
+            'questions' => collect($out['questions'] ?? [])->filter(fn ($q) => is_string($q) && filled($q))->take(12)->values(),
+        ]]);
+    }
+
+    /** Save reviewed quick-capture drafts as ordinary QA findings, without assigning or closing them. */
+    public function saveQuickCapture(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'findings' => 'required|array|min:1|max:40',
+            'findings.*.title' => 'required|string|max:200',
+            'findings.*.business' => 'nullable|string|max:160',
+            'findings.*.site_app' => 'nullable|string|max:200',
+            'findings.*.project_name' => 'nullable|string|max:200',
+            'findings.*.task_title' => 'nullable|string|max:200',
+            'findings.*.page_url' => 'nullable|string|max:500',
+            'findings.*.description' => 'nullable|string|max:5000',
+            'findings.*.expected_behaviour' => 'nullable|string|max:5000',
+            'findings.*.developer_notes' => 'nullable|string|max:5000',
+            'findings.*.severity' => ['required', Rule::in(['Critical', 'High', 'Medium', 'Low'])],
+            'findings.*.finding_type' => ['nullable', Rule::in(['Bug', 'UI/UX', 'Content', 'Performance', 'Functional', 'Enhancement', 'Observation'])],
+        ]);
+
+        $saved = DB::transaction(function () use ($request, $data) {
+            return collect($data['findings'])->map(function ($finding) use ($request) {
+                $notes = trim((string) ($finding['developer_notes'] ?? ''));
+                $type = $finding['finding_type'] ?? 'Observation';
+                $finding['developer_notes'] = trim("Finding type: {$type}".($notes !== '' ? "\n".$notes : ''));
+                $finding['status'] = 'Draft';
+                $finding['created_by'] = $request->user()->id;
+                unset($finding['finding_type']);
+                return PmQaIssue::create($finding);
+            });
+        });
+
+        return response()->json(['saved' => $saved->count(), 'issues' => $saved], 201);
     }
 
     public function reports(Request $request): JsonResponse
