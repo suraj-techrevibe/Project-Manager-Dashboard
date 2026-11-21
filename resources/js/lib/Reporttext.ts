@@ -13,14 +13,16 @@ function section(out: string[], title: string, lines: string[], empty: string | 
 export function updateText(c: Content): string {
   const out: string[] = [`${c.kind === 'weekly' ? 'WEEKLY' : 'DAILY'} REPORT — ${c.label}`, `Prepared by: ${c.prepared_by}`, ''];
   const e = c.executive;
-  const t = e.totals;
-  out.push('EXECUTIVE SNAPSHOT');
-  out.push(`Tasks ${t.tasks} | ${t.completed} completed | ${t.open} open | ${t.blocked} blocked | ${t.overdue} overdue | QA ${t.qa_pending} pending / ${t.qa_failed} failed`);
-  out.push('BUSINESS / PROJECT HEALTH');
-  e.businesses.forEach((b) => out.push(`${b.business}: ${b.progress}% complete · ${b.health} · ${b.blocked} blocked · ${b.overdue} overdue · ${b.qa_pending} QA pending`));
-  out.push('TEAM DELIVERY HEALTH');
-  e.team.forEach((p) => out.push(`${p.name}: ${p.health} · ${p.health_pct}% clear · ${p.completed} completed · ${p.open} open · ${p.blocked} blocked · ${p.overdue} overdue`));
-  out.push(`Snapshot as of ${new Date(e.as_of).toLocaleString()}`, '');
+  if (e) {
+    const t = e.totals;
+    out.push('EXECUTIVE SNAPSHOT');
+    out.push(`Tasks ${t.tasks} | ${t.completed} completed | ${t.open} open | ${t.blocked} blocked | ${t.overdue} overdue | QA ${t.qa_pending} pending / ${t.qa_failed} failed`);
+    out.push('BUSINESS / PROJECT HEALTH');
+    e.businesses.forEach((b) => out.push(`${b.business}: ${b.progress}% complete · ${b.health} · ${b.blocked} blocked · ${b.overdue} overdue · ${b.qa_pending} QA pending`));
+    out.push('TEAM DELIVERY HEALTH');
+    e.team.forEach((p) => out.push(`${p.name}: ${p.health} · ${p.health_pct}% clear · ${p.completed} completed · ${p.open} open · ${p.blocked} blocked · ${p.overdue} overdue`));
+    out.push(`Snapshot as of ${new Date(e.as_of).toLocaleString()}`, '');
+  }
   section(out, 'What I did', c.my_actions, 'Nothing logged.');
   section(out, 'Blockers / waiting on', c.blocker_notes, null);
   section(out, c.kind === 'weekly' ? 'Next week' : 'Tomorrow', c.plan, 'Nothing planned yet.');
