@@ -9,7 +9,8 @@ use App\Models\PmBusiness;
 use App\Models\PmCard;
 use App\Models\PmQaTaskReview;
 use App\Models\PmSubtask;
-use App\Services\Pm\ClaudeClient;
+use App\Services\Pm\OpenAiCompatibleClient;
+use App\Services\Pm\AiProviderUnavailableException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 
 class PmQaController extends Controller
 {
-    public function __construct(private ClaudeClient $claude) {}
+    public function __construct(private OpenAiCompatibleClient $ai) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -145,7 +146,37 @@ class PmQaController extends Controller
 
         $system = 'You organise QA investigation notes for a multi-business software company. Return only structured JSON. Never invent facts, URLs, business names, project names, task names, expected behaviour, or test results. Split distinct defects/observations into separate findings. Keep uncertain items as observations and ask a question rather than turning them into confirmed bugs. Infer business/project/site only when clearly supported by the notes or the supplied known names. Severity is a suggested triage value, not a fact: Critical only for major outage, security/data loss or core flow completely unusable; High for major feature broken; Medium for partial/functionality or usability defect; Low for minor cosmetic/content issue. Enhancement/idea must not be represented as a defect. For incomplete investigations, preserve that uncertainty. Return JSON shape: {"summary":"short capture summary","findings":[{"title":"","business":"","site_app":"","project_name":"","task_title":"","page_url":"","description":"","expected_behaviour":"","developer_notes":"","severity":"Medium","finding_type":"Bug","confidence":"Low","needs_review":true}],"questions":[]}. finding_type must be one of Bug, UI/UX, Content, Performance, Functional, Enhancement, Observation. confidence must be High, Medium or Low. Use empty strings for unknown text. Description should capture observed actual behaviour. Expected behaviour must remain empty unless explicit or unambiguous. Questions should list only genuinely useful missing details.';
         $prompt = "Known businesses: ".json_encode($businesses, JSON_UNESCAPED_UNICODE)."\nKnown projects: ".json_encode($projects, JSON_UNESCAPED_UNICODE)."\n\nRaw notes:\n".$data['notes'];
-        $out = $this->claude->json($system, $prompt, 3000);
+        $primary = (string) config('pm.assistant.provider', 'groq');
+        $fallback = $primary === 'groq' && config('pm.assistant.fallback_provider') === 'openrouter' ? 'openrouter' : null;
+        $provider = $this->ai->configured($primary)
+            ? $primary
+            : (($fallback && $this->ai->configured($fallback)) ? $fallback : null);
+
+        if ($provider === null) {
+            throw new \\RuntimeException('QA note organisation is unavailable. Configure GROQ_API_KEY or OPENROUTER_API_KEY in your Render environment settings.');
+        }
+
+        $messages = [['role' => 'user', 'content' => $prompt]];
+        try {
+            $response = $this->ai->converse($provider, $system."\\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
+        } catch (AiProviderUnavailableException $e) {
+            if ($provider !== 'groq' || !$fallback || !$this->ai->configured($fallback)) {
+                throw new \\RuntimeException(ucfirst($provider).' is temporarily unavailable: '.$e->getMessage(), 0, $e);
+            }
+            \\Illuminate\\Support\\Facades\\Log::warning('QA quick capture switched to OpenRouter after Groq became unavailable.', ['reason' => $e->getMessage()]);
+            $response = $this->ai->converse($fallback, $system."\\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
+        }
+
+        $raw = collect($response['content'] ?? [])->where('type', 'text')->pluck('text')->implode("\\n");
+        $raw = trim(preg_replace('/^\x60{3}(?:json)?\\s*|\\s*\x60{3}$/m', '', trim($raw)));
+        try {
+            $out = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\\JsonException) {
+            throw new \\RuntimeException("The AI provider returned an unreadable draft. Try again or shorten your notes.");
+        }
+        if (!is_array($out)) {
+            throw new \\RuntimeException("The AI provider returned an invalid draft. Please try again.");
+        }
         $allowedSeverity = ['Critical', 'High', 'Medium', 'Low'];
         $allowedTypes = ['Bug', 'UI/UX', 'Content', 'Performance', 'Functional', 'Enhancement', 'Observation'];
         $findings = collect($out['findings'] ?? [])->filter(fn ($f) => is_array($f) && filled($f['title'] ?? null))
