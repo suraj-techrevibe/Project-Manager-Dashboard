@@ -158,13 +158,13 @@ class PmQaController extends Controller
 
         $messages = [['role' => 'user', 'content' => $prompt]];
         try {
-            $response = $this->ai->converse($provider, $system."\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
+            $response = $this->ai->converse($provider, $system."\n\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
         } catch (AiProviderUnavailableException $e) {
             if ($provider !== 'groq' || !$fallback || !$this->ai->configured($fallback)) {
                 throw new \RuntimeException(ucfirst($provider).' is temporarily unavailable: '.$e->getMessage(), 0, $e);
             }
             \Illuminate\Support\Facades\Log::warning('QA quick capture switched to OpenRouter after Groq became unavailable.', ['reason' => $e->getMessage()]);
-            $response = $this->ai->converse($fallback, $system."\n\\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
+            $response = $this->ai->converse($fallback, $system."\n\nReturn ONLY valid JSON. No markdown fences.", $messages, [], 3000);
         }
 
         $raw = collect($response['content'] ?? [])->where('type', 'text')->pluck('text')->implode("\n");
