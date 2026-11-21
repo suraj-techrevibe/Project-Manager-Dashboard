@@ -493,7 +493,13 @@ export default function ReportsPanel() {
   const [genError, setGenError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [copied, setCopied] = useState<{ id: number; part: 'update' | 'full' } | null>(null);
-  const [reportType,setReportType]=useState<'daily'|'weekly'|'range'>('daily');\n  const [savedSearch,setSavedSearch]=useState('');\n  const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'>('all');\n  const [editId,setEditId]=useState<number|null>(null);\n  const [editJson,setEditJson]=useState('');\n  const [editNotes,setEditNotes]=useState('');\n  const [editSaving,setEditSaving]=useState(false);
+  const [reportType,setReportType]=useState<'daily'|'weekly'|'range'>('daily');
+  const [savedSearch,setSavedSearch]=useState('');
+  const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'>('all');
+  const [editId,setEditId]=useState<number|null>(null);
+  const [editJson,setEditJson]=useState('');
+  const [editNotes,setEditNotes]=useState('');
+  const [editSaving,setEditSaving]=useState(false);
 
   // Newest date first, always — never trust the order the server happened to return.
   const sorted = (list: Report[]) =>
