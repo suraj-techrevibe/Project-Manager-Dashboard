@@ -18,6 +18,7 @@ import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
 import DailyChecklistPanel from '@/Components/Pm/DailyChecklistPanel';
 import QACenter from '@/Components/Pm/QACenter';
 import { pmApi } from '@/lib/pmApi';
+import { scopeProjects, scopeToday, useBusinessScope } from '@/lib/businessScope';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { PmFlag, TaskFocus, TodayData, Project } from '@/types/pm';
 
@@ -38,10 +39,14 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const page = usePmPage(props.page);
   const [visited, setVisited] = useState<Set<PmPage>>(() => new Set<PmPage>([page]));
 
-  const [today, setToday] = useState<TodayData | null>(props.flags ? (props as TodayData) : null);
+  const [rawToday, setToday] = useState<TodayData | null>(props.flags ? (props as TodayData) : null);
+  const [rawProjects, setProjects] = useState<Project[]>([]);
+  const business = useBusinessScope();
+  // Everything below the page (tiles, lists, counts, All tasks) reads the scoped copies, so one switch filters it all.
+  const today = scopeToday(rawToday, business.projectIds);
+  const projects = scopeProjects(rawProjects, business.projectIds);
   const [todayError, setTodayError] = useState<string | null>(null);
   const [todayLoading, setTodayLoading] = useState(false);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState(false);
@@ -267,7 +272,14 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   const mounted = (key: PmPage) => visited.has(key) || page === key;
 
   return (
-    <PmShell page={page} attention={attention} onOpenSearch={() => setQuickSearchOpen(true)}>
+    <PmShell
+      page={page}
+      attention={attention}
+      onOpenSearch={() => setQuickSearchOpen(true)}
+      businesses={business.businesses.filter((b) => b.status === 'active')}
+      businessId={business.selectedId}
+      onBusinessChange={business.setSelectedId}
+    >
       <Head title={`${current.label} · Company Operations`} />
       <QuickSearch
         open={quickSearchOpen}
@@ -395,14 +407,14 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         )}
 
         {mounted('operations') && <Pane show={page === 'operations'}><RequestsIdeasPanel key={gen.operations ?? 0} /></Pane>}
-        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={projects} onProjectsChange={setProjects} /></Pane>}
+        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
         {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
-        {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
+        {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} taskCounts={{ overdue: counts.overdue, blocked: counts.blocked, no_owner: counts.unassigned }} scopeLabel={business.selected?.name ?? null} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
       </div>
     </PmShell>
   );

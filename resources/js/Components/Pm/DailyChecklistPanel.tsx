@@ -4,169 +4,307 @@ import type { PmPage } from '@/lib/pmNav';
 import type { TodayData } from '@/types/pm';
 
 type Params = Record<string, string | null | undefined>;
-type Item = {
-  id: string;
-  section: string;
-  title: string;
-  detail: string;
-  destination: PmPage;
-  params?: Params;
-  action: string;
-  when?: string;
-};
 type QaReview = { qa_status: string; task_status: string };
 
-const ITEMS: Item[] = [
-  { id: 'dashboard', section: '1 · System and data', title: 'Confirm Dashboard-2 is loading correctly', detail: 'The Command Center data and project/task information should load without a database or server error.', destination: 'today', action: 'Open Command Center' },
-  { id: 'sync', section: '1 · System and data', title: 'Confirm Taskmandu sync is recent and healthy', detail: 'Check the last sync time and any sync warning/error. Sync is scheduled every five minutes. If authentication or ECIRCUITBREAKER appears, stop retrying Sync and investigate the connection first.', destination: 'today', action: 'Check sync status' },
-  { id: 'intake', section: '2 · Incoming work and decisions', title: 'Capture every new request or idea', detail: 'Record boss, client, team and your own requests in Operations. Select the correct business/project, source, priority and requested due date. Do not leave requests only in chat.', destination: 'operations', action: 'Open Requests & Ideas' },
-  { id: 'decisions', section: '2 · Incoming work and decisions', title: 'Clear requests and ideas waiting for your decision', detail: 'Review clarification needed, in-review, captured and under-review items. Approve, reject, defer or ask for clarification, and record why.', destination: 'operations', action: 'Review decisions' },
-  { id: 'deadlines', section: '3 · Delivery and task control', title: 'Review overdue and near-term deadlines', detail: 'Open overdue tasks first, then review tasks due today and within the next seven days. Confirm the owner and realistic delivery date.', destination: 'tasks', params: { tq: 'overdue' }, action: 'Open overdue tasks' },
-  { id: 'blocked', section: '3 · Delivery and task control', title: 'Resolve or assign owners to blocked work', detail: 'Identify what is blocked, why, who must unblock it and the next action. Also check tasks with no movement for three or more days in Command Center.', destination: 'tasks', params: { tq: 'blocked' }, action: 'Open blocked tasks' },
-  { id: 'ownership', section: '3 · Delivery and task control', title: 'Check unassigned tasks and unfinished subtasks', detail: 'Every active item should have a clear owner. Check incomplete subtasks even when the parent task is marked Completed.', destination: 'tasks', params: { tq: 'unassigned' }, action: 'Open unassigned tasks' },
-  { id: 'qa-inbox', section: '4 · Quality assurance', title: 'Process every task awaiting QA', detail: 'Open each task submitted as Completed or Review. Test the actual website/app against the requirement, not just the developer’s message.', destination: 'qa', action: 'Open QA Inbox' },
-  { id: 'qa-result', section: '4 · Quality assurance', title: 'Record QA results, notes and evidence', detail: 'Record Pass or Fail, clear reproduction notes, severity for failures and a screenshot/recording URL where useful. QA Pass/Fail does not change Taskmandu status.', destination: 'qa', action: 'Record QA results' },
-  { id: 'retest', section: '4 · Quality assurance', title: 'Follow up failed fixes and retests', detail: 'For failed work, move the Taskmandu task back to In Progress yourself. When it is submitted again as Completed or Review, verify the new QA cycle.', destination: 'qa', action: 'Review failed / retest items' },
-  { id: 'capacity', section: '5 · Team and meeting coordination', title: 'Review developer workload across all businesses', detail: 'Check open tasks, estimated hours, weekly capacity, overdue and blocked work. Notice overloaded developers and people with room. Treat missing hour estimates as unknown, not free capacity.', destination: 'today', action: 'Open workload overview' },
-  { id: 'updates', section: '5 · Team and meeting coordination', title: 'Check progress updates and unexpected interruptions', detail: 'Identify work started outside the board, urgent bugs added by the boss, tasks with no recent update and anything the Senior Dev needs to unblock.', destination: 'today', action: 'Review daily monitoring' },
-  { id: 'minutes', section: '5 · Team and meeting coordination', title: 'Review meeting follow-ups and carry-over actions', detail: 'Check previous meeting commitments. Make sure every action has an owner, project and due date, and is still moving.', destination: 'minutes', action: 'Open Meeting Minutes' },
-  { id: 'tickets', section: '5 · Team and meeting coordination', title: 'Record today’s meeting decisions as trackable work', detail: 'Create or update meeting minutes. Use Work Items and action items; review owners and project links before pushing tickets to Taskmandu.', destination: 'minutes', action: 'Create / update minutes' },
-  { id: 'priorities', section: '6 · Plan and communicate', title: 'Choose no more than three company-wide priorities', detail: 'Rank the most important outcomes across all businesses. For each, name one accountable owner, expected delivery and what “done” means.', destination: 'tasks', action: 'Review tasks and owners' },
-  { id: 'alignment', section: '6 · Plan and communicate', title: 'Align priorities with the boss and Senior Dev', detail: 'Confirm new urgent requests versus planned work, agree what gets delayed when something urgent is added, and record the decision in the PM app.', destination: 'reports', action: 'Open Reports' },
-  { id: 'scope', section: '7 · Only when relevant', title: 'Check new client requests against agreed scope', detail: 'When a client asks for extra work, compare it with the original brief before promising delivery or assigning development.', destination: 'scope', action: 'Open Scope Check', when: 'Only if a new client change/request arrived' },
-  { id: 'release', section: '7 · Only when relevant', title: 'Check project delivery and Git/PR signals', detail: 'For projects due to release or merge today, review project health, open pull requests and failing/pending checks. This Git view reflects the dashboard host repository configuration.', destination: 'git', action: 'Open Git', when: 'Only on release, deployment or merge days' },
-];
-
-function localDateKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+/** Live task counts (same numbers and rules as the Command Center tiles and All tasks). */
+export interface ChecklistTaskCounts {
+  overdue: number;
+  blocked: number;
+  no_owner: number;
 }
 
-function formatSync(value?: string | null) {
-  if (!value) return 'No successful sync time recorded';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Sync time unavailable' : date.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+interface Step {
+  id: string;
+  title: string;
+  /** One plain sentence: when is this step finished. */
+  doneWhen: string;
+  /** What the number counts, e.g. "overdue tasks". null = no number, manual step. */
+  count: number | null;
+  unit: string;
+  /** Count is not known yet (still loading, or data unavailable). */
+  unknown?: boolean;
+  go: { page: PmPage; params?: Params; label: string };
+}
+
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const formatSync = (value?: string | null) => {
+  if (!value) return 'never';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? 'unknown' : d.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+};
+
+function useDaily<T>(name: string, initial: T): [T, (v: T | ((c: T) => T)) => void] {
+  const key = `pm-daily:${name}:${todayKey()}`;
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* Still works for this page view. */
+    }
+  }, [key, value]);
+  return [value, setValue];
 }
 
 export default function DailyChecklistPanel({
-  today, loading, error, onRetry, onNavigate,
+  today,
+  taskCounts,
+  scopeLabel,
+  loading,
+  error,
+  onRetry,
+  onNavigate,
 }: {
   today: TodayData | null;
+  taskCounts: ChecklistTaskCounts;
+  /** Name of the selected business, or null for all businesses. */
+  scopeLabel: string | null;
   loading: boolean;
   error: string | null;
   onRetry: () => void;
   onNavigate: (page: PmPage, params?: Params) => void;
 }) {
-  const dateKey = useMemo(localDateKey, []);
-  const storageKey = `pm-daily-checklist:v2:${dateKey}`;
-  const [checked, setChecked] = useState<Record<string, boolean>>(() => {
-    if (typeof window === 'undefined') return {};
-    try { return JSON.parse(window.localStorage.getItem(storageKey) || '{}'); } catch { return {}; }
-  });
-  const [qaReviews, setQaReviews] = useState<QaReview[] | null>(null);
-  const [qaError, setQaError] = useState<string | null>(null);
-  const [qaLoading, setQaLoading] = useState(true);
+  const [ticked, setTicked] = useDaily<Record<string, boolean>>('ticks', {});
+  const [priorities, setPriorities] = useDaily<string[]>('priorities', ['', '', '']);
+  const [qa, setQa] = useState<QaReview[] | null>(null);
+  const [qaError, setQaError] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    const loadQa = async () => {
+    let live = true;
+    const load = async () => {
       try {
         const { data } = await axios.get('/pm/api/qa/task-inbox');
-        if (active) { setQaReviews(data.reviews ?? []); setQaError(null); }
-      } catch (e) {
-        const message = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-        if (active) setQaError(message || 'QA Inbox data could not be loaded.');
-      } finally { if (active) setQaLoading(false); }
+        if (live) {
+          setQa((data.reviews ?? []) as QaReview[]);
+          setQaError(false);
+        }
+      } catch {
+        if (live) setQaError(true);
+      }
     };
-    void loadQa();
-    const timer = window.setInterval(() => { void loadQa(); }, 60_000);
-    return () => { active = false; window.clearInterval(timer); };
+    void load();
+    const t = window.setInterval(() => void load(), 60_000);
+    return () => {
+      live = false;
+      window.clearInterval(t);
+    };
   }, []);
 
-  useEffect(() => {
-    try { window.localStorage.setItem(storageKey, JSON.stringify(checked)); } catch { /* The checklist remains usable for this browser session. */ }
-  }, [checked, storageKey]);
-
-  const done = ITEMS.filter((item) => checked[item.id]).length;
-  const total = ITEMS.length;
-  const percent = Math.round((done / total) * 100);
-  const requiredItems = ITEMS.filter((item) => !item.when);
-  const requiredDone = requiredItems.filter((item) => checked[item.id]).length;
   const sync = today?.operations_summary?.sync;
   const syncAt = sync?.last_synced_at ?? today?.lastSyncedAt ?? null;
   const syncAge = syncAt ? Date.now() - new Date(syncAt).getTime() : null;
-  const syncFresh = Boolean(sync?.configured && syncAt && syncAge !== null && syncAge <= 15 * 60_000 && !sync?.error && !sync?.warning && !error && !qaError && !qaLoading);
-  const awaitingQa = qaReviews?.filter((r) => r.qa_status === 'Awaiting QA' && ['Completed', 'Review'].includes(r.task_status)).length ?? null;
-  const failedQa = qaReviews?.filter((r) => r.qa_status === 'Failed').length ?? null;
-  const overloaded = today?.workload.filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length ?? null;
-  const sections = [...new Set(ITEMS.map((item) => item.section))];
+  const syncProblem =
+    error ||
+    sync?.error?.message ||
+    sync?.warning?.message ||
+    (sync && !sync.configured ? 'Taskmandu is not configured.' : null) ||
+    (syncAge === null ? 'Taskmandu has never synced.' : syncAge > 15 * 60_000 ? 'Taskmandu data is more than 15 minutes old.' : null);
 
-  const toggle = (id: string) => setChecked((current) => ({ ...current, [id]: !current[id] }));
-  const reset = () => setChecked({});
-  const statusLabel = error ? 'Dashboard data unavailable' : loading || qaLoading ? 'Checking live systems…' : qaError ? 'QA data unavailable' : !today ? 'Live overview not loaded' : syncFresh ? 'Taskmandu sync and QA healthy' : 'System needs attention';
-  const statusTone = error || (!loading && today && !syncFresh) ? 'border-amber-200 bg-amber-50 text-amber-800' : syncFresh ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-600';
+  const ops = today?.operations_summary?.counts;
+  const decisions = ops ? ops.requests_for_decision + ops.overdue_requests + ops.ideas_for_review : 0;
+  const awaitingQa = qa ? qa.filter((r) => r.qa_status === 'Awaiting QA' && ['Completed', 'Review'].includes(r.task_status)).length : 0;
+  const failedQa = qa ? qa.filter((r) => r.qa_status === 'Failed').length : 0;
+  const fu = today?.meeting_followup?.counts;
+  const followups = fu ? (['blocked', 'overdue', 'subtasks_incomplete', 'stuck', 'not_pushed', 'not_started'] as const).reduce((n, k) => n + (fu[k] ?? 0), 0) : 0;
+  const overloaded = (today?.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length;
+  const notReady = !today;
+
+  const steps: Step[] = [
+    {
+      id: 'sync',
+      title: 'Check the data is live',
+      doneWhen: 'Taskmandu synced in the last 15 minutes with no error. If not, every number below may be out of date.',
+      count: syncProblem ? 1 : 0,
+      unit: 'data problem',
+      unknown: loading && !today,
+      go: { page: 'today', label: 'Open Command Center' },
+    },
+    {
+      id: 'decide',
+      title: 'Decide requests and ideas',
+      doneWhen: 'No request is waiting for your decision or past its date, and no idea is waiting for review. Log new ones first.',
+      count: decisions,
+      unit: 'waiting on you',
+      unknown: notReady,
+      go: { page: 'operations', label: 'Open Operations' },
+    },
+    {
+      id: 'late',
+      title: 'Chase overdue and blocked tasks',
+      doneWhen: 'Zero overdue and blocked. If some remain, tick it after you have chased every owner or moved the date.',
+      count: taskCounts.overdue + taskCounts.blocked,
+      unit: `${taskCounts.overdue} overdue · ${taskCounts.blocked} blocked`,
+      unknown: notReady,
+      go: { page: 'tasks', params: { tq: taskCounts.overdue ? 'overdue' : 'blocked' }, label: 'Open tasks' },
+    },
+    {
+      id: 'owners',
+      title: 'Give every task an owner',
+      doneWhen: 'No open task is without an assignee.',
+      count: taskCounts.no_owner,
+      unit: 'without an owner',
+      unknown: notReady,
+      go: { page: 'tasks', params: { tq: 'unassigned' }, label: 'Open tasks' },
+    },
+    {
+      id: 'qa',
+      title: 'Test work waiting for QA',
+      doneWhen: 'Nothing is awaiting QA and no failed fix is waiting on a retest.',
+      count: awaitingQa + failedQa,
+      unit: `${awaitingQa} awaiting · ${failedQa} failed`,
+      unknown: qa === null && !qaError,
+      go: { page: 'qa', label: 'Open QA Center' },
+    },
+    {
+      id: 'meetings',
+      title: 'Follow up the last meeting',
+      doneWhen: 'Every action from the latest meeting has an owner and is moving. Record today’s meeting in Minutes.',
+      count: followups,
+      unit: 'actions need action',
+      unknown: notReady,
+      go: { page: 'minutes', label: 'Open Minutes' },
+    },
+    {
+      id: 'capacity',
+      title: 'Check who is overloaded',
+      doneWhen: 'Nobody is over weekly hours. Move work to people with room.',
+      count: overloaded,
+      unit: 'over capacity',
+      unknown: notReady,
+      go: { page: 'today', label: 'Open workload' },
+    },
+    {
+      id: 'priorities',
+      title: 'Set today’s top 3 and tell the team',
+      doneWhen: 'Three priorities written below, and the boss and Senior Dev know them.',
+      count: null,
+      unit: '',
+      go: { page: 'today', label: 'Open Command Center' },
+    },
+  ];
+
+  const isDone = (s: Step) => {
+    if (s.id === 'priorities') return Boolean(ticked[s.id]) && priorities.some((p) => p.trim());
+    if (s.unknown) return false;
+    return s.count === 0 || Boolean(ticked[s.id]);
+  };
+  const done = steps.filter(isDone).length;
+  const next = steps.find((s) => !isDone(s)) ?? null;
+  const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const toggle = (id: string) => setTicked((c) => ({ ...c, [id]: !c[id] }));
+  const setPriority = (i: number, v: string) => setPriorities((c) => c.map((p, idx) => (idx === i ? v : p)));
+  const syncBadge = syncProblem ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700';
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-3xl space-y-4">
       <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Company operations · daily control</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">Your complete daily PM checklist</h2>
-            <p className="mt-1 max-w-3xl text-sm text-slate-500">Work through this page from top to bottom. Each link opens the relevant dashboard area; tick an item only after you have checked or completed it.</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Daily routine · {dateLabel}</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">{done === steps.length ? 'All done for today' : `${done} of ${steps.length} steps done`}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Go top to bottom. A step finishes by itself when its number reaches 0, or when you tick it after acting.
+              {scopeLabel ? ` Task numbers are for ${scopeLabel} only; requests, QA, meetings and capacity cover all businesses.` : ''}
+            </p>
           </div>
-          <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${statusTone}`}>{statusLabel}</span>
+          <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${syncBadge}`}>
+            {syncProblem ? 'Data not live' : `Synced ${formatSync(syncAt)}`}
+          </span>
         </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Tasks overdue</div><div className="mt-1 text-xl font-semibold tabular-nums">{today?.metrics.overdue ?? '—'}</div><button onClick={() => onNavigate('tasks', { tq: 'overdue' })} className="mt-1 text-xs font-semibold text-indigo-600">Open overdue →</button></div>
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Blocked tasks</div><div className="mt-1 text-xl font-semibold tabular-nums">{today?.metrics.blocked ?? '—'}</div><button onClick={() => onNavigate('tasks', { tq: 'blocked' })} className="mt-1 text-xs font-semibold text-indigo-600">Open blocked →</button></div>
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Awaiting QA</div><div className="mt-1 text-xl font-semibold tabular-nums">{qaLoading ? '…' : qaReviews ? awaitingQa : '—'}</div><button onClick={() => onNavigate('qa')} className="mt-1 text-xs font-semibold text-indigo-600">Open QA Inbox →</button></div>
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Failed / retest QA</div><div className="mt-1 text-xl font-semibold tabular-nums">{qaLoading ? '…' : qaReviews ? failedQa : '—'}</div><button onClick={() => onNavigate('qa')} className="mt-1 text-xs font-semibold text-indigo-600">Review failures →</button></div>
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] font-medium uppercase text-slate-500">Developers over capacity</div><div className="mt-1 text-xl font-semibold tabular-nums">{overloaded ?? '—'}</div><button onClick={() => onNavigate('today')} className="mt-1 text-xs font-semibold text-indigo-600">Open workload →</button></div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+          <div className={`h-full rounded-full transition-all ${done === steps.length ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${(done / steps.length) * 100}%` }} />
         </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2">
-          <div className="min-w-0"><div className="text-xs font-medium text-slate-700">Taskmandu last sync: {formatSync(syncAt)}</div>{sync?.error && <div className="mt-1 text-xs text-rose-700">Sync error: {sync.error.message}</div>}{sync?.warning && <div className="mt-1 text-xs text-amber-700">Sync warning: {sync.warning.message}</div>}{error && <div className="mt-1 text-xs text-rose-700">{error} Do not repeatedly click Sync if this is a database authentication / ECIRCUITBREAKER error.</div>}</div>
-          <button onClick={() => onNavigate('today')} className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Open system details →</button>
-        </div>
-
-        <div className="mt-5 flex items-end justify-between gap-3">
-          <div><div className="text-2xl font-bold tabular-nums text-slate-900">{done}<span className="text-base font-medium text-slate-400"> / {total}</span></div><div className="text-xs text-slate-500">checklist items completed today · {requiredDone}/{requiredItems.length} daily checks</div></div>
-          <div className="text-sm font-semibold tabular-nums text-slate-700">{percent}%</div>
-        </div>
-        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full transition-all ${done === total ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${percent}%` }} /></div>
-        {done === total && <p className="mt-3 text-sm font-medium text-emerald-700">All checklist items are marked complete. The sync indicator above separately shows whether the system is healthy.</p>}
       </header>
 
-      {error && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><b>Live dashboard data could not be verified.</b> {error} Do not keep retrying sync if you see a database authentication or ECIRCUITBREAKER error. <button onClick={onRetry} className="ml-1 font-semibold underline">Retry loading dashboard data</button></div>}
-      {qaError && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">QA Inbox could not be checked: {qaError} <button onClick={() => onNavigate('qa')} className="font-semibold underline">Open QA Center</button></div>}
-
-      {sections.map((section) => (
-        <section key={section} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-4 py-3"><h3 className="text-sm font-semibold text-slate-800">{section}</h3></div>
-          <div className="divide-y divide-slate-100">
-            {ITEMS.filter((item) => item.section === section).map((item) => (
-              <div key={item.id} className={`flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center ${checked[item.id] ? 'bg-emerald-50/40' : ''}`}>
-                <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-                  <input type="checkbox" checked={!!checked[item.id]} onChange={() => toggle(item.id)} className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                  <span className="min-w-0">
-                    <span className={`block text-sm font-semibold ${checked[item.id] ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{item.title}</span>
-                    <span className="mt-1 block text-sm text-slate-500">{item.detail}</span>
-                    {item.when && <span className="mt-1 block text-xs font-medium text-amber-700">{item.when}</span>}
-                  </span>
-                </label>
-                <button type="button" onClick={() => onNavigate(item.destination, item.params)} className="ml-7 shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 sm:ml-0">{item.action} →</button>
-              </div>
-            ))}
+      {syncProblem && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+          <div className="min-w-0 flex-1 basis-64">
+            <b>Numbers may be out of date.</b> <span className="break-words">{syncProblem.length > 200 ? `${syncProblem.slice(0, 200)}…` : syncProblem}</span>
           </div>
-        </section>
-      ))}
+          <button type="button" onClick={onRetry} className="shrink-0 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">Reload</button>
+        </div>
+      )}
+      {qaError && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">QA data could not be loaded, so the QA step cannot be checked.</div>}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-xs text-slate-500">Checklist date: {new Date(dateKey + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}. Ticks are saved in this browser and reset on the next local calendar day. They are not shared across devices.</p>
-        <button type="button" onClick={reset} disabled={!done} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Reset today’s checks</button>
-      </div>
+      {next && (
+        <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700">Do this next</p>
+          <p className="mt-1 text-lg font-bold text-slate-900">{steps.indexOf(next) + 1}. {next.title}</p>
+          <p className="mt-1 text-sm text-slate-600">{next.count !== null && !next.unknown && next.count > 0 ? `${next.unit}. ` : ''}{next.doneWhen}</p>
+          <button type="button" onClick={() => onNavigate(next.go.page, next.go.params)} className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+            {next.go.label} →
+          </button>
+        </div>
+      )}
+
+      <ol className="space-y-2">
+        {steps.map((s, i) => {
+          const finished = isDone(s);
+          const auto = !s.unknown && s.count === 0;
+          return (
+            <li key={s.id} className={`rounded-xl border bg-white p-4 ${finished ? 'border-emerald-200 bg-emerald-50/40' : s === next ? 'border-indigo-300' : 'border-slate-200'}`}>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${finished ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>{finished ? '✓' : i + 1}</div>
+                <div className="min-w-0 flex-1 basis-56">
+                  <div className={`text-sm font-semibold ${finished ? 'text-slate-500' : 'text-slate-900'}`}>{s.title}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {s.unknown ? 'Checking…' : finished ? (auto ? 'Clear: nothing left to do.' : 'Marked done.') : s.count !== null ? `${s.count > 0 && s.id !== 'late' ? `${s.count} ` : ''}${s.unit}` : s.doneWhen}
+                  </div>
+                </div>
+                <button type="button" onClick={() => onNavigate(s.go.page, s.go.params)} className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">{s.go.label} →</button>
+                {!auto && (
+                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600">
+                    <input type="checkbox" checked={Boolean(ticked[s.id])} onChange={() => toggle(s.id)} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                    Done
+                  </label>
+                )}
+              </div>
+              {s.id === 'priorities' && (
+                <div className="mt-3 space-y-2 pl-11">
+                  {priorities.map((p, idx) => (
+                    <input
+                      key={idx}
+                      value={p}
+                      onChange={(e) => setPriority(idx, e.target.value)}
+                      placeholder={`Priority ${idx + 1}: outcome, business, owner`}
+                      maxLength={160}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Only when needed</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {[
+            { label: 'Client asked for extra work → Scope check', page: 'scope' as PmPage },
+            { label: 'Turn a brief into tickets', page: 'brief' as PmPage },
+            { label: 'Release today → Git and projects', page: 'git' as PmPage },
+            { label: 'Friday → Weekly report', page: 'reports' as PmPage },
+          ].map((l) => (
+            <button key={l.page} type="button" onClick={() => onNavigate(l.page)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">{l.label}</button>
+          ))}
+        </div>
+      </section>
+
+      <p className="text-center text-xs text-slate-400">Ticks and priorities are saved in this browser for today and start fresh tomorrow.</p>
     </div>
   );
 }
