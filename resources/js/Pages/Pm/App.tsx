@@ -15,7 +15,7 @@ import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
 import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
-import OperationsChecklist from '@/Components/Pm/OperationsChecklist';
+import DailyChecklistPanel from '@/Components/Pm/DailyChecklistPanel';
 import QACenter from '@/Components/Pm/QACenter';
 import { pmApi } from '@/lib/pmApi';
 import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
@@ -290,29 +290,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onCapture={(kind) => visitPm('operations', { new: kind })}
                 />
-                <OperationsChecklist
-                  summary={today.operations_summary}
-                  counts={{
-                    overdue: liveTaskCounts ? liveTaskCounts.overdue : counts.overdue,
-                    blocked: liveTaskCounts ? liveTaskCounts.blocked : counts.blocked,
-                    due_soon: liveTaskCounts ? liveTaskCounts.week : counts.due_today + counts.due_soon,
-                    no_owner: liveTaskCounts ? liveTaskCounts.unassigned : counts.unassigned + today.subtasks.length,
-                    to_verify: counts.unverified,
-                    incomplete_subtasks: counts.subtasks_incomplete,
-                    stuck: counts.stuck,
-                    followups_open: today.meeting_followup
-                      ? (['blocked', 'overdue', 'subtasks_incomplete', 'stuck', 'not_pushed', 'not_started'] as const).reduce((sum, k) => sum + (today.meeting_followup?.counts[k] ?? 0), 0)
-                      : 0,
-                  }}
-                  riskProject={riskProjects[0] ? { id: riskProjects[0].id, name: riskProjects[0].name } : null}
-                  overloadedCount={(today.workload ?? []).filter((w) => (w.week_hours ?? 0) > (w.capacity ?? 40)).length}
-                  taskSource={liveTaskCounts ? 'live' : 'last sync'}
-                  syncing={syncing}
-                  onSync={() => void handleSync()}
-                  go={(page, params) => visitPm(page as PmPage, params)}
-                  onOpenProject={(id) => visitPm('projects', { project: id })}
-                  onShowWorkload={() => requestAnimationFrame(() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
-                />
                 <details open className="group rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                   <summary className="cursor-pointer list-none px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
                     <span className="flex items-center justify-between gap-3">
@@ -424,6 +401,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
         {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
+        {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel onNavigate={(target) => visitPm(target)} /></Pane>}
       </div>
     </PmShell>
   );

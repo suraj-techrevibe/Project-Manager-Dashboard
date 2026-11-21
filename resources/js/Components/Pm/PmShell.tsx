@@ -17,10 +17,12 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   scope: { icon: 'target', blurb: 'Check requests against agreed scope' },
   git: { icon: 'branch', blurb: 'Repository activity and delivery signals' },
   qa: { icon: 'target', blurb: 'Capture, track and retest quality issues' },
+  checklist: { icon: 'check-square', blurb: 'Your repeatable daily PM routine' },
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
   { title: 'Overview', keys: ['today', 'tasks', 'operations', 'projects'] },
+  { title: 'Daily routine', keys: ['checklist'] },
   { title: 'Planning', keys: ['minutes', 'brief'] },
   { title: 'Oversight', keys: ['reports', 'scope', 'git', 'qa'] },
 ];

@@ -27,6 +27,7 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('scope', [PmPageController::class, 'scope'])->name('page.scope');
     Route::get('git', [PmPageController::class, 'git'])->name('page.git');
     Route::get('qa', [PmPageController::class, 'qa'])->name('page.qa');
+    Route::get('checklist', [PmPageController::class, 'checklist'])->name('page.checklist');
 });
 
 // JSON API used by those pages.
