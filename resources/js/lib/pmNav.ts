@@ -13,7 +13,7 @@ export type PmPage = 'today' | 'tasks' | 'operations' | 'projects' | 'minutes' |
 export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'today', label: 'Command center', href: '/pm' },
   { key: 'tasks', label: 'All tasks', href: '/pm/tasks' },
-  { key: 'operations', label: 'Requests & Ideas', href: '/pm/operations' },
+  { key: 'operations', label: 'Operations & Requests', href: '/pm/operations' },
   { key: 'projects', label: 'Projects', href: '/pm/projects' },
   { key: 'minutes', label: 'Meeting minutes', href: '/pm/minutes' },
   { key: 'brief', label: 'Brief to tickets', href: '/pm/brief' },
