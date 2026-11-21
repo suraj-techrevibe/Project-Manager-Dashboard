@@ -138,7 +138,7 @@ class ReportController extends Controller
                 'completed' => $rows->filter(fn ($subtask) => $subtask->completed_at && $subtask->completed_at->between($from, $to))->count(),
             ];
         })->values();
-        $subtaskByTeam = collect();
+        $subtaskByTeam = [];
         foreach (['created' => $subtaskCreated, 'completed' => $subtaskCompleted] as $metric => $rows) {
             foreach ($rows as $subtask) {
                 $owners = filled($subtask->assignee) ? array_filter(array_map('trim', explode(',', $subtask->assignee))) : ['Unassigned'];
@@ -170,11 +170,11 @@ class ReportController extends Controller
             'minutes' => ['count' => $minutes->count(), 'meetings' => $minutes],
             'performance' => [
                 'summary' => $summary, 'businesses' => $businessRows, 'team' => $teamRows,
-                'subtasks' => ['created' => $subtaskCreated->count(), 'completed' => $subtaskCompleted->count(), 'by_project' => $subtaskByProject, 'by_team' => $subtaskByTeam->sortByDesc(fn ($row) => $row['created'] + $row['completed'])->values()],
+                'subtasks' => ['created' => $subtaskCreated->count(), 'completed' => $subtaskCompleted->count(), 'by_project' => $subtaskByProject, 'by_team' => collect($subtaskByTeam)->sortByDesc(fn ($row) => $row['created'] + $row['completed'])->values()],
                 'activities' => $events->take(500)->values(),
                 'activity_total' => $events->count(),
                 'activity_truncated' => $events->count() > 500,
-                'data_note' => 'Performance counts show recorded activity within the selected dates. Taskmandu changes are only as complete as the sync/activity history; current open workload is not presented as historical data.',
+                'data_note' => 'Performance counts show recorded activity within the selected dates. Taskmandu changes are only as complete as the sync/activity history; current open workload is not presented as historical data. Subtask creation and completion use Taskmandu remote-created and completion timestamps; assignee attribution reflects the mirrored assignee, not historical assignment changes.',
             ],
             'saved_reports' => $savedReports,
         ]);
