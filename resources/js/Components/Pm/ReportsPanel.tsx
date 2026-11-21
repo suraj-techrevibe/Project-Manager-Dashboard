@@ -517,7 +517,7 @@ export default function ReportsPanel() {
           <>
             {reportView === 'company' && (
               <>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
                   {[
                     ['Businesses', overview.totals.businesses],
                     ['Tasks', overview.totals.tasks],
@@ -526,6 +526,7 @@ export default function ReportsPanel() {
                     ['Blocked', overview.totals.blocked],
                     ['Overdue', overview.totals.overdue],
                     ['QA pending / failed', `${overview.totals.qa_pending} / ${overview.totals.qa_failed}`],
+                    ['Subtasks done / total', `${overview.totals.subtasks_completed} / ${overview.totals.subtasks_total}`],
                   ].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-semibold text-slate-900">{value}</div></div>)}
                 </div>
                 <div className="mt-4 overflow-x-auto">
