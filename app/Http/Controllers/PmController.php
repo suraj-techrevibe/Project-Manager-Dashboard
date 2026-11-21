@@ -607,7 +607,13 @@ class PmController extends Controller
 
     private function employeesWithLoad(): array
     {
-        $load = collect($this->flags->workload())->keyBy('name');
+        // Names must still come back if the workload calculation fails (it reads the local database).
+        try {
+            $load = collect($this->flags->workload())->keyBy('name');
+        } catch (\Throwable $e) {
+            report($e);
+            $load = collect();
+        }
 
         return array_map(
             fn ($e) => $e + [

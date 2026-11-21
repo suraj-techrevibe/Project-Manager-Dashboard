@@ -3,6 +3,7 @@ import type { Project, TaskFocus } from '../../types/pm';
 import { useUrlParam } from '../../lib/urlState';
 import AllTasksPanel, { useTaskRows, type AllTask } from './AllTasksPanel';
 import CompletedSubtasksGrid, { useCompletedSubtasks } from './CompletedSubtasks';
+import { useEmployees } from './Projects/ui';
 
 type View = 'tasks' | 'subtasks';
 
@@ -28,6 +29,7 @@ export default function TasksPage({
   const completed = useCompletedSubtasks(projects);
   const rows = useTaskRows(tasks, projects, projectsLoading);
   const quickParam = useUrlParam('tq');
+  const { employees: staffList, error: staffError, reload: reloadStaff } = useEmployees();
 
   const tab = (key: View, label: string, count?: number) => (
     <button
@@ -54,6 +56,12 @@ export default function TasksPage({
 
       {view === 'tasks' && (
         <>
+          {staffError && staffList.length === 0 && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Staff names could not be loaded, so people may show as codes.{' '}
+              <button onClick={reloadStaff} className="font-medium underline">Try again</button>
+            </p>
+          )}
           {error && !tasks && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Standalone tasks from the synced board couldn't be loaded ({error}).{' '}

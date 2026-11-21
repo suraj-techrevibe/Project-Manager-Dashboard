@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Project, TaskFocus } from '../../types/pm';
 import { TASK_STATUSES } from '../../types/pm';
 import { EmptyState, Pill, btnChip, btnSecondary, type Tone } from './ui/kit';
-import { useEmployees } from './Projects/ui';
+import { resolveEmployeeName, useEmployees } from './Projects/ui';
 
 /** A task row from the synced board (Today data). Used for standalone tasks that live outside any project. */
 export interface AllTask {
@@ -66,7 +66,7 @@ export function useTaskRows(tasks: AllTask[] | null, projects: Project[], projec
   const { employees } = useEmployees();
 
   return useMemo(() => {
-    const nameFor = (id: string) => employees.find((e) => e.employeeId === id || e.id === id)?.name ?? id;
+    const nameFor = (id: string) => resolveEmployeeName(employees, id);
     const rows: TaskRow[] = [];
     const seen = new Set<string>();
 

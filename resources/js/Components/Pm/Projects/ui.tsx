@@ -146,20 +146,86 @@ export function initials(name: string): string {
 }
 
 /** Loads the Taskmandu employee list once and exposes an id → name lookup. */
+const EMPLOYEES_KEY = 'pm:employees:v1';
+let employeesCache: Employee[] | null = null;
+let employeesInFlight: Promise<Employee[]> | null = null;
+let employeesFresh = false; // fetched from the server during this page load
+
+function readStoredEmployees(): Employee[] {
+  if (employeesCache) return employeesCache;
+  try {
+    const raw = window.localStorage.getItem(EMPLOYEES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Employee[]) : [];
+    if (Array.isArray(parsed)) employeesCache = parsed;
+  } catch {
+    /* No stored copy; the live request fills it in. */
+  }
+  return employeesCache ?? [];
+}
+
+/** One shared request for every component, kept in memory and in localStorage so names show immediately. */
+function fetchEmployees(): Promise<Employee[]> {
+  if (employeesFresh && employeesCache) return Promise.resolve(employeesCache);
+  if (!employeesInFlight) {
+    employeesInFlight = pmApi
+      .employees()
+      .then(({ data }) => {
+        employeesCache = data.employees;
+        employeesFresh = true;
+        try {
+          window.localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(data.employees));
+        } catch {
+          /* Memory copy still works. */
+        }
+        return data.employees;
+      })
+      .finally(() => {
+        employeesInFlight = null;
+      });
+  }
+  return employeesInFlight;
+}
+
+const norm = (v: string) => v.trim().toLowerCase();
+
+/** Tasks reference an employee by employeeId or by Mongo _id. Matches both, ignoring case and spaces. */
+export function resolveEmployeeName(employees: Employee[], id: string): string {
+  const key = norm(id);
+  const hit = employees.find((e) => norm(e.employeeId ?? '') === key || norm(e.id ?? '') === key);
+  return hit?.name ?? id;
+}
+
 export function useEmployees() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(() => (typeof window === 'undefined' ? [] : readStoredEmployees()));
+  const [error, setError] = useState(false);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    pmApi.employees()
-      .then(({ data }) => setEmployees(data.employees))
-      .catch(() => {});
-  }, []);
+    let live = true;
+    let retry: number | undefined;
+    fetchEmployees()
+      .then((list) => {
+        if (live) {
+          setEmployees(list);
+          setError(false);
+        }
+      })
+      .catch(() => {
+        if (!live) return;
+        setError(true);
+        // One quiet retry: the first call often fails while the session or sync is still warming up.
+        if (tick === 0) retry = window.setTimeout(() => live && setTick(1), 3000);
+      });
+    return () => {
+      live = false;
+      if (retry) window.clearTimeout(retry);
+    };
+  }, [tick]);
 
-  // Tasks can reference an employee by employeeId or by Mongo _id — match both.
-  const nameFor = (id: string) =>
-    employees.find((e) => e.employeeId === id || e.id === id)?.name ?? id;
+  const nameFor = (id: string) => resolveEmployeeName(employees, id);
+  const reload = () => setTick((t) => t + 1);
 
-  return { employees, nameFor };
+  return { employees, nameFor, error, reload };
 }
 
 export function Avatar({
