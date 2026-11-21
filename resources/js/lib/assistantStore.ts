@@ -16,6 +16,8 @@ export interface Msg {
   suggestions?: string[];
   /** Who answered: the built-in rules, or the AI model. */
   engine?: AssistantEngine;
+  /** Exact model ID returned by the provider for this answer. */
+  model?: string;
   error?: boolean;
   /** Result notes ("✓ Done: …") — shown as a small status line and fed back to the model as context. */
   note?: boolean;
@@ -113,7 +115,7 @@ export async function send(text: string) {
   try {
     const history = next.slice(-20).map((m) => ({ role: m.role, content: m.content }));
     const { data } = await pmApi.assistantChat(history);
-    const reply: Msg = { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools, suggestions: data.suggestions, engine: data.engine };
+    const reply: Msg = { id: uid(), role: 'assistant', content: data.reply, actions: data.actions, tools: data.tools, suggestions: data.suggestions, engine: data.engine, model: data.model };
     set({ messages: [...state.messages, reply], busy: false, unread: !state.open && !state.viewing ? state.unread + 1 : state.unread });
   } catch (e) {
     const msg = (e as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
