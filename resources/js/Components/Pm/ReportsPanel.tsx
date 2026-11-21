@@ -250,7 +250,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
             </table>
           </div>
         ) : (
-          <Empty>No business-to-project links are configured yet.</Empty>
+          <Empty>No Taskmandu projects with tasks were found.</Empty>
         )}
       </Section>
 
@@ -530,7 +530,7 @@ export default function ReportsPanel() {
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[50rem] text-left text-sm">
                     <thead className="text-xs text-slate-400"><tr>{['Business / project','Tasks','Completed','Open','Blocked','Overdue','QA pending','QA failed','Subtasks done / total'].map(x => <th key={x} className="pb-2 pr-3 font-medium">{x}</th>)}</tr></thead>
-                    <tbody>{overview.projects.map((p: any) => <tr key={p.project_id} className="border-t border-slate-100"><td className="py-2 pr-3 font-medium text-slate-800">{p.project_name}</td><td className="py-2 pr-3">{p.task_count}</td><td className="py-2 pr-3">{p.completed}</td><td className="py-2 pr-3">{p.open}</td><td className={`py-2 pr-3 ${p.blocked ? 'font-semibold text-red-600' : ''}`}>{p.blocked}</td><td className={`py-2 pr-3 ${p.overdue ? 'font-semibold text-red-600' : ''}`}>{p.overdue}</td><td className={`py-2 pr-3 ${p.qa_pending ? 'font-semibold text-amber-600' : ''}`}>{p.qa_pending}</td><td className={`py-2 pr-3 ${p.qa_failed ? 'font-semibold text-red-600' : ''}`}>{p.qa_failed}</td><td className="py-2 pr-3">{p.subtasks_completed ?? 0} / {p.subtasks_total ?? 0}</td></tr>)}</tbody>
+                    <tbody>{overview.projects.map((p: any) => <tr key={p.project_id} className="border-t border-slate-100"><td className="py-2 pr-3 font-medium"><button onClick={() => { setReportView('business'); setExpandedProjects(prev => new Set(prev).add(p.project_id)); }} className="text-left text-indigo-700 hover:underline">{p.project_name}</button></td><td className="py-2 pr-3">{p.task_count}</td><td className="py-2 pr-3">{p.completed}</td><td className="py-2 pr-3">{p.open}</td><td className={`py-2 pr-3 ${p.blocked ? 'font-semibold text-red-600' : ''}`}>{p.blocked}</td><td className={`py-2 pr-3 ${p.overdue ? 'font-semibold text-red-600' : ''}`}>{p.overdue}</td><td className={`py-2 pr-3 ${p.qa_pending ? 'font-semibold text-amber-600' : ''}`}>{p.qa_pending}</td><td className={`py-2 pr-3 ${p.qa_failed ? 'font-semibold text-red-600' : ''}`}>{p.qa_failed}</td><td className="py-2 pr-3">{p.subtasks_completed ?? 0} / {p.subtasks_total ?? 0}</td></tr>)}</tbody>
                   </table>
                 </div>
                 {overview.unassigned_tasks?.length > 0 && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3"><div className="mb-2 text-sm font-semibold text-amber-900">Standalone / shared tasks · {overview.unassigned_tasks.length}</div><div className="space-y-1">{overview.unassigned_tasks.map((task: any, index: number) => <div key={index} className="flex flex-wrap justify-between gap-2 text-xs text-amber-900"><span>{task.title} <span className="text-amber-700">· {task.project_name || 'No project'} · {task.assignee || 'Unassigned'}</span></span><span>{task.status}</span></div>)}</div></div>}
@@ -561,8 +561,8 @@ export default function ReportsPanel() {
             {reportView === 'team' && (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[42rem] text-left text-sm">
-                  <thead className="text-xs text-slate-400"><tr>{['Team member','Tasks completed','Tasks open','Subtasks completed','Subtasks open','Blocked','Overdue'].map(x => <th key={x} className="pb-2 pr-3 font-medium">{x}</th>)}</tr></thead>
-                  <tbody>{overview.team.map((p: any) => <tr key={p.name} className="border-t border-slate-100"><td className="py-2 pr-3 font-medium text-slate-800">{p.name}</td><td className="py-2 pr-3">{p.tasks_completed}</td><td className="py-2 pr-3">{p.tasks_open}</td><td className="py-2 pr-3">{p.subtasks_completed}</td><td className="py-2 pr-3">{p.subtasks_open}</td><td className={`py-2 pr-3 ${p.blocked ? 'text-red-600' : ''}`}>{p.blocked}</td><td className={`py-2 pr-3 ${p.overdue ? 'text-red-600' : ''}`}>{p.overdue}</td></tr>)}</tbody>
+                  <thead className="text-xs text-slate-400"><tr>{['Team member','Tasks completed','Tasks open','Subtasks completed','Subtasks open','Blocked','Overdue','Business contributions'].map(x => <th key={x} className="pb-2 pr-3 font-medium">{x}</th>)}</tr></thead>
+                  <tbody>{overview.team.map((p: any) => <tr key={p.name} className="border-t border-slate-100"><td className="py-2 pr-3 font-medium text-slate-800">{p.name}</td><td className="py-2 pr-3">{p.tasks_completed}</td><td className="py-2 pr-3">{p.tasks_open}</td><td className="py-2 pr-3">{p.subtasks_completed}</td><td className="py-2 pr-3">{p.subtasks_open}</td><td className={`py-2 pr-3 ${p.blocked ? 'text-red-600' : ''}`}>{p.blocked}</td><td className={`py-2 pr-3 ${p.overdue ? 'text-red-600' : ''}`}>{p.overdue}</td><td className="py-2 pr-3 text-xs text-slate-600">{p.businesses?.length ? p.businesses.map((b: any) => `${b.project_name} (${b.tasks_open + b.tasks_completed} tasks / ${b.subtasks_open + b.subtasks_completed} subtasks)`).join(' · ') : 'Standalone / shared'}</td></tr>)}</tbody>
                 </table>
                 <p className="mt-2 text-xs text-slate-400">Task and subtask counts are separate. These figures describe current assigned workload, not a productivity ranking.</p>
               </div>
