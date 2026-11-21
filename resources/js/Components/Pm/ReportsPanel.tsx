@@ -317,7 +317,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
       </Section>
 
       <Footer notesAi={c.notes_ai}>
-        Completed counts come from status changes seen at each sync. “Still in progress” shows the board as of when this report was generated; days are counted from when the task last moved to In Progress.
+        Completed counts come from status changes seen at each sync. “Still in progress” shows the board as of when this report was generated; days are counted from when the task last moved to In Progress. QA pending and accepted counts show the latest QA status at generation time, not a historical end-of-week snapshot.
       </Footer>
     </>
   );
