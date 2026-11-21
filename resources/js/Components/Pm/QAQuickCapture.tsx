@@ -20,6 +20,32 @@ type DraftResponse = { summary: string; findings: DraftFinding[]; questions: str
 const field = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm';
 const severityOptions = ['Critical','High','Medium','Low'] as const;
 
+const guidedNoteTemplate = `Business: [Which business?]
+Website / app: [Website or app name]
+Page / screen: [Page name or URL]
+Device / browser: [e.g. iPhone / Chrome / desktop — if relevant]
+
+What I was checking / doing:
+[What were you trying to do?]
+
+What I noticed:
+[Describe exactly what happened or what looks wrong. Include steps if useful.]
+
+Expected result (if known):
+[What should have happened? Leave blank if unsure.]
+
+Impact / importance:
+[Who is affected and how? If unsure, leave blank.]
+
+Evidence:
+[Paste screenshot link, recording link, or other evidence if available.]
+
+Extra notes / ideas:
+[Anything else to remember. Separate improvement ideas from actual bugs.]
+
+---
+Add another finding by repeating the sections above.`;
+
 export default function QAQuickCapture({ onSaved }: { onSaved: () => void }) {
   const [notes, setNotes] = useState('');
   const [draft, setDraft] = useState<DraftResponse|null>(null);
@@ -28,6 +54,11 @@ export default function QAQuickCapture({ onSaved }: { onSaved: () => void }) {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(0);
   const [expanded, setExpanded] = useState<number|null>(null);
+
+  function insertGuidedTemplate() {
+    setNotes(current => current.trim() ? current.trimEnd() + '\n\n' + guidedNoteTemplate : guidedNoteTemplate);
+    setError('');
+  }
 
   async function organise() {
     if (!notes.trim()) { setError('Paste your rough notes first.'); return; }
@@ -67,9 +98,13 @@ export default function QAQuickCapture({ onSaved }: { onSaved: () => void }) {
         <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">AI organiser</span>
       </div>
       <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 text-sm text-indigo-950">
-        You do not need a template. Write naturally: what you checked, where you found it, what happened, and anything you want to remember.
+        Use the guide if it helps, or keep writing naturally. Fill only what you know and leave the rest blank. After you organise the notes, AI will map the details into the finding fields for you. You can review and correct everything before saving.
       </div>
-      <textarea className={field+' min-h-56'} value={notes} onChange={e=>setNotes(e.target.value)} maxLength={12000} placeholder={'Example:\nChecked Adevents landing page on mobile. Hero heading overlaps search field at 375px. Search button sometimes does nothing.\n\nRegistration page: password field has no show/hide option.\n\nTechmandu admin: user table feels slow to load; need to investigate further.'}/>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><div className="text-sm font-medium">Guided note format</div><p className="text-xs text-slate-500">Business, page, what you checked, what happened, expected result, impact and evidence.</p></div>
+        <button type="button" onClick={insertGuidedTemplate} className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">＋ Insert note guide</button>
+      </div>
+      <textarea className={field+' min-h-72'} value={notes} onChange={e=>setNotes(e.target.value)} maxLength={12000} placeholder={'Quick notes are fine too. Example:\nAdevents landing page on mobile: hero heading overlaps the search field at 375px. Search button sometimes does nothing.\n\nOr select “Insert note guide” above and fill in the sections you know.'}/>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-slate-500">{notes.length.toLocaleString()} / 12,000 characters · Nothing is saved until you review and confirm.</span>
         <button disabled={loading||!notes.trim()} onClick={()=>void organise()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{loading?'Organising…':'✦ Organise my notes'}</button>
