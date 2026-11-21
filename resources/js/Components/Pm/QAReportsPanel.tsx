@@ -16,7 +16,7 @@ type Report = {
 const field = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm';
 const severities = ['Critical', 'High', 'Medium', 'Low'] as const;
 const today = new Date().toISOString().slice(0, 10);
-const lines = (value: string) => value.split(/\\r?\\n/).map(x => x.trim()).filter(Boolean);
+const lines = (value: string) => value.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
 
 export default function QAReportsPanel() {
   const [issues, setIssues] = useState<Finding[]>([]);
@@ -30,7 +30,7 @@ export default function QAReportsPanel() {
   const [summary, setSummary] = useState('');
   const [fixFirst, setFixFirst] = useState('');
   const [questions, setQuestions] = useState('');
-  const [checklistText, setChecklistText] = useState('Homepage loads | Pass\\nNavigation and links | Pass\\nForms and validation | Not tested\\nMobile responsive layout | Not tested\\nImages and content | Pass');
+  const [checklistText, setChecklistText] = useState('Homepage loads | Pass\nNavigation and links | Pass\nForms and validation | Not tested\nMobile responsive layout | Not tested\nImages and content | Pass');
   const [severityFilter, setSeverityFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [active, setActive] = useState<Report | null>(null);
