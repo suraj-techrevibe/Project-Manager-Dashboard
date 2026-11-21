@@ -229,6 +229,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
                   <th className="pb-1 pr-3 text-right font-normal">In progress</th>
                   <th className="pb-1 pr-3 text-right font-normal">Blocked</th>
                   <th className="pb-1 text-right font-normal">Overdue</th>
+                  <th className="pb-1 text-right font-normal">Subtasks done / total</th>
                 </tr>
               </thead>
               <tbody className="text-slate-700">
@@ -242,13 +243,14 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
                     <td className="py-1.5 pr-3 text-right">{b.in_progress}</td>
                     <td className={`py-1.5 pr-3 text-right ${b.blocked ? 'text-red-600 font-medium' : ''}`}>{b.blocked}</td>
                     <td className={`py-1.5 text-right ${b.overdue ? 'text-red-600 font-medium' : ''}`}>{b.overdue}</td>
+                    <td className="py-1.5 text-right">{b.subtasks_completed ?? 0} / {b.subtasks_total ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <Empty>No business-to-project links are configured yet.</Empty>
+          <Empty>No Taskmandu projects with tasks were found.</Empty>
         )}
       </Section>
 
@@ -315,7 +317,7 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
       </Section>
 
       <Footer notesAi={c.notes_ai}>
-        Completed counts come from status changes seen at each sync. “Still in progress” shows the board as of when this report was generated; days are counted from when the task last moved to In Progress.
+        Completed counts come from status changes seen at each sync. “Still in progress” shows the board as of when this report was generated; days are counted from when the task last moved to In Progress. QA pending and accepted counts show the latest QA status at generation time, not a historical end-of-week snapshot.
       </Footer>
     </>
   );
@@ -373,6 +375,11 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
 
 export default function ReportsPanel() {
   const [reports, setReports] = useState<Report[]>([]);
+  const [overview, setOverview] = useState<any | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [reportView, setReportView] = useState<'company' | 'business' | 'team'>('company');
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [openIds, setOpenIds] = useState<Set<number>>(new Set());
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -400,7 +407,19 @@ export default function ReportsPanel() {
       .finally(() => setLoadingList(false));
   }
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    loadOverview();
+  }, []);
+
+  function loadOverview() {
+    setOverviewLoading(true);
+    setOverviewError(null);
+    pmApi.reportOverview()
+      .then(({ data }) => setOverview(data))
+      .catch((e) => setOverviewError(errorText(e, "Couldn't load the business overview.")))
+      .finally(() => setOverviewLoading(false));
+  }
 
   // A weekly report is dated by its Monday, so "does one already exist?" compares Mondays.
   const monday = (iso: string) => {
@@ -470,7 +489,7 @@ export default function ReportsPanel() {
       <PageHeader
         icon="chart"
         title="Reports"
-        description="Daily and weekly summaries built from what actually happened on the board."
+        description="Business performance, delivery risks, team workload and boss-facing daily or weekly updates."
         status={reports.length ? `${reports.length} saved · ${weeklyCount} weekly` : undefined}
         links={[
           { label: 'Today', tab: 'today' },
@@ -481,10 +500,80 @@ export default function ReportsPanel() {
 
       <JumpNav
         items={[
+          { id: 'report-overview', label: 'Management overview' },
           { id: 'report-new', label: 'New report' },
           { id: 'report-list', label: 'Saved reports', count: reports.length },
         ]}
       />
+      <UiSection id="report-overview" title="Management overview" subtitle="Live snapshot from Taskmandu projects, subtasks and the QA review inbox." tone="info" actions={<button onClick={loadOverview} className={btnSecondary}>Refresh</button>}>
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {(['company', 'business', 'team'] as const).map((v) => (
+            <button key={v} onClick={() => setReportView(v)} className={`${btnChip(reportView === v)} capitalize`}>{v === 'company' ? 'Company overview' : v === 'business' ? 'Business reports' : 'Team reports'}</button>
+          ))}
+        </div>
+        {overviewLoading ? <p className="text-sm text-slate-400">Loading live report data…</p> : overviewError ? (
+          <Notice tone="danger">{overviewError} <button onClick={loadOverview} className="underline">Retry</button></Notice>
+        ) : overview ? (
+          <>
+            {reportView === 'company' && (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+                  {[
+                    ['Businesses', overview.totals.businesses],
+                    ['Tasks', overview.totals.tasks],
+                    ['Completed', overview.totals.completed],
+                    ['Open', overview.totals.open],
+                    ['Blocked', overview.totals.blocked],
+                    ['Overdue', overview.totals.overdue],
+                    ['QA pending / failed', `${overview.totals.qa_pending} / ${overview.totals.qa_failed}`],
+                    ['Subtasks done / total', `${overview.totals.subtasks_completed} / ${overview.totals.subtasks_total}`],
+                  ].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-semibold text-slate-900">{value}</div></div>)}
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[50rem] text-left text-sm">
+                    <thead className="text-xs text-slate-400"><tr>{['Business / project','Tasks','Completed','Open','Blocked','Overdue','QA pending','QA failed','Subtasks done / total'].map(x => <th key={x} className="pb-2 pr-3 font-medium">{x}</th>)}</tr></thead>
+                    <tbody>{overview.projects.map((p: any) => <tr key={p.project_id} className="border-t border-slate-100"><td className="py-2 pr-3 font-medium"><button onClick={() => { setReportView('business'); setExpandedProjects(prev => new Set(prev).add(p.project_id)); }} className="text-left text-indigo-700 hover:underline">{p.project_name}</button></td><td className="py-2 pr-3">{p.task_count}</td><td className="py-2 pr-3">{p.completed}</td><td className="py-2 pr-3">{p.open}</td><td className={`py-2 pr-3 ${p.blocked ? 'font-semibold text-red-600' : ''}`}>{p.blocked}</td><td className={`py-2 pr-3 ${p.overdue ? 'font-semibold text-red-600' : ''}`}>{p.overdue}</td><td className={`py-2 pr-3 ${p.qa_pending ? 'font-semibold text-amber-600' : ''}`}>{p.qa_pending}</td><td className={`py-2 pr-3 ${p.qa_failed ? 'font-semibold text-red-600' : ''}`}>{p.qa_failed}</td><td className="py-2 pr-3">{p.subtasks_completed ?? 0} / {p.subtasks_total ?? 0}</td></tr>)}</tbody>
+                  </table>
+                </div>
+                {overview.unassigned_tasks?.length > 0 && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3"><div className="mb-2 text-sm font-semibold text-amber-900">Standalone / shared tasks · {overview.unassigned_tasks.length}</div><div className="space-y-1">{overview.unassigned_tasks.map((task: any, index: number) => <div key={index} className="flex flex-wrap justify-between gap-2 text-xs text-amber-900"><span>{task.title} <span className="text-amber-700">· {task.project_name || 'No project'} · {task.assignee || 'Unassigned'}</span></span><span>{task.status}</span></div>)}</div></div>}
+              </>
+            )}
+            {reportView === 'business' && (
+              <div className="flex flex-col gap-2">
+                {overview.projects.map((p: any) => {
+                  const expanded = expandedProjects.has(p.project_id);
+                  return <div key={p.project_id} className="overflow-hidden rounded-lg border border-slate-200">
+                    <button onClick={() => setExpandedProjects(prev => { const next = new Set(prev); expanded ? next.delete(p.project_id) : next.add(p.project_id); return next; })} className="flex w-full flex-wrap items-center gap-2 px-3 py-3 text-left hover:bg-slate-50">
+                      <span className="text-slate-400">{expanded ? '▾' : '▸'}</span><span className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{p.project_name}</span>
+                      <span className="text-xs text-slate-500">{p.task_count} tasks</span><span className="text-xs text-green-700">{p.completed} done</span><span className="text-xs text-red-600">{p.blocked + p.overdue} attention</span>
+                    </button>
+                    {expanded && <div className="border-t border-slate-100">
+                      {p.tasks.map((t: any) => <div key={t.id} className="border-b border-slate-100 px-3 py-3 last:border-0">
+                        <div className="flex flex-wrap items-start gap-2"><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-800">{t.title}</div><div className="mt-0.5 text-xs text-slate-500">{t.assignee || 'Unassigned'} · Due {t.due_at || 'not set'}{t.subtasks_total ? ` · ${t.subtasks_completed}/${t.subtasks_total} subtasks done` : ''}</div></div><span className={`rounded-full px-2 py-0.5 text-[11px] ${t.status === 'Completed' ? 'bg-green-50 text-green-700' : t.status === 'Blocked' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{t.status}</span>{t.qa_status && <span className={`rounded-full px-2 py-0.5 text-[11px] ${t.qa_status === 'Passed' ? 'bg-green-50 text-green-700' : t.qa_status === 'Failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>QA {t.qa_status}</span>}{t.url && <a href={t.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 underline">Taskmandu</a>}</div>
+                        {t.qa_history?.length > 0 && <details className="mt-2 text-xs"><summary className="cursor-pointer text-slate-500">QA history · {t.qa_history.length} events (cycle {t.qa_cycle || 1})</summary><div className="mt-1 space-y-1 pl-3">{t.qa_history.map((event: any, index: number) => <div key={index} className="text-slate-500">Cycle {event.cycle}: <span className="font-medium">{event.result}</span>{event.severity ? ` · ${event.severity}` : ''}{event.notes ? ` · ${event.notes}` : ''}</div>)}</div></details>}
+                        {t.subtasks.length > 0 && <div className="mt-2 ml-3 border-l-2 border-slate-100 pl-3"><div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Subtasks</div>{t.subtasks.map((sub: any) => <div key={sub.id} className="flex flex-wrap justify-between gap-2 py-1 text-xs"><span className="text-slate-700">{sub.title} <span className="text-slate-400">· {sub.assignee || 'Unassigned'}</span></span><span className={sub.status === 'Completed' ? 'text-green-700' : 'text-slate-500'}>{sub.status}</span></div>)}</div>}
+                      </div>)}
+                      {p.tasks.length === 0 && <p className="p-3 text-sm text-slate-400">No tasks found.</p>}
+                      {p.team?.length > 0 && <div className="border-t border-slate-100 bg-slate-50/60 p-3"><div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Team contribution in this business</div><div className="flex flex-wrap gap-2">{p.team.map((member: any) => <div key={member.name} className="rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs"><div className="font-medium text-slate-800">{member.name}</div><div className="mt-0.5 text-slate-500">{member.tasks_completed} tasks done · {member.tasks_open} open · {member.subtasks_completed} subtasks done · {member.subtasks_open} open</div></div>)}</div></div>}
+                    </div>}
+                  </div>;
+                })}
+              </div>
+            )}
+            {reportView === 'team' && (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[42rem] text-left text-sm">
+                  <thead className="text-xs text-slate-400"><tr>{['Team member','Tasks completed','Tasks open','Subtasks completed','Subtasks open','Blocked','Overdue','Business contributions'].map(x => <th key={x} className="pb-2 pr-3 font-medium">{x}</th>)}</tr></thead>
+                  <tbody>{overview.team.map((p: any) => <tr key={p.name} className="border-t border-slate-100"><td className="py-2 pr-3 font-medium text-slate-800">{p.name}</td><td className="py-2 pr-3">{p.tasks_completed}</td><td className="py-2 pr-3">{p.tasks_open}</td><td className="py-2 pr-3">{p.subtasks_completed}</td><td className="py-2 pr-3">{p.subtasks_open}</td><td className={`py-2 pr-3 ${p.blocked ? 'text-red-600' : ''}`}>{p.blocked}</td><td className={`py-2 pr-3 ${p.overdue ? 'text-red-600' : ''}`}>{p.overdue}</td><td className="py-2 pr-3 text-xs text-slate-600">{p.businesses?.length ? p.businesses.map((b: any) => `${b.project_name} (${b.tasks_open + b.tasks_completed} tasks / ${b.subtasks_open + b.subtasks_completed} subtasks)`).join(' · ') : 'Standalone / shared'}</td></tr>)}</tbody>
+                </table>
+                <p className="mt-2 text-xs text-slate-400">Task and subtask counts are separate. These figures describe current assigned workload, not a productivity ranking.</p>
+              </div>
+            )}
+            <div className="mt-3 border-t border-slate-100 pt-2 text-[11px] text-slate-400">Snapshot: {new Date(overview.generated_at).toLocaleString()} · {overview.data_notes.join(' ')}</div>
+          </>
+        ) : null}
+      </UiSection>
+
 
       <UiSection id="report-new" title="New report" subtitle="Generate a daily or weekly report" tone="brand">
         <div className="mb-3 flex gap-1.5">

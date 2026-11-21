@@ -76,6 +76,7 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::post('qa', [PmQaController::class, 'store'])->name('qa.store');
     Route::patch('qa/{issue}', [PmQaController::class, 'update'])->name('qa.update');
     Route::delete('qa/{issue}', [PmQaController::class, 'destroy'])->name('qa.destroy');
+    Route::get('reports/overview', [ReportController::class, 'overview'])->name('reports.overview');
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::post('reports', [ReportController::class, 'store'])->name('reports.store');
     Route::delete('reports/{report}', [ReportController::class, 'destroy'])->name('reports.destroy');

@@ -121,6 +121,8 @@ export const pmApi = {
       intake_id: intakeId || null,
     }),
 
+  reportOverview: () => api.get<any>('/reports/overview'),
+
   reports: () => api.get<{ reports: Report[] }>('/reports'),
 
   /** date = YYYY-MM-DD (defaults to today server-side); notes = custom text to split into the template. */
