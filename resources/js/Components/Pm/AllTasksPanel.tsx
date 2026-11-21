@@ -188,6 +188,7 @@ export default function AllTasksPanel({
   const [project, setProject] = useState('');
   const [staff, setStaff] = useState('');
   const [status, setStatus] = useState('');
+  const [priority, setPriority] = useState('');
   const [quick, setQuick] = useState<QuickKey>('all');
   const [limit, setLimit] = useState(PAGE);
   // Per-task expand state; `expandAll` (when set) overrides the default for tasks not toggled by hand.
@@ -213,6 +214,12 @@ export default function AllTasksPanel({
     return [...known, ...Array.from(present).filter((s) => !(TASK_STATUSES as readonly string[]).includes(s)).sort()];
   }, [rows]);
 
+  const priorities = useMemo(() => {
+    const order = ['Critical', 'Urgent', 'High', 'Medium', 'Low'];
+    const present = Array.from(new Set(rows.map((t) => t.priority).filter((x): x is string => Boolean(x))));
+    return present.sort((a, b) => (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b)));
+  }, [rows]);
+
   const counts = useMemo(() => Object.fromEntries(QUICK.map((q) => [q.key, rows.filter((t) => q.test(t, today)).length])) as Record<QuickKey, number>, [rows, today]);
   const filterActive = Boolean(staff || status);
 
@@ -224,6 +231,7 @@ export default function AllTasksPanel({
     return rows.filter((t) => {
       if (!test(t, today)) return false;
       if (project && t.projectName !== project) return false;
+      if (priority && t.priority !== priority) return false;
       // Staff / status match the task itself or any of its sub-tasks.
       if (staff && !t.assignees.includes(staff) && !t.subs.some((s) => s.assignees.includes(staff))) return false;
       if (status && t.status !== status && !t.subs.some((s) => s.status === status)) return false;
@@ -232,7 +240,7 @@ export default function AllTasksPanel({
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [rows, search, project, staff, status, quick, today]);
+  }, [rows, search, project, staff, status, priority, quick, today]);
 
   const subtaskTotal = useMemo(() => rows.reduce((n, t) => n + (t.subs.length || t.subCount), 0), [rows]);
   const reset = () => setLimit(PAGE);
@@ -272,7 +280,7 @@ export default function AllTasksPanel({
         ))}
       </div>
 
-      <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-5">
         <input
           value={search}
           onChange={(e) => {
@@ -293,6 +301,10 @@ export default function AllTasksPanel({
         <select value={status} onChange={(e) => { setStatus(e.target.value); reset(); }} className={field} aria-label="Status">
           <option value="">All statuses</option>
           {statuses.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select value={priority} onChange={(e) => { setPriority(e.target.value); reset(); }} className={field} aria-label="Priority">
+          <option value="">All priorities</option>
+          {priorities.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
       </div>
 

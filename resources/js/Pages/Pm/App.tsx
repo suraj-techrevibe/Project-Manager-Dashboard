@@ -385,7 +385,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         )}
 
         {mounted('operations') && <Pane show={page === 'operations'}><RequestsIdeasPanel key={gen.operations ?? 0} /></Pane>}
-        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} /></Pane>}
+        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={projects} onProjectsChange={setProjects} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}

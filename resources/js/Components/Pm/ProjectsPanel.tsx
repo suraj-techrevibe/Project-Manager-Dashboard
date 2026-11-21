@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import type { Project, ProjectStatus } from '../../types/pm';
 import { setUrlParams, useUrlParam } from '../../lib/urlState';
@@ -28,9 +28,17 @@ import {
  * sub-tasks and comments) / Documents / Secrets / Members views.
  * Everything is fetched from and written to Taskmandu via /pm/projects/*.
  */
-export default function ProjectsPanel() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function ProjectsPanel({
+  seedProjects = [],
+  onProjectsChange,
+}: {
+  /** Projects the app already loaded (e.g. for All tasks). Shown immediately so opening a task never waits on a re-fetch. */
+  seedProjects?: Project[];
+  /** Called when this tab changes its project list, so other tabs don't go stale. */
+  onProjectsChange?: (projects: Project[]) => void;
+}) {
+  const [projects, setProjects] = useState<Project[]>(seedProjects);
+  const [loading, setLoading] = useState(seedProjects.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
@@ -45,11 +53,13 @@ export default function ProjectsPanel() {
   const closeProject = () => setUrlParams({ project: null, ptab: null, task: null, sub: null });
 
   async function load() {
-    setLoading(true);
+    // With projects already on screen, refresh quietly instead of swapping the view for a spinner.
+    if (projects.length === 0) setLoading(true);
     setError(null);
     try {
       const { data } = await pmApi.projects();
-      setProjects(data.projects);
+      // A refresh that comes back empty must not wipe projects we already hold.
+      setProjects((prev) => (data.projects.length === 0 && prev.length > 0 ? prev : data.projects));
       // Health badges are optional — if that endpoint fails the projects still load.
       try {
         const h = await pmApi.projectHealth();
@@ -68,14 +78,36 @@ export default function ProjectsPanel() {
     load();
   }, []);
 
-  // A URL pointing at a project that no longer exists (renamed/deleted).
+  // Keep the rest of the app (All tasks, Today) in step with edits made here.
+  const firstProjects = useRef(true);
   useEffect(() => {
-    if (!openId || loading || error) return;
-    if (!projects.some((p) => p._id === openId)) {
-      setError("That project wasn't found in Taskmandu — it may have been renamed or deleted.");
-      setUrlParams({ project: null, ptab: null, task: null, sub: null }, { replace: true });
+    if (firstProjects.current) {
+      firstProjects.current = false;
+      return;
     }
-  }, [openId, loading, error, projects]);
+    onProjectsChange?.(projects);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
+
+  // A URL pointing at a project the list doesn't have. First try fetching that one project directly
+  // (the list can fail or be slow while a single project still loads); only then say it wasn't found.
+  const lookedUp = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openId || loading) return;
+    if (projects.some((p) => p._id === openId)) return;
+    if (lookedUp.current === openId) return;
+    lookedUp.current = openId;
+    pmApi
+      .project(openId)
+      .then(({ data }) => {
+        setProjects((ps) => (ps.some((p) => p._id === data.project._id) ? ps : [...ps, data.project]));
+        setError(null);
+      })
+      .catch(() => {
+        setError("That project wasn't found in Taskmandu — it may have been renamed or deleted.");
+        setUrlParams({ project: null, ptab: null, task: null, sub: null }, { replace: true });
+      });
+  }, [openId, loading, projects]);
 
   const open = projects.find((p) => p._id === openId) ?? null;
 
