@@ -331,6 +331,25 @@ class ReportController extends Controller
     }
 
 
+
+    /** Download a Word-openable DOCX generated from saved report text. */
+    public function exportDocx(PmReport $report)
+    {
+        if (!class_exists('ZipArchive')) return response()->json(['message'=>'DOCX export requires the PHP Zip extension on the server.'], 501);
+        $text = $report->body ?: $this->reports->render($report->content ?? []);
+        $paragraphs = collect(preg_split('/\\r?\\n/', $text))->map(function ($line) {
+            $line = htmlspecialchars($line, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+            return '<w:p><w:r><w:t xml:space="preserve">'.$line.'</w:t></w:r></w:p>';
+        })->implode('');
+        $document = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'.$paragraphs.'<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>';
+        $tmp = tempnam(sys_get_temp_dir(), 'pm-report-'); $zip = new \\ZipArchive();
+        if ($zip->open($tmp, \\ZipArchive::CREATE | \\ZipArchive::OVERWRITE) !== true) { @unlink($tmp); return response()->json(['message'=>'Could not create DOCX file.'], 500); }
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+        $zip->addFromString('word/document.xml', $document); $zip->close();
+        return response()->download($tmp, 'PM-Report-'.$report->kind.'-'.$report->report_date.'.docx', ['Content-Type'=>'application/vnd.openxmlformats-officedocument.wordprocessingml.document'])->deleteFileAfterSend(true);
+    }
+
     /** Edit a saved daily/weekly snapshot without changing source board data. */
     public function update(Request $request, PmReport $report): JsonResponse
     {
