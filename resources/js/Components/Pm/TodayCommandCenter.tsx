@@ -319,6 +319,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
 
   return (
     <div className="space-y-6 rounded-[2rem] bg-slate-50/80 p-1 sm:p-2">
+      <div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">1 · Daily status</div>
       {/* ===== 1. Hero ===== */}
       <section className="relative isolate overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-7 text-white shadow-xl shadow-slate-900/10 sm:p-9">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
@@ -426,65 +427,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </div>}
       </section>
 
-      {p.showDigest && (
-        <section id="morning-digest" className="scroll-mt-20 rounded-xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
-          <h3 className="text-xl font-semibold text-indigo-950">Morning digest</h3>
-          <p className="mt-1 text-sm text-indigo-700">
-            {p.digestLoading ? 'Generating your stand-up summary…' : 'Generated stand-up summary.'}
-          </p>
-          <div className="mt-4 min-h-20 rounded-xl border border-indigo-100 bg-white/70 p-4">
-            {p.digestLoading ? (
-              <div className="flex items-center gap-3 text-sm font-medium text-indigo-700">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" aria-hidden="true" />
-                Loading morning digest…
-              </div>
-            ) : p.digestText ? (
-              <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{p.digestText}</div>
-            ) : (
-              <div className="text-sm text-slate-500">No digest could be generated.</div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ===== 3. Sub-task progress ===== */}
-      {p.subtaskSummary.total > 0 && (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-semibold text-slate-900">Sub-task progress</h3>
-              <p className="mt-0.5 text-sm text-slate-500">Completion is read directly from Taskmandu sub-task status.</p>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-slate-900">{p.subtaskSummary.completed}/{p.subtaskSummary.total}</div>
-              <div className="text-xs text-slate-500">{p.subtaskSummary.progress}% complete · {p.subtaskSummary.remaining} remaining</div>
-            </div>
-          </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: p.subtaskSummary.progress + '%' }} />
-          </div>
-        </section>
-      )}
-
-
-      {/* ===== Completed subtasks QA ===== */}
-      <Panel
-        id="completed-subtasks"
-        tone="emerald"
-        title="Completed subtasks"
-        sub="Finished in Taskmandu, newest first. Review one in its parent task."
-        badge={<Count n={completedSubtasks.length} tone="emerald" />}
-      >
-        <CompletedSubtasksGrid items={completedSubtasks} loading={p.projectsLoading} onOpen={p.onOpenTask} pageSize={6} searchable={false} />
-        {completedSubtasks.length > 6 && (
-          <div className="mt-3 text-right">
-            <button type="button" onClick={() => p.onNavigate?.('tasks')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
-              View all {completedSubtasks.length} on the All tasks page →
-            </button>
-          </div>
-        )}
-      </Panel>
-
+      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">2 · Priority attention</div>
       {/* ===== 4. Act now ===== */}
       <CollapsibleSection id="act-now" title="Act now" sub="Open the task list with the correct filter.">
         <div className="grid gap-3 md:grid-cols-3">
@@ -564,30 +507,41 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         {noOwner === 0 && <Empty>Everything has an owner ✓</Empty>}
       </Panel>
 
-      {/* ===== 7. Capacity ===== */}
-      <Panel
-        id="capacity"
-        tone="emerald"
-        title="Team capacity"
-        sub="Who is overloaded, and who can take more? Click a person to filter the list to them."
-        action={<LinkButton tone="emerald" onClick={() => p.onNavigate?.('projects')}>Open Projects →</LinkButton>}
-      >
-        <div id="team-workload" className="scroll-mt-20">
-          <div className="mb-4 flex flex-wrap gap-2">
-            {free.map((w) => (
-              <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200">
-                {w.name} · free
-              </button>
+      {/* ===== 9. Verify ===== */}
+      {unverified.length > 0 && (
+        <Panel
+          id="verify"
+          tone="teal"
+          title="Waiting for your check"
+          sub="Marked done in Taskmandu — confirm the work, then snooze or verify below."
+          badge={<Count n={unverified.length} tone="teal" />}
+          action={unverified.length > 5 ? <LinkButton tone="teal" onClick={() => p.onFilter('unverified')}>View all →</LinkButton> : undefined}
+        >
+          <div className="grid gap-2.5 lg:grid-cols-2">
+            {unverified.slice(0, 6).map((c) => (
+              <TaskRow key={c.card_id} c={c} extra="Done · needs verify" onOpen={() => p.onOpenCard(c)} />
             ))}
-            {over.map((w) => (
-              <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-200">
-                {w.name} · overloaded ({w.open})
-              </button>
-            ))}
-            {!free.length && !over.length && <span className="text-sm text-slate-500">Nobody is idle and nobody is over capacity.</span>}
           </div>
-          <TeamWorkload workload={p.workload} selected="" onSelect={p.onPickPerson} />
-        </div>
+        </Panel>
+      )}
+
+      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">3 · Delivery overview</div>
+      {/* ===== Completed subtasks QA ===== */}
+      <Panel
+        id="completed-subtasks"
+        tone="emerald"
+        title="Completed subtasks"
+        sub="Finished in Taskmandu, newest first. Review one in its parent task."
+        badge={<Count n={completedSubtasks.length} tone="emerald" />}
+      >
+        <CompletedSubtasksGrid items={completedSubtasks} loading={p.projectsLoading} onOpen={p.onOpenTask} pageSize={6} searchable={false} />
+        {completedSubtasks.length > 6 && (
+          <div className="mt-3 text-right">
+            <button type="button" onClick={() => p.onNavigate?.('tasks')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+              View all {completedSubtasks.length} on the All tasks page →
+            </button>
+          </div>
+        )}
       </Panel>
 
       {/* ===== 8. Project risk + timeline ===== */}
@@ -670,28 +624,79 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </div>
       </Panel>
 
-      {/* ===== 9. Verify ===== */}
-      {unverified.length > 0 && (
-        <Panel
-          id="verify"
-          tone="teal"
-          title="Waiting for your check"
-          sub="Marked done in Taskmandu — confirm the work, then snooze or verify below."
-          badge={<Count n={unverified.length} tone="teal" />}
-          action={unverified.length > 5 ? <LinkButton tone="teal" onClick={() => p.onFilter('unverified')}>View all →</LinkButton> : undefined}
-        >
-          <div className="grid gap-2.5 lg:grid-cols-2">
-            {unverified.slice(0, 6).map((c) => (
-              <TaskRow key={c.card_id} c={c} extra="Done · needs verify" onOpen={() => p.onOpenCard(c)} />
+      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">4 · Team workload</div>
+      {/* ===== 7. Capacity ===== */}
+      <Panel
+        id="capacity"
+        tone="emerald"
+        title="Team capacity"
+        sub="Who is overloaded, and who can take more? Click a person to filter the list to them."
+        action={<LinkButton tone="emerald" onClick={() => p.onNavigate?.('projects')}>Open Projects →</LinkButton>}
+      >
+        <div id="team-workload" className="scroll-mt-20">
+          <div className="mb-4 flex flex-wrap gap-2">
+            {free.map((w) => (
+              <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200">
+                {w.name} · free
+              </button>
             ))}
+            {over.map((w) => (
+              <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-200">
+                {w.name} · overloaded ({w.open})
+              </button>
+            ))}
+            {!free.length && !over.length && <span className="text-sm text-slate-500">Nobody is idle and nobody is over capacity.</span>}
           </div>
-        </Panel>
+          <TeamWorkload workload={p.workload} selected="" onSelect={p.onPickPerson} />
+        </div>
+      </Panel>
+
+      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">7 · Reporting & monitoring</div>
+      {/* ===== 3. Sub-task progress ===== */}
+      {p.subtaskSummary.total > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">Sub-task progress</h3>
+              <p className="mt-0.5 text-sm text-slate-500">Completion is read directly from Taskmandu sub-task status.</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-slate-900">{p.subtaskSummary.completed}/{p.subtaskSummary.total}</div>
+              <div className="text-xs text-slate-500">{p.subtaskSummary.progress}% complete · {p.subtaskSummary.remaining} remaining</div>
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-emerald-500" style={{ width: p.subtaskSummary.progress + '%' }} />
+          </div>
+        </section>
+      )}
+
+
+      {p.showDigest && (
+        <section id="morning-digest" className="scroll-mt-20 rounded-xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:p-6">
+          <h3 className="text-xl font-semibold text-indigo-950">Morning digest</h3>
+          <p className="mt-1 text-sm text-indigo-700">
+            {p.digestLoading ? 'Generating your stand-up summary…' : 'Generated stand-up summary.'}
+          </p>
+          <div className="mt-4 min-h-20 rounded-xl border border-indigo-100 bg-white/70 p-4">
+            {p.digestLoading ? (
+              <div className="flex items-center gap-3 text-sm font-medium text-indigo-700">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" aria-hidden="true" />
+                Loading morning digest…
+              </div>
+            ) : p.digestText ? (
+              <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{p.digestText}</div>
+            ) : (
+              <div className="text-sm text-slate-500">No digest could be generated.</div>
+            )}
+          </div>
+        </section>
       )}
 
       {/* ===== 10. What changed ===== */}
       <Panel id="since-strip" tone="slate" title="What changed" sub="Movement on the board since the last working day.">
         {p.since ? <SinceStrip since={p.since} onOpenItem={p.onOpenSince} onShowFree={p.onShowFree} /> : <Empty>No change data yet.</Empty>}
       </Panel>
-    </div>
+      </div>    </div>
   );
 }
