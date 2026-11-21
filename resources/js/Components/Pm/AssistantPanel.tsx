@@ -131,6 +131,8 @@ function ActionCard({ a, onConfirm, onCancel }: { a: AssistantAction; onConfirm:
 const ENGINE: Record<AssistantEngine, { label: string; tone: string }> = {
   gemini: { label: 'Gemini', tone: 'bg-sky-50 text-sky-700 ring-sky-200' },
   claude: { label: 'Claude', tone: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  groq: { label: 'Groq', tone: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  openrouter: { label: 'OpenRouter', tone: 'bg-violet-50 text-violet-700 ring-violet-200' },
 };
 
 export function EngineBadge({ engine }: { engine?: AssistantEngine }) {

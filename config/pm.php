@@ -2,8 +2,9 @@
 
 return [
     'assistant' => [
-        // The assistant always talks directly to this AI model: gemini (default) or anthropic.
-        'provider' => env('PM_AI_PROVIDER', 'gemini'),
+        // Groq is primary; OpenRouter is used when Groq is temporarily unavailable.
+        'provider' => env('PM_AI_PROVIDER', 'groq'),
+        'fallback_provider' => env('PM_AI_FALLBACK_PROVIDER', 'openrouter'),
     ],
     'weekly_capacity_hours' => (float) env('PM_WEEKLY_CAPACITY_HOURS', 40),
     'automation' => [

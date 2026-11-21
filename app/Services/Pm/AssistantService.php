@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -87,37 +88,134 @@ TXT;
             $clean[$last]['content'] = trim($m[1]);
         }
 
-        return $this->chatWithAi($clean, $user) + ['suggestions' => [], 'engine' => $this->engineName()];
+        return $this->chatWithAi($clean, $user) + ['suggestions' => []];
     }
 
-    private function engineName(): string
+    private function primaryProvider(): string
     {
-        return config('pm.assistant.provider', 'gemini') === 'anthropic' ? 'claude' : 'gemini';
+        return (string) config('pm.assistant.provider', 'groq');
     }
 
-    /** What is answering right now — shown in the chat header so it is never a mystery. */
+    private function fallbackProvider(): ?string
+    {
+        if ($this->primaryProvider() !== 'groq') {
+            return null;
+        }
+
+        $fallback = (string) config('pm.assistant.fallback_provider', 'openrouter');
+
+        return $fallback === 'openrouter' ? $fallback : null;
+    }
+
+    private function engineName(?string $provider = null): string
+    {
+        $provider ??= $this->primaryProvider();
+
+        return $provider === 'anthropic' ? 'claude' : $provider;
+    }
+
+    private function providerLabel(string $provider): string
+    {
+        return match ($provider) {
+            'anthropic' => 'Claude',
+            'gemini' => 'Gemini',
+            'openrouter' => 'OpenRouter',
+            default => 'Groq',
+        };
+    }
+
+    private function providerConfigured(string $provider): bool
+    {
+        return match ($provider) {
+            'groq', 'openrouter' => app(OpenAiCompatibleClient::class)->configured($provider),
+            'anthropic' => filled(config('services.anthropic.key')),
+            'gemini' => GeminiClient::configured(),
+            default => false,
+        };
+    }
+
+    /** Provider status shown in the assistant header. */
     public function status(): array
     {
+        $primary = $this->primaryProvider();
+        $fallback = $this->fallbackProvider();
         $ready = $this->aiReady();
-        $ai = $this->engineName() === 'claude' ? 'Claude' : 'Gemini';
-        $envKey = $this->engineName() === 'claude' ? 'ANTHROPIC_API_KEY' : 'GEMINI_API_KEY';
+        $active = $this->startingProvider();
 
-        $label = $ready ? $ai : "{$ai} is off — add {$envKey} to your environment settings to use the assistant";
+        if ($primary === 'groq') {
+            if ($this->providerConfigured('groq')) {
+                $label = 'Groq'.($fallback && $this->providerConfigured($fallback)
+                    ? ' · OpenRouter fallback ready'
+                    : ' · OpenRouter fallback not configured');
+            } elseif ($fallback && $this->providerConfigured($fallback)) {
+                $label = 'OpenRouter active · add GROQ_API_KEY to enable Groq primary';
+            } else {
+                $label = 'AI is off — configure GROQ_API_KEY and OPENROUTER_API_KEY in Render';
+            }
+        } else {
+            $label = $ready
+                ? $this->providerLabel($active)
+                : $this->providerLabel($primary).' is off — check its API key in your environment settings';
+        }
 
-        return ['driver' => 'ai', 'provider' => $this->engineName(), 'ai_ready' => $ready, 'label' => $label];
+        return ['driver' => 'ai', 'provider' => $this->engineName($active), 'ai_ready' => $ready, 'label' => $label];
     }
 
     private function aiReady(): bool
     {
-        return config('pm.assistant.provider', 'gemini') === 'anthropic'
-            ? (bool) config('services.anthropic.key')
-            : GeminiClient::configured();
+        if ($this->providerConfigured($this->primaryProvider())) {
+            return true;
+        }
+
+        $fallback = $this->fallbackProvider();
+
+        return $fallback !== null && $this->providerConfigured($fallback);
     }
 
-    /** The configured AI client — both speak the same `converse()` contract. */
-    private function ai(): ClaudeClient|GeminiClient
+    private function startingProvider(): string
     {
-        return config('pm.assistant.provider', 'gemini') === 'anthropic' ? $this->claude : app(GeminiClient::class);
+        $primary = $this->primaryProvider();
+        if ($this->providerConfigured($primary)) {
+            return $primary;
+        }
+
+        $fallback = $this->fallbackProvider();
+
+        return $fallback && $this->providerConfigured($fallback) ? $fallback : $primary;
+    }
+
+    /** Switch to OpenRouter only for transient Groq failures (rate limits, network or provider outages). */
+    private function converseWithFallback(string $provider, string $system, array $messages, array $tools, int $maxTokens): array
+    {
+        try {
+            return $this->converse($provider, $system, $messages, $tools, $maxTokens) + ['provider' => $provider];
+        } catch (AiProviderUnavailableException $e) {
+            $fallback = $this->fallbackProvider();
+            if ($provider !== 'groq' || ! $fallback || ! $this->providerConfigured($fallback)) {
+                throw new RuntimeException($this->providerLabel($provider).' is temporarily unavailable: '.$e->getMessage(), 0, $e);
+            }
+
+            Log::warning('PM assistant switched to OpenRouter after Groq became unavailable.', [
+                'reason' => $e->getMessage(),
+            ]);
+
+            try {
+                return $this->converse($fallback, $system, $messages, $tools, $maxTokens) + ['provider' => $fallback];
+            } catch (\Throwable $fallbackError) {
+                throw new RuntimeException('Groq is unavailable and the OpenRouter fallback also failed: '.$fallbackError->getMessage(), 0, $fallbackError);
+            }
+        }
+    }
+
+    private function converse(string $provider, string $system, array $messages, array $tools, int $maxTokens): array
+    {
+        if (in_array($provider, ['groq', 'openrouter'], true)) {
+            return app(OpenAiCompatibleClient::class)->converse($provider, $system, $messages, $tools, $maxTokens);
+        }
+
+        return $provider === 'anthropic'
+            ? $this->claude->converse($system, $messages, $tools, $maxTokens)
+            : app(GeminiClient::class)->converse($system, $messages, $tools, $maxTokens);
     }
 
     /**
@@ -141,16 +239,18 @@ TXT;
 
         $actions = [];
         $used = [];
+        $activeProvider = $this->startingProvider();
 
         for ($step = 0; $step < self::MAX_STEPS; $step++) {
-            $res = $this->ai()->converse(self::SYSTEM, $messages, $this->toolDefinitions(), 2000);
+            $res = $this->converseWithFallback($activeProvider, self::SYSTEM, $messages, $this->toolDefinitions(), 2000);
+            $activeProvider = (string) ($res['provider'] ?? $activeProvider);
             $blocks = $res['content'] ?? [];
             $messages[] = ['role' => 'assistant', 'content' => $blocks];
 
             if (($res['stop_reason'] ?? null) !== 'tool_use') {
                 $text = trim(collect($blocks)->where('type', 'text')->pluck('text')->implode("\n"));
 
-                return ['reply' => $text !== '' ? $text : 'I have nothing to add.', 'actions' => $actions, 'tools' => array_values(array_unique($used))];
+                return ['reply' => $text !== '' ? $text : 'I have nothing to add.', 'actions' => $actions, 'tools' => array_values(array_unique($used)), 'engine' => $this->engineName($activeProvider)];
             }
 
             $results = [];

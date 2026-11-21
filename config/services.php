@@ -36,14 +36,24 @@ return [
     ],
 
     'anthropic' => [
-    'key' => env('ANTHROPIC_API_KEY'),
-    'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5'),
-],
-'gemini' => [
-    'key' => env('GEMINI_API_KEY'),
-    'model' => env('GEMINI_MODEL', 'gemini-3.8-flash'),
-],
-'taskmandu' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5'),
+    ],
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.8-flash'),
+    ],
+    'groq' => [
+        'key' => env('GROQ_API_KEY'),
+        'model' => env('GROQ_MODEL', 'openai/gpt-oss-120b'),
+        'endpoint' => 'https://api.groq.com/openai/v1/chat/completions',
+    ],
+    'openrouter' => [
+        'key' => env('OPENROUTER_API_KEY'),
+        'model' => env('OPENROUTER_MODEL', 'openrouter/free'),
+        'endpoint' => 'https://openrouter.ai/api/v1/chat/completions',
+    ],
+    'taskmandu' => [
     'base_url' => env('TASKMANDU_BASE_URL'),
     'email' => env('TASKMANDU_EMAIL'),
     'password' => env('TASKMANDU_PASSWORD'),
