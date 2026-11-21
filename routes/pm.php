@@ -72,6 +72,8 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::post('drafts/{draft}/verify', [PmDraftController::class, 'verify'])->name('drafts.verify');
     Route::delete('drafts/{draft}', [PmDraftController::class, 'destroy'])->name('drafts.destroy');
     Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
+    Route::post('qa/quick-capture/draft', [PmQaController::class, 'draftQuickCapture'])->middleware('throttle:10,1')->name('qa.quick-capture.draft');
+    Route::post('qa/quick-capture/save', [PmQaController::class, 'saveQuickCapture'])->name('qa.quick-capture.save');
     Route::get('qa/reports', [PmQaController::class, 'reports'])->name('qa.reports.index');
     Route::post('qa/reports', [PmQaController::class, 'storeReport'])->name('qa.reports.store');
     Route::patch('qa/reports/{report}/handover', [PmQaController::class, 'handoverReport'])->name('qa.reports.handover');
