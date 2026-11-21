@@ -169,6 +169,8 @@ class ReportController extends Controller
                 'overdue' => $cards->filter(fn ($c) => $c->due_at && $c->due_at->lt(today()) && ! in_array($c->status, ['Completed', 'Cancelled'], true))->count() + $standalone->filter(fn ($c) => $c->due_at && $c->due_at->lt(today()) && ! in_array($c->status, ['Completed', 'Cancelled'], true))->count(),
                 'qa_pending' => PmQaTaskReview::query()->where('qa_status', 'Awaiting QA')->count(),
                 'qa_failed' => PmQaTaskReview::query()->where('qa_status', 'Failed')->count(),
+                'subtasks_total' => $subtasks->where('status', '!=', 'Cancelled')->count(),
+                'subtasks_completed' => $subtasks->where('status', 'Completed')->count(),
             ],
             'data_notes' => ['Business = Taskmandu project, matching the current project scope switcher.', 'Task and subtask counts are separate; subtasks are never counted as parent tasks.', 'QA counts come from task QA review records, not the Taskmandu Completed status.', 'This is a current snapshot, not a historical end-of-period snapshot.'],
         ]);
