@@ -9,7 +9,7 @@ import { PM_PAGES, visitPm, type PmPage } from '@/lib/pmNav';
 export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   today: { icon: 'grid', blurb: 'What needs your attention right now' },
   tasks: { icon: 'list', blurb: 'Every task and completed subtask across projects' },
-  operations: { icon: 'inbox', blurb: 'Requests, ideas and business records' },
+  operations: { icon: 'inbox', blurb: 'Capture, review and organise incoming requests' },
   projects: { icon: 'folder', blurb: 'Projects, tasks, members and documents' },
   minutes: { icon: 'clock', blurb: 'Capture meetings and turn them into work' },
   brief: { icon: 'notes', blurb: 'Draft a brief and push it to Taskmandu as tickets' },
@@ -21,10 +21,9 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
-  { title: 'Overview', keys: ['today', 'tasks', 'operations', 'projects'] },
-  { title: 'Daily routine', keys: ['checklist'] },
-  { title: 'Planning', keys: ['minutes', 'brief'] },
-  { title: 'Oversight', keys: ['reports', 'scope', 'git', 'qa'] },
+  { title: '1 · Daily workflow', keys: ['today', 'tasks', 'minutes', 'projects', 'operations', 'qa', 'brief', 'reports'] },
+  { title: '2 · Project controls', keys: ['scope', 'git'] },
+  { title: '3 · Daily routine', keys: ['checklist'] },
 ];
 
 interface Props {
