@@ -323,6 +323,72 @@ function WeeklyDetails({ c }: { c: WeeklyContent }) {
   );
 }
 
+function healthTone(health: string): string {
+  return health === 'At risk' ? 'bg-red-50 text-red-700' : health === 'Watch' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700';
+}
+
+function ExecutiveBrief({ c }: { c: DailyContent | WeeklyContent }) {
+  const e = c.executive;
+  const t = e.totals;
+  const healthBar = (value: number, color: string) => (
+    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+    </div>
+  );
+  return (
+    <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div><h3 className="text-base font-semibold text-slate-900">Executive snapshot</h3><p className="text-xs text-slate-500">Company delivery position · as of {new Date(e.as_of).toLocaleString()}</p></div>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{e.businesses.length} projects / businesses</span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {[
+          ['Tasks', t.tasks, 'text-slate-900'],
+          ['Completed', t.completed, 'text-emerald-700'],
+          ['Open', t.open, 'text-slate-900'],
+          ['Blocked', t.blocked, t.blocked ? 'text-red-700' : 'text-slate-900'],
+          ['Overdue', t.overdue, t.overdue ? 'text-red-700' : 'text-slate-900'],
+          ['QA pending', t.qa_pending, t.qa_pending ? 'text-amber-700' : 'text-slate-900'],
+          ['QA failed', t.qa_failed, t.qa_failed ? 'text-red-700' : 'text-slate-900'],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} className="rounded-lg bg-slate-50 px-3 py-2"><div className="text-[11px] text-slate-500">{label}</div><div className={`mt-0.5 text-xl font-semibold ${color}`}>{value}</div></div>
+        ))}
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Business / project performance</h4><span className="text-[11px] text-slate-400">Completed tasks / total tasks</span></div>
+        {e.businesses.length ? <div className="grid gap-3 md:grid-cols-2">
+          {e.businesses.map((b) => (
+            <div key={b.project_id} className="rounded-lg border border-slate-100 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold text-slate-800">{b.business}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${healthTone(b.health)}`}>{b.health}</span></div>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500"><span>{b.completed} / {b.total} completed</span><strong className="text-slate-700">{b.progress}%</strong></div>
+              <div className="mt-1">{healthBar(b.progress, 'bg-indigo-500')}</div>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                <span>{b.open} open</span><span>{b.blocked} blocked</span><span>{b.overdue} overdue</span><span>{b.qa_pending} QA pending</span><span>{b.qa_failed} QA failed</span><span>Subtasks {b.subtasks_completed}/{b.subtasks_total}</span>
+              </div>
+            </div>
+          ))}
+        </div> : <Empty>No project-linked tasks in this snapshot.</Empty>}
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Team delivery health</h4><span className="text-[11px] text-slate-400">Risk indicator from blocked / overdue tasks, not a productivity score</span></div>
+        {e.team.length ? <div className="grid gap-2 md:grid-cols-2">
+          {e.team.map((p) => (
+            <div key={p.name} className="rounded-lg border border-slate-100 px-3 py-2">
+              <div className="flex items-center justify-between gap-2"><span className="text-sm font-medium text-slate-800">{p.name}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${healthTone(p.health)}`}>{p.health}</span></div>
+              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500"><span>{p.completed} completed · {p.open} open</span><span>{p.health_pct}% clear</span></div>
+              <div className="mt-1">{healthBar(p.health_pct, p.health === 'At risk' ? 'bg-red-500' : p.health === 'Watch' ? 'bg-amber-500' : 'bg-emerald-500')}</div>
+              <div className="mt-1 text-[11px] text-slate-500">{p.in_progress} in progress · {p.blocked} blocked · {p.overdue} overdue</div>
+            </div>
+          ))}
+        </div> : <Empty>No assigned task data.</Empty>}
+      </div>
+      <p className="mt-3 text-[10px] text-slate-400">Snapshot is current when generated, including for backdated reports. Standalone tasks are included in company totals and team workload, but not assigned to a business/project.</p>
+    </section>
+  );
+}
+
 function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCopy: (part: 'update' | 'full') => void; onDelete: () => void; copied: 'update' | 'full' | null }) {
   const c = report.content;
   const meta = 'prepared_by' in c ? c : null;
@@ -353,6 +419,7 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
 
       {c.kind === 'daily' || c.kind === 'weekly' ? (
         <>
+          <ExecutiveBrief c={c} />
           <UpdatePart c={c} />
           <details className="mt-4">
             <summary className="cursor-pointer select-none text-sm font-semibold text-slate-600">
