@@ -4,7 +4,7 @@ import type {
   BriefContext,
   PushTicket,
   PushResult,
-  Report,
+  Report,\n  ReportContent,
   ScopeItem,
   GitStatus,
   PullRequest,
