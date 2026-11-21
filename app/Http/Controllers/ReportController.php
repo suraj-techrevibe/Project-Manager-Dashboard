@@ -121,6 +121,34 @@ class ReportController extends Controller
             'blocked' => $rows->sum('blocked'),
         ])->sortByDesc('activity_count')->values();
 
+        $subtaskRows = PmSubtask::query()
+            ->where(function ($query) use ($from, $to) {
+                $query->whereBetween('remote_created_at', [$from, $to])
+                    ->orWhereBetween('completed_at', [$from, $to]);
+            })->get();
+        $subtaskCreated = $subtaskRows->filter(fn ($subtask) => $subtask->remote_created_at && $subtask->remote_created_at->between($from, $to));
+        $subtaskCompleted = $subtaskRows->filter(fn ($subtask) => $subtask->completed_at && $subtask->completed_at->between($from, $to));
+        $projectNames = PmCard::query()->whereNotNull('project_id')->get(['project_id', 'project_name'])
+            ->unique('project_id')->keyBy(fn ($card) => (string) $card->project_id);
+        $subtaskByProject = $subtaskRows->groupBy(fn ($subtask) => (string) $subtask->project_id)->map(function ($rows, $projectId) use ($projectNames, $from, $to) {
+            return [
+                'project_id' => $projectId,
+                'project' => $projectNames->get($projectId)?->project_name ?? 'Unknown project',
+                'created' => $rows->filter(fn ($subtask) => $subtask->remote_created_at && $subtask->remote_created_at->between($from, $to))->count(),
+                'completed' => $rows->filter(fn ($subtask) => $subtask->completed_at && $subtask->completed_at->between($from, $to))->count(),
+            ];
+        })->values();
+        $subtaskByTeam = collect();
+        foreach (['created' => $subtaskCreated, 'completed' => $subtaskCompleted] as $metric => $rows) {
+            foreach ($rows as $subtask) {
+                $owners = filled($subtask->assignee) ? array_filter(array_map('trim', explode(',', $subtask->assignee))) : ['Unassigned'];
+                foreach ($owners as $owner) {
+                    $subtaskByTeam[$owner] ??= ['name' => $owner, 'created' => 0, 'completed' => 0];
+                    $subtaskByTeam[$owner][$metric]++;
+                }
+            }
+        }
+
         $summary = [
             'activity_events' => $events->count(),
             'tasks_created' => $events->filter(fn ($e) => in_array($e['type'], ['created', 'pushed'], true))->count(),
@@ -129,6 +157,8 @@ class ReportController extends Controller
             'comments' => $events->where('type', 'comment')->count(),
             'follow_ups' => $events->where('type', 'nudge')->count(),
             'verified' => $events->where('type', 'verify')->count(),
+            'subtasks_created' => $subtaskCreated->count(),
+            'subtasks_completed' => $subtaskCompleted->count(),
         ];
 
         $savedReports = PmReport::query()->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])
@@ -140,6 +170,7 @@ class ReportController extends Controller
             'minutes' => ['count' => $minutes->count(), 'meetings' => $minutes],
             'performance' => [
                 'summary' => $summary, 'businesses' => $businessRows, 'team' => $teamRows,
+                'subtasks' => ['created' => $subtaskCreated->count(), 'completed' => $subtaskCompleted->count(), 'by_project' => $subtaskByProject, 'by_team' => $subtaskByTeam->sortByDesc(fn ($row) => $row['created'] + $row['completed'])->values()],
                 'activities' => $events->take(500)->values(),
                 'activity_total' => $events->count(),
                 'activity_truncated' => $events->count() > 500,
