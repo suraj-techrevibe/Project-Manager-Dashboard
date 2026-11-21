@@ -76,6 +76,7 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::post('qa/quick-capture/save', [PmQaController::class, 'saveQuickCapture'])->name('qa.quick-capture.save');
     Route::get('qa/reports', [PmQaController::class, 'reports'])->name('qa.reports.index');
     Route::post('qa/reports', [PmQaController::class, 'storeReport'])->name('qa.reports.store');
+    Route::patch('qa/reports/{report}', [PmQaController::class, 'updateReport'])->name('qa.reports.update');
     Route::patch('qa/reports/{report}/handover', [PmQaController::class, 'handoverReport'])->name('qa.reports.handover');
     Route::get('qa/task-inbox', [PmQaController::class, 'taskInbox'])->name('qa.task-inbox');
     Route::patch('qa/task-inbox/{review}', [PmQaController::class, 'updateTaskReview'])->name('qa.task-inbox.update');
