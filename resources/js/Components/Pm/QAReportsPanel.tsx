@@ -96,7 +96,7 @@ export default function QAReportsPanel() {
   });
 
   return <div className="space-y-5">
-    <style>{`@media print { body * { visibility: hidden !important; } #qa-print, #qa-print * { visibility: visible !important; } #qa-print { position: absolute; inset: 0; width: 100%; padding: 24px; background: white; color: #111827; } .no-print { display: none !important; } .qa-break { break-inside: avoid; } }`}</style>
+    <style>{`@media print { body * { visibility: hidden !important; } #qa-print, #qa-print * { visibility: visible !important; } #qa-print { position: absolute; inset: 0; width: 100%; padding: 24px; background: white; color: #111827; } .no-print { display: none !important; } .qa-break { break-inside: avoid; } .qa-finding { break-inside: avoid-page; } .qa-evidence { break-inside: avoid; } .qa-document { font-family: Arial, Helvetica, sans-serif; } }`}</style>
     <div className="no-print flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-lg font-semibold">QA Reports</h2><p className="text-sm text-slate-500">Record findings in QA Center, then select them here to create a developer handover report.</p></div>
       <button onClick={() => void load()} className="rounded-lg border bg-white px-3 py-2 text-sm">Refresh findings</button>
@@ -110,17 +110,64 @@ export default function QAReportsPanel() {
           <button onClick={printReport} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white">Print / Save as PDF</button>
         </div>
       </div>
-      <article id="qa-print" className="rounded-xl border bg-white p-6 shadow-sm print:shadow-none">
-        <header className="border-b pb-4"><div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Quality Assurance Report</div><h1 className="mt-2 text-2xl font-bold">{active.business} – QA Report</h1><p className="mt-1 text-sm text-slate-600">{active.report_code} · {active.report_date} · {active.site_app || 'Website / App'}</p>{active.handed_over_at && <p className="mt-2 text-xs font-semibold text-emerald-700">HANDED OVER · {new Date(active.handed_over_at).toLocaleString()}</p>}</header>
-        <section className="grid grid-cols-2 gap-3 border-b py-4 text-sm md:grid-cols-4"><div><div className="text-xs text-slate-500">Total findings</div><strong>{active.findings.length}</strong></div>{Object.entries(counts(active.findings)).map(([k,v])=><div key={k}><div className="text-xs capitalize text-slate-500">{k}</div><strong>{v}</strong></div>)}</section>
-        <section className="grid gap-3 border-b py-4 text-sm md:grid-cols-2"><div><strong>Areas tested</strong><p className="mt-1 whitespace-pre-wrap">{active.areas_tested || 'Not specified'}</p></div><div><strong>Environment</strong><p className="mt-1 whitespace-pre-wrap">{active.environment || 'Not specified'}</p></div></section>
-        {active.summary && <section className="border-b py-4"><h2 className="font-bold">Testing summary</h2><p className="mt-2 whitespace-pre-wrap text-sm">{active.summary}</p></section>}
-        {active.fix_first && <section className="border-b py-4"><h2 className="font-bold">Fix first</h2><ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{lines(active.fix_first).map((x,i)=><li key={i}>{x}</li>)}</ul></section>}
-        <section className="border-b py-4"><h2 className="font-bold">Issue index</h2><div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs text-slate-500"><th className="py-2">ID</th><th>Severity</th><th>Issue</th><th>Where</th></tr></thead><tbody>{active.findings.map((f,i)=><tr key={f.id} className="border-b"><td className="py-2">QA-{String(i+1).padStart(2,'0')}</td><td>{f.severity}</td><td>{f.title}</td><td>{f.page_url || 'Not specified'}</td></tr>)}</tbody></table></div></section>
-        <section className="space-y-4 py-4"><h2 className="font-bold">Detailed findings</h2>{active.findings.map((f,i)=><div key={f.id} className="qa-break border-b pb-4"><h3 className="font-semibold">QA-{String(i+1).padStart(2,'0')} · {f.title}</h3><p className="mt-1 text-xs font-semibold uppercase text-slate-500">{f.severity} · {f.status}</p><p className="mt-2 text-sm"><strong>Where:</strong> {f.page_url || 'Not specified'}</p><p className="mt-2 whitespace-pre-wrap text-sm"><strong>Actual behaviour:</strong>{' '}{f.description || 'Not recorded'}</p><p className="mt-2 whitespace-pre-wrap text-sm"><strong>Expected behaviour:</strong>{' '}{f.expected_behaviour || 'Not recorded'}</p>{f.developer_notes && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Developer notes:</strong>{' '}{f.developer_notes}</p>}<p className="mt-2 text-sm"><strong>Developer:</strong> {f.assignee || 'Unassigned'}</p>{f.evidence_url && <p className="mt-2 break-all text-sm"><strong>Evidence:</strong> {f.evidence_url}</p>}{f.pm_task_url && <p className="mt-1 break-all text-sm"><strong>Taskmandu task:</strong> {f.pm_task_url}</p>}{f.retest_notes && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Retest notes:</strong> {f.retest_notes}</p>}</div>)}</section>
-        {active.checklist?.length ? <section className="border-t py-4"><h2 className="font-bold">Checklist results</h2>{active.checklist.map((c,i)=><div key={i} className="flex justify-between gap-4 border-b py-2 text-sm"><span>{c.label}</span><strong>{c.result}</strong></div>)}</section> : null}
-        {active.open_questions && <section className="border-t py-4"><h2 className="font-bold">Open questions</h2><ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{lines(active.open_questions).map((x,i)=><li key={i}>{x}</li>)}</ul></section>}
-        <footer className="border-t pt-4 text-xs text-slate-500">Generated from QA findings recorded in the PM Dashboard. Report content is a snapshot taken at generation time.</footer>
+      <article id="qa-print" className="qa-document mx-auto max-w-4xl rounded-xl border bg-white p-6 text-slate-900 shadow-sm print:max-w-none print:border-0 print:p-0 print:shadow-none">
+        <header className="border-b-2 border-slate-800 pb-5">
+          <div className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Quality Assurance · Developer Handover</div>
+          <h1 className="mt-3 text-3xl font-bold">QA Report: {active.site_app || active.business}</h1>
+          <p className="mt-2 text-sm text-slate-600">Storefront / application testing findings for the development team. Fix order follows severity.</p>
+          <div className="mt-4 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+            <div><span className="inline-block w-28 font-semibold text-slate-700">Business</span>{active.business}</div>
+            <div><span className="inline-block w-28 font-semibold text-slate-700">Report date</span>{active.report_date}</div>
+            <div className="sm:col-span-2"><span className="inline-block w-28 font-semibold text-slate-700">Site / app</span>{active.site_app || 'Not specified'}</div>
+            <div className="sm:col-span-2"><span className="inline-block w-28 font-semibold text-slate-700">Areas tested</span><span className="whitespace-pre-wrap">{active.areas_tested || 'Not specified'}</span></div>
+            <div className="sm:col-span-2"><span className="inline-block w-28 font-semibold text-slate-700">Environment</span><span className="whitespace-pre-wrap">{active.environment || 'Not specified'}</span></div>
+            <div className="sm:col-span-2"><span className="inline-block w-28 font-semibold text-slate-700">Result</span>{active.findings.length} findings: {counts(active.findings).critical} Critical, {counts(active.findings).high} High, {counts(active.findings).medium} Medium, {counts(active.findings).low} Low</div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500"><span>{active.report_code}</span>{active.handed_over_at && <span className="font-semibold text-emerald-700">· HANDED OVER {new Date(active.handed_over_at).toLocaleString()}</span>}</div>
+        </header>
+
+        {active.summary && <section className="border-b py-4"><h2 className="text-base font-bold">Testing summary</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{active.summary}</p></section>}
+
+        <section className="border-b py-4">
+          <h2 className="text-base font-bold">Fix first</h2>
+          {active.fix_first ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{lines(active.fix_first).map((x,i)=><li key={i}>{x}</li>)}</ul> : <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{[...active.findings].sort((a,b)=>({Critical:0,High:1,Medium:2,Low:3}[a.severity]??4)-({Critical:0,High:1,Medium:2,Low:3}[b.severity]??4)).slice(0,3).map(f=><li key={f.id}><strong>{f.title}</strong> — {f.severity}</li>)}</ol>}
+        </section>
+
+        <section className="border-b py-4">
+          <h2 className="text-base font-bold">Issue index</h2>
+          <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs text-slate-500"><th className="py-2 pr-3">ID</th><th className="pr-3">Severity</th><th className="pr-3">Issue</th><th>Where</th></tr></thead><tbody>{active.findings.map((f,i)=><tr key={f.id} className="border-b align-top"><td className="py-2 pr-3 font-semibold">QA-{String(i+1).padStart(2,'0')}</td><td className="py-2 pr-3">{f.severity}</td><td className="py-2 pr-3">{f.title}</td><td className="py-2 break-all">{f.page_url || 'Not specified'}</td></tr>)}</tbody></table></div>
+          <p className="mt-3 text-xs leading-5 text-slate-500">Severity guide: Critical / High = broken or materially harmful customer behaviour; Medium = inconsistent or confusing behaviour; Low = minor wording or presentation issue.</p>
+        </section>
+
+        <section className="py-4">
+          <h2 className="mb-3 text-base font-bold">Findings</h2>
+          {active.findings.map((f,i)=><div key={f.id} className={i < active.findings.length-1 ? "qa-finding border-b pb-5 pt-3" : "qa-finding pb-2 pt-3"}>
+            <h3 className="text-lg font-bold">QA-{String(i+1).padStart(2,'0')} · {f.title}</h3>
+            <div className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">Severity: {f.severity} · Status: {f.status}</div>
+            <p className="mt-3 text-sm"><strong>Where:</strong> <span className="break-all">{f.page_url || 'Not specified'}</span></p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6"><strong>Actual:</strong> {f.description || 'Not recorded'}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6"><strong>Expected:</strong> {f.expected_behaviour || 'Not recorded'}</p>
+            {f.developer_notes && <p className="mt-2 whitespace-pre-wrap text-sm leading-6"><strong>Note for developer:</strong> {f.developer_notes}</p>}
+            {f.evidence_url && <div className="mt-4">
+              {/\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(f.evidence_url) ? <figure className="qa-evidence"><img src={f.evidence_url} alt={`Evidence for QA-${String(i+1).padStart(2,'0')}`} className="max-h-[26rem] max-w-full rounded border object-contain" /><figcaption className="mt-1 text-xs text-slate-500">Fig. {i+1}: Evidence for QA-{String(i+1).padStart(2,'0')}</figcaption></figure> : <p className="mt-2 break-all text-sm"><strong>Evidence:</strong> <a href={f.evidence_url} className="underline">{f.evidence_url}</a></p>}
+            </div>}
+            {f.pm_task_url && <p className="mt-2 break-all text-sm"><strong>Taskmandu task:</strong> <a href={f.pm_task_url} className="underline">{f.pm_task_url}</a></p>}
+            <p className="mt-2 text-sm"><strong>Assigned to:</strong> {f.assignee || 'Unassigned'}</p>
+            {f.retest_notes && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Retest notes:</strong> {f.retest_notes}</p>}
+          </div>)}
+        </section>
+
+        {active.checklist?.length ? <section className="border-t py-4">
+          <h2 className="text-base font-bold">Checklist results</h2>
+          <p className="mt-1 text-xs text-slate-500">Pass means the item was verified. Items that conflict with a finding should be marked Retest required.</p>
+          <div className="mt-2">{active.checklist.map((c,i)=><div key={i} className="flex items-start justify-between gap-4 border-b py-2 text-sm"><span>{c.label}</span><strong className={/fail/i.test(c.result)?'text-rose-700':/retest/i.test(c.result)?'text-amber-700':/pass/i.test(c.result)?'text-emerald-700':'text-slate-500'}>{c.result}</strong></div>)}</div>
+        </section> : null}
+
+        {active.open_questions && <section className="border-t py-4">
+          <h2 className="text-base font-bold">Open questions for the tester</h2>
+          <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm leading-6">{lines(active.open_questions).map((x,i)=><li key={i}>{x}</li>)}</ol>
+        </section>}
+        <footer className="mt-5 border-t pt-3 text-xs text-slate-500">Generated from QA findings recorded in the PM Dashboard. This report is a snapshot taken at generation time; later edits to live findings do not change this report.</footer>
       </article>
     </div> : <>
       <section className="no-print rounded-xl border bg-white p-4">
