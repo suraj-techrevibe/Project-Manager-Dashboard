@@ -98,6 +98,12 @@ export default function TaskQAInbox() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Keep the open QA inbox fresh while the scheduled Taskmandu sync runs in the background.
+  useEffect(() => {
+    const timer = window.setInterval(() => { void load(false); }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
   const businesses = useMemo(() => Array.from(new Set(reviews.map((r) => r.business).filter((v): v is string => Boolean(v)))).sort(), [reviews]);
   const projects = useMemo(() => Array.from(new Set(reviews.map((r) => r.project_name).filter((v): v is string => Boolean(v)))).sort(), [reviews]);
   const tasks = useMemo(() => Array.from(new Set(reviews.map((r) => r.task_title).filter(Boolean))).sort(), [reviews]);
@@ -201,6 +207,7 @@ export default function TaskQAInbox() {
           </button>
         </div>
         {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <p className="mt-2 text-xs text-slate-500">Both trigger statuses are enabled: Completed and Review. QA is separate from Taskmandu status; if a check fails, return the task to In Progress in Taskmandu. When the developer submits it as Completed or Review again, a new QA cycle is opened automatically.</p>
       </section>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
