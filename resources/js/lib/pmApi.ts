@@ -132,7 +132,9 @@ export const pmApi = {
   generateReport: (date: string, notes: string, sync: boolean, kind: 'daily' | 'weekly' = 'daily') =>
     api.post<{ report: Report; warning: string | null }>('/reports', { date, notes: notes || null, sync, kind }),
 
-  deleteReport: (id: number) => api.delete(`/reports/${id}`),\n\n  updateReport: (id: number, content: ReportContent, notes?: string | null) => api.patch<{ report: Report }>(`/reports/${id}`, { content, notes }),
+  deleteReport: (id: number) => api.delete(`/reports/${id}`),
+
+  updateReport: (id: number, content: ReportContent, notes?: string | null) => api.patch<{ report: Report }>(`/reports/${id}`, { content, notes }),
 
   scopeCheck: (brief: string, message: string) =>
     api.post<{ items: ScopeItem[] }>('/scope', { brief, message }),
