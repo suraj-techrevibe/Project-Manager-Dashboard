@@ -79,7 +79,7 @@ class PmQaEvidenceReportTest extends TestCase
         $this->assertNull($evidence->fresh()->issue_id);
         $this->actingAs($owner)->get('/pm/api/qa/reports/' . $reportId . '/evidence/' . $evidence->id)->assertOk();
         $docx = $this->actingAs($owner)->get('/pm/api/qa/reports/' . $reportId . '/docx');
-        if (!class_exists(\\ZipArchive::class)) { $docx->assertStatus(501); return; }
+        if (!class_exists('ZipArchive')) { $docx->assertStatus(501); return; }
         $docx->assertDownload($report->report_code . '.docx');
     }
 
