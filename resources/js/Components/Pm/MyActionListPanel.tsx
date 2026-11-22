@@ -30,7 +30,7 @@ export default function MyActionListPanel() {
     catch { setError('Could not load your action list. Please retry.'); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {\n    void load();\n    const refresh = () => { void load(); };\n    window.addEventListener('pm:action-items-changed', refresh);\n    return () => window.removeEventListener('pm:action-items-changed', refresh);\n  }, [load]);
 
   const visible = useMemo(() => items.filter((item) => filter === 'All' || item.status === filter), [items, filter]);
   const openCount = items.filter((i) => i.status === 'Open').length;
