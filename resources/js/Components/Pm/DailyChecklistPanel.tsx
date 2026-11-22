@@ -90,6 +90,8 @@ export default function DailyChecklistPanel({
 }) {
   const [ticked, setTicked] = useDaily<Record<string, boolean>>('ticks', {});
   const [priorities, setPriorities] = useDaily<string[]>('priorities', ['', '', '']);
+  // After "Reset progress" nothing is auto-completed from live counts: every step starts unticked until you tick it.
+  const [fresh, setFresh] = useDaily<boolean>('fresh', false);
   const [qa, setQa] = useState<QaReview[] | null>(null);
   const [qaError, setQaError] = useState(false);
 
@@ -210,7 +212,7 @@ export default function DailyChecklistPanel({
   const isDone = (s: Step) => {
     if (s.id === 'priorities') return Boolean(ticked[s.id]) && priorities.some((p) => p.trim());
     if (s.unknown) return false;
-    return s.count === 0 || Boolean(ticked[s.id]);
+    return (!fresh && s.count === 0) || Boolean(ticked[s.id]);
   };
   const done = steps.filter(isDone).length;
   const next = steps.find((s) => !isDone(s)) ?? null;
@@ -241,14 +243,21 @@ export default function DailyChecklistPanel({
               onClick={() => {
                 setTicked({});
                 setPriorities(['', '', '']);
+                setFresh(true);
               }}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-              title="Immediately clear manual ticks and today’s priorities. Live zero-count steps stay complete."
+              title="Start today’s checklist from zero: clears every tick and today’s priorities."
             >
               Reset progress
             </button>
           </div>
         </div>
+        {fresh && (
+          <p className="mt-3 text-xs text-slate-500">
+            Fresh start — tick each step as you finish it.{' '}
+            <button type="button" onClick={() => setFresh(false)} className="font-semibold text-indigo-600 hover:underline">Use live counts again</button>
+          </p>
+        )}
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
           <div className={`h-full rounded-full transition-all ${done === steps.length ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${(done / steps.length) * 100}%` }} />
         </div>
@@ -278,7 +287,7 @@ export default function DailyChecklistPanel({
       <ol className="space-y-2">
         {steps.map((s, i) => {
           const finished = isDone(s);
-          const auto = !s.unknown && s.count === 0;
+          const auto = !fresh && !s.unknown && s.count === 0;
           return (
             <li key={s.id} className={`rounded-xl border bg-white p-4 ${finished ? 'border-emerald-200 bg-emerald-50/40' : s === next ? 'border-indigo-300' : 'border-slate-200'}`}>
               <div className="flex flex-wrap items-center gap-3">
