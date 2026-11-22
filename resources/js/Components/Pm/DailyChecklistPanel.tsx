@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { PmPage } from '@/lib/pmNav';
 import type { TodayData } from '@/types/pm';
 import RoutineCatchUp from './RoutineCatchUp';
@@ -24,6 +24,7 @@ interface Step {
   unit: string;
   /** Count is not known yet (still loading, or data unavailable). */
   unknown?: boolean;
+  section: 'prepare' | 'coordinate' | 'close';
   go: { page: PmPage; params?: Params; label: string };
 }
 
@@ -91,6 +92,8 @@ export default function DailyChecklistPanel({
 }) {
   const [ticked, setTicked] = useDaily<Record<string, boolean>>('ticks', {});
   const [priorities, setPriorities] = useDaily<string[]>('priorities', ['', '', '']);
+  const [websiteQa, setWebsiteQa] = useDaily<Record<string, boolean>>('website-qa', {});
+  const [teamFollowups, setTeamFollowups] = useDaily<Record<string, boolean>>('team-followups', {});
   // After "Reset progress" nothing is auto-completed from live counts: every step starts unticked until you tick it.
   const [fresh, setFresh] = useDaily<boolean>('fresh', false);
   const [qa, setQa] = useState<QaReview[] | null>(null);
@@ -138,93 +141,142 @@ export default function DailyChecklistPanel({
 
   const steps: Step[] = [
     {
-      id: 'sync',
-      title: 'Check the data is live',
-      doneWhen: 'Taskmandu synced in the last 15 minutes with no error. If not, every number below may be out of date.',
-      count: syncProblem ? 1 : 0,
-      unit: 'data problem',
-      unknown: loading && !today,
+      id: 'sync', section: 'prepare',
+      title: 'Check Taskmandu data is live',
+      doneWhen: 'Taskmandu synced in the last 15 minutes with no error.',
+      count: syncProblem ? 1 : 0, unit: 'data problem', unknown: loading && !today,
       go: { page: 'today', label: 'Open Command Center' },
     },
     {
-      id: 'decide',
-      title: 'Decide requests and ideas',
-      doneWhen: 'No request is waiting for your decision or past its date, and no idea is waiting for review. Log new ones first.',
-      count: decisions,
-      unit: 'waiting on you',
-      unknown: notReady,
+      id: 'health', section: 'prepare',
+      title: 'Review task health and urgent work',
+      doneWhen: 'Overdue and blocked tasks have been identified and prioritised for follow-up.',
+      count: taskCounts.overdue + taskCounts.blocked,
+      unit: `${taskCounts.overdue} overdue · ${taskCounts.blocked} blocked`, unknown: notReady,
+      go: { page: 'tasks', params: { tq: taskCounts.overdue ? 'overdue' : 'blocked' }, label: 'Review tasks' },
+    },
+    {
+      id: 'owners', section: 'prepare',
+      title: 'Check every open task has an owner',
+      doneWhen: 'No open task is without an assignee, or each missing owner has a clear assignment plan.',
+      count: taskCounts.no_owner, unit: 'without an owner', unknown: notReady,
+      go: { page: 'tasks', params: { tq: 'unassigned' }, label: 'Review unassigned tasks' },
+    },
+    {
+      id: 'decide', section: 'prepare',
+      title: 'Review requests and ideas needing a decision',
+      doneWhen: 'Requests waiting for your decision and ideas waiting for review have a decision or next step.',
+      count: decisions, unit: 'waiting on you', unknown: notReady,
       go: { page: 'operations', label: 'Open Operations' },
     },
     {
-      id: 'late',
-      title: 'Chase overdue and blocked tasks',
-      doneWhen: 'Zero overdue and blocked. If some remain, tick it after you have chased every owner or moved the date.',
-      count: taskCounts.overdue + taskCounts.blocked,
-      unit: `${taskCounts.overdue} overdue · ${taskCounts.blocked} blocked`,
-      unknown: notReady,
-      go: { page: 'tasks', params: { tq: taskCounts.overdue ? 'overdue' : 'blocked' }, label: 'Open tasks' },
-    },
-    {
-      id: 'owners',
-      title: 'Give every task an owner',
-      doneWhen: 'No open task is without an assignee.',
-      count: taskCounts.no_owner,
-      unit: 'without an owner',
-      unknown: notReady,
-      go: { page: 'tasks', params: { tq: 'unassigned' }, label: 'Open tasks' },
-    },
-    {
-      id: 'qa',
-      title: 'Test work waiting for QA',
-      doneWhen: 'Nothing is awaiting QA and no failed fix is waiting on a retest.',
-      count: awaitingQa + failedQa,
-      unit: `${awaitingQa} awaiting · ${failedQa} failed`,
-      unknown: qa === null && !qaError,
+      id: 'website_qa', section: 'prepare',
+      title: 'QA priority business websites',
+      doneWhen: 'You have checked the priority websites below and recorded any defects for follow-up.',
+      count: null, unit: '',
       go: { page: 'qa', label: 'Open QA Center' },
     },
     {
-      id: 'meetings',
-      title: 'Follow up the last meeting',
-      doneWhen: 'Every action from the latest meeting has an owner and is moving. Record today’s meeting in Minutes.',
-      count: followups,
-      unit: 'actions need action',
-      unknown: notReady,
-      go: { page: 'minutes', label: 'Open Minutes' },
+      id: 'capture_new', section: 'prepare',
+      title: 'Capture new instructions, issues and ideas',
+      doneWhen: 'Unplanned instructions, unusual observations and feature ideas have been captured using the bottom Capture button.',
+      count: null, unit: '',
+      go: { page: 'operations', label: 'Open Operations' },
     },
     {
-      id: 'capacity',
-      title: 'Check who is overloaded',
-      doneWhen: 'Nobody is over weekly hours. Move work to people with room.',
-      count: overloaded,
-      unit: 'over capacity',
-      unknown: notReady,
+      id: 'process_capture', section: 'prepare',
+      title: 'Process your captured items',
+      doneWhen: 'Personal follow-ups are in Action List; team work has been turned into tasks with owners; QA defects are recorded for testing.',
+      count: null, unit: '',
+      go: { page: 'operations', label: 'Review Operations' },
+    },
+    {
+      id: 'priorities', section: 'prepare',
+      title: 'Prepare today’s top 3 priorities',
+      doneWhen: 'Three clear outcomes are written below and ready to share with the team.',
+      count: null, unit: '',
+      go: { page: 'today', label: 'Open Command Center' },
+    },
+    {
+      id: 'meeting', section: 'coordinate',
+      title: 'Conduct the 15-minute daily team meeting',
+      doneWhen: 'Priorities, urgent work, QA findings, owners and expected dates have been discussed and recorded.',
+      count: null, unit: '',
+      go: { page: 'minutes', label: 'Open Meeting Minutes' },
+    },
+    {
+      id: 'team_followup', section: 'coordinate',
+      title: 'Follow up with team members',
+      doneWhen: 'Every relevant follow-up below has been completed or has a named owner and agreed next action.',
+      count: null, unit: '',
+      go: { page: 'tasks', params: { tq: 'overdue' }, label: 'Open overdue tasks' },
+    },
+    {
+      id: 'decisions', section: 'coordinate',
+      title: 'Discuss new work, requirements and decisions',
+      doneWhen: 'Important questions, feature requests, scope changes and decisions have a recorded outcome or next step.',
+      count: null, unit: '',
+      go: { page: 'operations', label: 'Open Operations' },
+    },
+    {
+      id: 'retest', section: 'coordinate',
+      title: 'Review QA fixes and retest important work',
+      doneWhen: 'Ready fixes have been retested; failed or waiting fixes have a clear retest owner and next step.',
+      count: awaitingQa + failedQa, unit: `${awaitingQa} awaiting · ${failedQa} failed`,
+      unknown: qa === null,
+      go: { page: 'qa', label: 'Open QA Center' },
+    },
+    {
+      id: 'capacity', section: 'coordinate',
+      title: 'Check team workload and rebalance if needed',
+      doneWhen: 'Overloaded team members have been identified and work has been rebalanced or discussed.',
+      count: overloaded, unit: 'over capacity', unknown: notReady,
       go: { page: 'today', label: 'Open workload' },
     },
     {
-      id: 'priorities',
-      title: 'Set today’s top 3 and tell the team',
-      doneWhen: 'Three priorities written below, and the boss and Senior Dev know them.',
-      count: null,
-      unit: '',
+      id: 'meeting_actions', section: 'coordinate',
+      title: 'Confirm meeting actions are moving',
+      doneWhen: 'Actions from the latest meeting have owners, expected dates and a clear next step.',
+      count: followups, unit: 'meeting follow-ups need attention', unknown: notReady,
+      go: { page: 'minutes', label: 'Review meeting actions' },
+    },
+    {
+      id: 'update_tasks', section: 'close',
+      title: 'Update task statuses and personal Action List',
+      doneWhen: 'Task progress and dates are current; personal follow-ups are marked Open, Waiting or Done as appropriate.',
+      count: null, unit: '',
+      go: { page: 'tasks', label: 'Open tasks' },
+    },
+    {
+      id: 'report', section: 'close',
+      title: 'Review and prepare the daily operations update',
+      doneWhen: 'Completed work, overdue items, blockers, QA issues and escalations are summarised.',
+      count: null, unit: '',
+      go: { page: 'reports', label: 'Open Reports' },
+    },
+    {
+      id: 'tomorrow', section: 'close',
+      title: 'Prepare the next working day',
+      doneWhen: 'Tomorrow’s priorities, outstanding follow-ups and questions for the team are recorded.',
+      count: null, unit: '',
       go: { page: 'today', label: 'Open Command Center' },
     },
-    { id: 'mid_requests', title: 'Midday: review new requests', doneWhen: 'New requests have an owner and next action.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
-    { id: 'mid_blocked', title: 'Midday: check blocked work', doneWhen: 'Blocked work has a clear owner and next step.', count: null, unit: '', go: { page: 'tasks', params: { tq: 'blocked' }, label: 'Open blocked tasks' } },
-    { id: 'mid_qa', title: 'Midday: check QA progress', doneWhen: 'QA work has been reviewed and retest owners are clear.', count: null, unit: '', go: { page: 'qa', label: 'Open QA' } },
-    { id: 'eod_statuses', title: 'End of day: review task statuses', doneWhen: 'Stale in-progress tasks have been checked with their owners.', count: null, unit: '', go: { page: 'tasks', label: 'Open tasks' } },
-    { id: 'eod_standup', title: 'End of day: send team update', doneWhen: 'The team knows what moved, what is blocked and what is next.', count: null, unit: '', go: { page: 'today', label: 'Open Command Center' } },
-    { id: 'eod_report', title: 'End of day: review daily report', doneWhen: 'The daily report has been opened and reviewed.', count: null, unit: '', go: { page: 'reports', label: 'Open Reports' } },
-    { id: 'eod_waiting', title: 'End of day: review waiting items', doneWhen: 'Items waiting two or more days have an owner and follow-up.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
-    { id: 'eod_tomorrow', title: 'End of day: set tomorrow priorities', doneWhen: 'Tomorrow’s priorities are written down.', count: null, unit: '', go: { page: 'today', label: 'Open Command Center' } },
     ...(new Date().getDay() === 5 ? ([
-      { id: 'fri_ideas', title: 'Friday: review ideas', doneWhen: 'Ideas for review have a decision or next step.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
-      { id: 'fri_balance', title: 'Friday: review team capacity', doneWhen: 'Next week’s workload is balanced.', count: null, unit: '', go: { page: 'today', label: 'Open workload' } },
-      { id: 'fri_health', title: 'Friday: review project health', doneWhen: 'Project risks and progress have been reviewed.', count: null, unit: '', go: { page: 'projects', label: 'Open Projects' } },
+      { id: 'fri_ideas', section: 'close', title: 'Friday: review ideas', doneWhen: 'Ideas for review have a decision or next step.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
+      { id: 'fri_balance', section: 'close', title: 'Friday: review next week’s capacity', doneWhen: 'Next week’s workload is balanced.', count: null, unit: '', go: { page: 'today', label: 'Open workload' } },
+      { id: 'fri_health', section: 'close', title: 'Friday: review project health', doneWhen: 'Project risks and progress have been reviewed.', count: null, unit: '', go: { page: 'projects', label: 'Open Projects' } },
     ] satisfies Step[]) : []),
   ];
 
+  const websiteIds = ['techmandu', 'adxps', 'adevents', 'adtax', 'adremit'];
+  const followupIds = ['overdue', 'blocked', 'unassigned', 'in_progress', 'qa_retest'];
+  const websiteQaDone = websiteIds.every((id) => websiteQa[id]);
+  const teamFollowupsDone = followupIds.every((id) => teamFollowups[id]);
+
   const isDone = (s: Step) => {
-    if (s.id === 'priorities') return Boolean(ticked[s.id]) && priorities.some((p) => p.trim());
+    if (s.id === 'website_qa') return websiteQaDone;
+    if (s.id === 'team_followup') return teamFollowupsDone;
+    if (s.id === 'priorities') return Boolean(ticked[s.id]) && priorities.every((p) => p.trim());
     if (s.unknown) return false;
     return (!fresh && s.count === 0) || Boolean(ticked[s.id]);
   };
@@ -248,7 +300,7 @@ export default function DailyChecklistPanel({
             <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Daily routine · {dateLabel}</p>
             <h2 className="mt-1 text-xl font-bold text-slate-900">{done === steps.length ? 'All done for today' : `${done} of ${steps.length} steps done`}</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Go top to bottom. A step finishes by itself when its number reaches 0, or when you tick it after acting.
+              Work through the sections in order, but do not wait for a particular time. Prepare independently first, coordinate when the Nepal team is available, then close and prepare the next day.
               {scopeLabel ? ` Task numbers are for ${scopeLabel} only; requests, QA, meetings and capacity cover all projects.` : ''}
             </p>
           </div>
@@ -305,9 +357,19 @@ export default function DailyChecklistPanel({
       <ol className="space-y-2">
         {steps.map((s, i) => {
           const finished = isDone(s);
+          const previous = steps[i - 1];
+          const sectionTitle = s.section === 'prepare' ? '1. Prepare and inspect' : s.section === 'coordinate' ? '2. Coordinate and follow up' : '3. Close and prepare';
+          const sectionDescription = s.section === 'prepare' ? 'Complete the work you can do independently before the Nepal team is online.' : s.section === 'coordinate' ? 'Use your overlap with the Nepal team for meetings, decisions, follow-ups and retesting.' : 'Update records, report outcomes and prepare the next working day.';
           const auto = !fresh && !s.unknown && s.count === 0;
           return (
-            <li key={s.id} className={`rounded-xl border bg-white p-4 ${finished ? 'border-emerald-200 bg-emerald-50/40' : s === next ? 'border-indigo-300' : 'border-slate-200'}`}>
+            <React.Fragment key={s.id}>
+            {(!previous || previous.section !== s.section) && (
+              <li className="list-none rounded-xl bg-slate-100 px-4 py-3">
+                <h3 className="text-sm font-bold text-slate-900">{sectionTitle}</h3>
+                <p className="mt-0.5 text-xs text-slate-600">{sectionDescription}</p>
+              </li>
+            )}
+            <li className={`rounded-xl border bg-white p-4 ${finished ? 'border-emerald-200 bg-emerald-50/40' : s === next ? 'border-indigo-300' : 'border-slate-200'}`}>
               <div className="flex flex-wrap items-center gap-3">
                 <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${finished ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>{finished ? '✓' : i + 1}</div>
                 <div className="min-w-0 flex-1 basis-56">
@@ -324,6 +386,36 @@ export default function DailyChecklistPanel({
                   </label>
                 )}
               </div>
+              {s.id === 'website_qa' && (
+                <div className="mt-3 grid grid-cols-1 gap-2 pl-11 sm:grid-cols-2">
+                  {[
+                    ['techmandu', 'Techmandu'], ['adxps', 'ADXPS'], ['adevents', 'ADEvents'], ['adtax', 'ADTax'], ['adremit', 'ADRemit'],
+                  ].map(([id, label]) => (
+                    <label key={id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                      <input type="checkbox" checked={Boolean(websiteQa[id])} onChange={(e) => setWebsiteQa((current) => ({ ...current, [id]: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                      QA checked: {label}
+                    </label>
+                  ))}
+                </div>
+              )}
+              {s.id === 'team_followup' && (
+                <div className="mt-3 space-y-2 pl-11">
+                  {[
+                    ['overdue', 'Overdue tasks — contact owners and confirm progress and a realistic date.'],
+                    ['blocked', 'Blocked tasks — identify the blocker, responsible person and next action.'],
+                    ['unassigned', 'Unassigned tasks — confirm who will take responsibility.'],
+                    ['in_progress', 'Important in-progress or not-started work — check progress and expectations.'],
+                    ['qa_retest', 'QA fixes and retests — confirm what is ready to verify and who owns it.'],
+                  ].map(([id, label]) => (
+                    <label key={id} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+                      <input type="checkbox" checked={Boolean(teamFollowups[id])} onChange={(e) => setTeamFollowups((current) => ({ ...current, [id]: e.target.checked }))} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {s.id === 'capture_new' && <p className="mt-2 pl-11 text-xs text-slate-500">Use the bottom <b>Capture</b> button. Choose Action for something you must personally follow up; choose Rough note for an observation or idea.</p>}
+              {s.id === 'process_capture' && <p className="mt-2 pl-11 text-xs text-slate-500">Open Action List to review your personal reminders. Create or update team Tasks for work that needs an owner; record website defects in QA.</p>}
               {s.id === 'priorities' && (
                 <div className="mt-3 space-y-2 pl-11">
                   {priorities.map((p, idx) => (
@@ -339,6 +431,7 @@ export default function DailyChecklistPanel({
                 </div>
               )}
             </li>
+            </React.Fragment>
           );
         })}
       </ol>
