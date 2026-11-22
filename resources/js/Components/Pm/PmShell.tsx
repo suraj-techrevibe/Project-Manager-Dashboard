@@ -1,6 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import axios from 'axios';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
 import ScrollToTop from '@/Components/ScrollToTop';
 import AssistantBubble from '@/Components/Pm/AssistantBubble';
 import { Icon } from '@/Components/Pm/ui/kit';
@@ -132,7 +132,7 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
   const [captureNotes, setCaptureNotes] = useState('');
   const [captureSaving, setCaptureSaving] = useState(false);
   const [captureError, setCaptureError] = useState('');
-  const saveCapture = async (e: React.FormEvent) => {
+  const saveCapture = async (e: FormEvent) => {
     e.preventDefault();
     if (!captureTitle.trim()) return;
     setCaptureSaving(true); setCaptureError('');
