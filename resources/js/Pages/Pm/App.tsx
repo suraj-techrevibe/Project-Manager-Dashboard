@@ -16,6 +16,7 @@ import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
 import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
 import DailyChecklistPanel from '@/Components/Pm/DailyChecklistPanel';
+import MyActionListPanel from '@/Components/Pm/MyActionListPanel';
 import QACenter from '@/Components/Pm/QACenter';
 import QAReportsPanel from '@/Components/Pm/QAReportsPanel';
 import { pmApi } from '@/lib/pmApi';
@@ -423,6 +424,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('qa-reports') && <Pane show={page === 'qa-reports'}><QAReportsPanel key={gen['qa-reports'] ?? 0} /></Pane>}
         {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
         {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} taskCounts={{ overdue: counts.overdue, blocked: counts.blocked, no_owner: counts.unassigned }} scopeLabel={business.selected?.name ?? null} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
+        {mounted('action-list') && <Pane show={page === 'action-list'}><MyActionListPanel /></Pane>}
       </div>
     </PmShell>
   );

@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
-import { useEffect, useState, type ReactNode } from 'react';
+import axios from 'axios';
+import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
 import ScrollToTop from '@/Components/ScrollToTop';
 import AssistantBubble from '@/Components/Pm/AssistantBubble';
 import { Icon } from '@/Components/Pm/ui/kit';
@@ -19,13 +20,14 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   'qa-reports': { icon: 'notes', blurb: 'Build developer-ready reports from recorded QA findings' },
   qa: { icon: 'target', blurb: 'Verify completed Taskmandu tasks and retest fixes' },
   checklist: { icon: 'check-square', blurb: 'Your repeatable daily PM routine' },
+  'action-list': { icon: 'clipboard-list', blurb: 'Your personal follow-ups, rough notes and unresolved items' },
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
   { title: '1 · Daily workflow', keys: ['today', 'tasks', 'minutes', 'projects', 'operations', 'brief', 'reports'] },
   { title: '2 · Quality assurance', keys: ['qa-reports', 'qa'] },
   { title: '3 · Project controls', keys: ['scope', 'git'] },
-  { title: '4 · Daily routine', keys: ['checklist'] },
+  { title: '4 · Daily routine', keys: ['checklist', 'action-list'] },
 ];
 
 interface Props {
@@ -124,6 +126,22 @@ function UserCard({ name, email }: { name: string; email: string }) {
 export default function PmShell({ page, attention = 0, onOpenSearch, businesses = [], businessId = 'all', onBusinessChange, children }: Props) {
   const user = usePage().props.auth.user;
   const [drawer, setDrawer] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureKind, setCaptureKind] = useState<'Action' | 'Rough note'>('Action');
+  const [captureTitle, setCaptureTitle] = useState('');
+  const [captureNotes, setCaptureNotes] = useState('');
+  const [captureSaving, setCaptureSaving] = useState(false);
+  const [captureError, setCaptureError] = useState('');
+  const saveCapture = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!captureTitle.trim()) return;
+    setCaptureSaving(true); setCaptureError('');
+    try {
+      await axios.post('/pm/api/action-items', { kind: captureKind, title: captureTitle.trim(), notes: captureNotes.trim() || null, source: current.label, priority: 'Medium' });
+      setCaptureTitle(''); setCaptureNotes(''); setCaptureOpen(false); window.dispatchEvent(new Event('pm:action-items-changed'));
+    } catch { setCaptureError('Could not save this capture. Please try again.'); }
+    finally { setCaptureSaving(false); }
+  };
   const current = PM_PAGES.find((p) => p.key === page)!;
 
   useEffect(() => {
@@ -190,6 +208,7 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
               </select>
             </label>
           )}
+          <button type="button" onClick={() => setCaptureOpen(true)} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">+ Capture</button>
           <button
             type="button"
             onClick={onOpenSearch}
@@ -205,6 +224,17 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
         <main className="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">{children}</main>
       </div>
 
+      {captureOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Capture follow-up" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
+        <form onSubmit={saveCapture} className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold text-slate-900">Capture for later</h2><p className="mt-1 text-xs text-slate-500">Captured from: {current.label}</p></div><button type="button" onClick={() => setCaptureOpen(false)} className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100">✕</button></div>
+          <div className="mt-4 flex gap-2">{(['Action', 'Rough note'] as const).map((v) => <button key={v} type="button" onClick={() => setCaptureKind(v)} className={`rounded-lg px-3 py-2 text-sm font-semibold ${captureKind === v ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-slate-100 text-slate-600'}`}>{v}</button>)}</div>
+          <label className="mt-4 block text-xs font-semibold text-slate-600">{captureKind === 'Action' ? 'What needs to be checked or done?' : 'What did you notice or want to remember?'}</label>
+          <input autoFocus required maxLength={200} value={captureTitle} onChange={(e) => setCaptureTitle(e.target.value)} placeholder={captureKind === 'Action' ? 'e.g. Follow up on delayed task' : 'e.g. Clarify broker commission requirements'} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+          <textarea value={captureNotes} onChange={(e) => setCaptureNotes(e.target.value)} rows={4} placeholder="Add rough context, questions, people to ask, or what to investigate later…" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+          {captureError && <p role="alert" className="mt-2 text-sm text-rose-600">{captureError}</p>}
+          <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setCaptureOpen(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">Cancel</button><button disabled={captureSaving || !captureTitle.trim()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{captureSaving ? 'Saving…' : 'Save capture'}</button></div>
+        </form>
+      </div>}
       <ScrollToTop raised />
       <AssistantBubble />
     </div>
