@@ -216,11 +216,11 @@ export default function DailyChecklistPanel({
     { id: 'eod_report', title: 'End of day: review daily report', doneWhen: 'The daily report has been opened and reviewed.', count: null, unit: '', go: { page: 'reports', label: 'Open Reports' } },
     { id: 'eod_waiting', title: 'End of day: review waiting items', doneWhen: 'Items waiting two or more days have an owner and follow-up.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
     { id: 'eod_tomorrow', title: 'End of day: set tomorrow priorities', doneWhen: 'Tomorrow’s priorities are written down.', count: null, unit: '', go: { page: 'today', label: 'Open Command Center' } },
-    ...(new Date().getDay() === 5 ? [
+    ...(new Date().getDay() === 5 ? ([
       { id: 'fri_ideas', title: 'Friday: review ideas', doneWhen: 'Ideas for review have a decision or next step.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
       { id: 'fri_balance', title: 'Friday: review team capacity', doneWhen: 'Next week’s workload is balanced.', count: null, unit: '', go: { page: 'today', label: 'Open workload' } },
       { id: 'fri_health', title: 'Friday: review project health', doneWhen: 'Project risks and progress have been reviewed.', count: null, unit: '', go: { page: 'projects', label: 'Open Projects' } },
-    ] : []),
+    ] satisfies Step[]) : []),
   ];
 
   const isDone = (s: Step) => {
