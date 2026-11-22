@@ -375,7 +375,7 @@ QA_PROMPT;
             'areas_tested' => 'nullable|string|max:5000', 'environment' => 'nullable|string|max:1000',
             'summary' => 'nullable|string|max:5000', 'fix_first' => 'nullable|string|max:5000',
             'open_questions' => 'nullable|string|max:5000', 'findings' => 'required|array|max:200',
-            'findings.*.title' => 'required|string|max:200', 'findings.*.severity' => ['required', Rule::in(['Critical','High','Medium','Low'])],
+            'findings.*.id' => 'required|integer', 'findings.*.title' => 'required|string|max:200', 'findings.*.severity' => ['required', Rule::in(['Critical','High','Medium','Low','Enhancement'])],
             'findings.*.status' => 'required|string|max:100', 'findings.*.description' => 'nullable|string|max:5000',
             'findings.*.expected_behaviour' => 'nullable|string|max:5000', 'findings.*.developer_notes' => 'nullable|string|max:5000',
             'findings.*.retest_notes' => 'nullable|string|max:5000', 'findings.*.assignee' => 'nullable|string|max:160',
