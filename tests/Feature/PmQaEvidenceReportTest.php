@@ -71,9 +71,21 @@ class PmQaEvidenceReportTest extends TestCase
         $this->assertSame([$evidence->id], collect($snapshot['evidence_files'])->pluck('id')->all());
         $this->assertSame('Actual behaviour before edit', $snapshot['description']);
 
+        $edited = $this->actingAs($owner)->patch('/pm/api/qa/reports/' . $reportId, [
+            'areas_tested' => 'Collection pages', 'environment' => 'Desktop browser',
+            'summary' => 'Edited report snapshot', 'fix_first' => 'Updated priority', 'open_questions' => '',
+            'findings' => [[
+                'id' => $issue->id, 'title' => 'Edited snapshot title', 'severity' => 'High', 'status' => 'Reported',
+                'description' => 'Edited report description', 'expected_behaviour' => 'Expected behaviour',
+                'developer_notes' => '', 'retest_notes' => '', 'assignee' => '',
+                'page_url' => '', 'evidence_url' => '', 'pm_task_url' => '',
+            ]],
+        ])->assertOk();
+        $this->assertSame([$evidence->id], collect($edited->json('report.findings.0.evidence_files'))->pluck('id')->all());
+
         $issue->update(['description' => 'Changed live finding']);
         $report = PmQaReport::findOrFail($reportId);
-        $this->assertSame('Actual behaviour before edit', $report->findings[0]['description']);
+        $this->assertSame('Edited report description', $report->findings[0]['description']);
 
         $issue->delete();
         $this->assertNull($evidence->fresh()->issue_id);
