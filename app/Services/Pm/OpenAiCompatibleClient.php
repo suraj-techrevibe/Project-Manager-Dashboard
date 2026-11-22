@@ -50,7 +50,7 @@ class OpenAiCompatibleClient
                 'function' => [
                     'name' => (string) $tool['name'],
                     'description' => (string) ($tool['description'] ?? ''),
-                    'parameters' => $tool['input_schema'] ?? ['type' => 'object', 'properties' => new \stdClass()],
+                    'parameters' => $this->parameters($tool['input_schema'] ?? null),
                 ],
             ], $tools);
             $payload['tool_choice'] = 'auto';
@@ -76,8 +76,7 @@ class OpenAiCompatibleClient
         }
 
         if ($response->failed()) {
-            $message = Str::limit((string) $response->json('error.message', 'Unknown provider error.'), 240);
-            throw new RuntimeException(ucfirst($provider)." API error ({$status}): {$message}");
+            throw new RuntimeException(ucfirst($provider)." API error ({$status}): ".$this->errorDetail($response));
         }
 
         $assistant = $response->json('choices.0.message');
@@ -131,6 +130,42 @@ class OpenAiCompatibleClient
             'stop_reason' => $toolCalls ? 'tool_use' : 'end_turn',
             'model' => trim((string) ($response->json('model') ?: $model)),
         ];
+    }
+
+    /**
+     * OpenRouter wraps the real reason ("Provider returned error") — the useful part is in error.metadata
+     * (which upstream provider, and its raw message). Include it so a 400 can actually be diagnosed.
+     */
+    private function errorDetail(\Illuminate\Http\Client\Response $response): string
+    {
+        $message = (string) $response->json('error.message', 'Unknown provider error.');
+        $meta = $response->json('error.metadata');
+        if (is_array($meta)) {
+            $raw = $meta['raw'] ?? null;
+            $raw = is_array($raw) ? json_encode($raw, JSON_UNESCAPED_UNICODE) : (string) $raw;
+            $who = (string) ($meta['provider_name'] ?? '');
+            $message .= ($who !== '' ? " [{$who}]" : '').($raw !== '' ? ': '.$raw : '');
+        }
+
+        return Str::limit(trim($message), 420);
+    }
+
+    /**
+     * Strict upstream providers reject `"properties": []` (PHP's empty array) and `"required": []`.
+     * Always send a real JSON object for properties and leave `required` out when it is empty.
+     *
+     * @param  array<string, mixed>|null  $schema
+     * @return array<string, mixed>
+     */
+    private function parameters(?array $schema): array
+    {
+        $props = (array) (($schema ?? [])['properties'] ?? []);
+        $out = ['type' => 'object', 'properties' => $props ?: new \stdClass()];
+        if (! empty($schema['required'])) {
+            $out['required'] = array_values($schema['required']);
+        }
+
+        return $out;
     }
 
     /** @param array<int, array<string, mixed>> $messages */

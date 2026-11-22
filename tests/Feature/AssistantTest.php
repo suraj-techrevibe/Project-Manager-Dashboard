@@ -118,7 +118,7 @@ class AssistantTest extends TestCase
         $res = $this->actingAs(User::factory()->create())->postJson('/pm/api/assistant/chat', ['messages' => [['role' => 'user', 'content' => "What's overdue?"]]]);
 
         $res->assertStatus(422);
-        $this->assertStringContainsString('GEMINI_API_KEY', $res->json('error'));
+        $this->assertStringContainsString('Gemini is off', $res->json('error'));
         Http::assertNothingSent();
 
         $status = $this->actingAs(User::factory()->create())->getJson('/pm/api/assistant/status')->assertOk()->json();

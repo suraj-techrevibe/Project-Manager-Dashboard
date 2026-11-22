@@ -116,4 +116,30 @@ class AiProviderFallbackTest extends TestCase
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => str_contains($request->url(), 'openrouter.ai'));
     }
+
+    public function test_tool_schemas_are_strict_provider_safe_and_errors_show_the_upstream_reason(): void
+    {
+        $this->providerConfig();
+        Http::fake(['openrouter.ai/*' => Http::response(['error' => ['message' => 'Provider returned error', 'code' => 400, 'metadata' => ['provider_name' => 'SomeHost', 'raw' => 'tools.0.parameters: required must be non-empty']]], 400)]);
+
+        $client = app(\App\Services\Pm\OpenAiCompatibleClient::class);
+        try {
+            $client->converse('openrouter', 'sys', [['role' => 'user', 'content' => 'hi']], [
+                ['name' => 'no_args', 'description' => 'd', 'input_schema' => ['type' => 'object', 'properties' => (object) [], 'required' => []]],
+                ['name' => 'with_args', 'description' => 'd', 'input_schema' => ['type' => 'object', 'properties' => (object) ['q' => ['type' => 'string']], 'required' => ['q']]],
+            ]);
+            $this->fail('expected an exception');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('[SomeHost]', $e->getMessage());
+            $this->assertStringContainsString('required must be non-empty', $e->getMessage());
+        }
+
+        Http::assertSent(function ($request) {
+            $body = $request->body();
+            $tools = $request->data()['tools'];
+            return str_contains($body, '"properties":{}')          // an object, never []
+                && ! array_key_exists('required', $tools[0]['function']['parameters'])
+                && $tools[1]['function']['parameters']['required'] === ['q'];
+        });
+    }
 }
