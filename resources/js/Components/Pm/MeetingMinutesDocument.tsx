@@ -12,7 +12,6 @@ export interface MeetingMinutesDocumentData {
   decisions?: string[] | null;
   action_items?: ActionItem[] | null;
   work_items?: MeetingWorkItem[] | null;
-  created_by?: string | null;
 }
 
 interface Props {
@@ -28,7 +27,8 @@ export default function MeetingMinutesDocument({ meeting, followUps, onToggleFol
   const topics = topicsFor(meeting).filter((topic) => topic.title.trim() || topic.notes.trim() || topic.decision.trim());
   const discussion = topics.filter((topic) => topic.notes.trim() || topic.decision.trim());
   const attendees = meeting.attendees ?? [];
-  const actions = followUps ?? meeting.action_items ?? [];
+  const allActions = followUps ?? meeting.action_items ?? [];
+  const actions = allActions.map((action, index) => ({ action, index })).filter(({ action }) => action.task?.trim());
   const tasks = (meeting.work_items ?? []).map((work): MeetingWorkItem => ({
     owner: work.owner ?? '',
     project: work.project ?? '',
@@ -68,8 +68,8 @@ export default function MeetingMinutesDocument({ meeting, followUps, onToggleFol
         <h4 className={sectionTitle}>Discussion &amp; decisions</h4>
         {discussion.length ? (
           <ol className="mt-1 list-decimal space-y-3 pl-5">
-            {discussion.map((topic) => (
-              <li key={topics.indexOf(topic)}>
+            {discussion.map((topic, index) => (
+              <li key={index}>
                 <div className="font-medium text-slate-800">{topic.title}</div>
                 {topic.notes.trim() && <p className="mt-1 whitespace-pre-wrap">{topic.notes}</p>}
                 {topic.decision.trim() && <p className="mt-1 whitespace-pre-wrap"><span className="font-medium text-slate-800">Decision:</span> {topic.decision}</p>}
@@ -82,18 +82,19 @@ export default function MeetingMinutesDocument({ meeting, followUps, onToggleFol
       <section>
         <h4 className={sectionTitle}>Follow-ups</h4>
         {actions.length ? (
-          <ol className="mt-1 space-y-2 pl-5">
-            {actions.map((action, index) => (
-              <li key={index} className="flex items-start gap-2">
-                {onToggleFollowUp && <input type="checkbox" checked={!!action.done} onChange={() => onToggleFollowUp(index)} aria-label={`Mark follow-up ${index + 1} ${action.done ? 'open' : 'done'}`} className="mt-1" />}
-                <div className="min-w-0">
-                  <span className={action.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{action.task || '(untitled follow-up)'}</span>
-                  <span className="ml-1 text-xs text-slate-500">
-                    {[action.owner?.trim(), action.due_date ? `Due ${shortDate(action.due_date)}` : '', action.from ? `Carried from “${action.from}”` : '', action.done && !onToggleFollowUp ? 'Done' : ''].filter(Boolean).join(' · ') && `— ${[action.owner?.trim(), action.due_date ? `Due ${shortDate(action.due_date)}` : '', action.from ? `Carried from “${action.from}”` : '', action.done && !onToggleFollowUp ? 'Done' : ''].filter(Boolean).join(' · ')}`}
-                  </span>
-                </div>
-              </li>
-            ))}
+          <ol className="mt-1 list-decimal space-y-2 pl-5">
+            {actions.map(({ action, index }) => {
+              const details = [action.owner?.trim(), action.due_date ? `Due ${shortDate(action.due_date)}` : '', action.from ? `Carried from “${action.from}”` : '', action.done && !onToggleFollowUp ? 'Done' : ''].filter(Boolean).join(' · ');
+              return (
+                <li key={index} className="flex items-start gap-2">
+                  {onToggleFollowUp && <input type="checkbox" checked={!!action.done} onChange={() => onToggleFollowUp(index)} aria-label={`Mark follow-up ${index + 1} ${action.done ? 'open' : 'done'}`} className="mt-1" />}
+                  <div className="min-w-0">
+                    <span className={action.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{action.task}</span>
+                    {details && <span className="ml-1 text-xs text-slate-500">— {details}</span>}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         ) : <p className="mt-1 text-slate-400">No follow-ups recorded.</p>}
       </section>
@@ -122,8 +123,6 @@ export default function MeetingMinutesDocument({ meeting, followUps, onToggleFol
           </div>
         ) : <p className="mt-1 text-slate-400">No Taskmandu tasks recorded.</p>}
       </section>
-
-      {meeting.created_by && <p className="border-t border-slate-100 pt-2 text-xs text-slate-400">Recorded by {meeting.created_by}</p>}
     </article>
   );
 }
