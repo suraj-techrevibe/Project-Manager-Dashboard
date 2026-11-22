@@ -51,6 +51,22 @@ class PmQaEvidenceReportTest extends TestCase
         $this->actingAs($owner)->post('/pm/api/qa/' . $issue->id . '/evidence', [
             'files' => [UploadedFile::fake()->create('not-an-image.txt', 1, 'text/plain')],
         ])->assertUnprocessable();
+
+        $this->actingAs($owner)->post('/pm/api/qa/' . $issue->id . '/evidence', [
+            'files' => [
+                UploadedFile::fake()->createWithContent('second.png', $this->png()),
+                UploadedFile::fake()->createWithContent('third.png', $this->png()),
+            ],
+        ])->assertCreated();
+        $this->assertCount(3, $issue->fresh('evidenceFiles')->evidenceFiles);
+
+        $this->actingAs($owner)->post('/pm/api/qa/' . $issue->id . '/evidence', [
+            'files' => [
+                UploadedFile::fake()->createWithContent('fourth.png', $this->png()),
+                UploadedFile::fake()->createWithContent('fifth.png', $this->png()),
+                UploadedFile::fake()->createWithContent('sixth.png', $this->png()),
+            ],
+        ])->assertUnprocessable();
     }
 
     public function test_report_snapshots_selected_findings_and_screenshot_ids_and_survive_issue_edits_or_deletion(): void
@@ -59,6 +75,8 @@ class PmQaEvidenceReportTest extends TestCase
         $owner = User::factory()->create();
         $issue = $this->issue($owner);
         $evidence = $this->upload($owner, $issue);
+        $otherIssue = $this->issue($owner, 'Techmandu');
+        $otherEvidence = $this->upload($owner, $otherIssue);
 
         $response = $this->actingAs($owner)->post('/pm/api/qa/reports', [
             'business' => 'Techmandu', 'site_app' => 'Website', 'report_date' => '2026-11-23',
@@ -69,6 +87,8 @@ class PmQaEvidenceReportTest extends TestCase
         $reportId = $response->json('report.id');
         $snapshot = $response->json('report.findings.0');
         $this->assertSame([$evidence->id], collect($snapshot['evidence_files'])->pluck('id')->all());
+        $this->assertCount(1, $response->json('report.findings'));
+        $this->assertNotContains($otherEvidence->id, collect($snapshot['evidence_files'])->pluck('id')->all());
         $this->assertSame('Actual behaviour before edit', $snapshot['description']);
 
         $edited = $this->actingAs($owner)->patch('/pm/api/qa/reports/' . $reportId, [
