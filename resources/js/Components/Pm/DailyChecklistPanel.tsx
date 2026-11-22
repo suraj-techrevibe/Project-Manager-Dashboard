@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import type { PmPage } from '@/lib/pmNav';
 import type { TodayData } from '@/types/pm';
+import RoutineCatchUp from './RoutineCatchUp';
 
 type Params = Record<string, string | null | undefined>;
 type QaReview = { qa_status: string; task_status: string };
@@ -207,6 +208,19 @@ export default function DailyChecklistPanel({
       unit: '',
       go: { page: 'today', label: 'Open Command Center' },
     },
+    { id: 'mid_requests', title: 'Midday: review new requests', doneWhen: 'New requests have an owner and next action.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
+    { id: 'mid_blocked', title: 'Midday: check blocked work', doneWhen: 'Blocked work has a clear owner and next step.', count: null, unit: '', go: { page: 'tasks', params: { tq: 'blocked' }, label: 'Open blocked tasks' } },
+    { id: 'mid_qa', title: 'Midday: check QA progress', doneWhen: 'QA work has been reviewed and retest owners are clear.', count: null, unit: '', go: { page: 'qa', label: 'Open QA' } },
+    { id: 'eod_statuses', title: 'End of day: review task statuses', doneWhen: 'Stale in-progress tasks have been checked with their owners.', count: null, unit: '', go: { page: 'tasks', label: 'Open tasks' } },
+    { id: 'eod_standup', title: 'End of day: send team update', doneWhen: 'The team knows what moved, what is blocked and what is next.', count: null, unit: '', go: { page: 'today', label: 'Open Command Center' } },
+    { id: 'eod_report', title: 'End of day: review daily report', doneWhen: 'The daily report has been opened and reviewed.', count: null, unit: '', go: { page: 'reports', label: 'Open Reports' } },
+    { id: 'eod_waiting', title: 'End of day: review waiting items', doneWhen: 'Items waiting two or more days have an owner and follow-up.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
+    { id: 'eod_tomorrow', title: 'End of day: set tomorrow priorities', doneWhen: 'Tomorrow’s priorities are written down.', count: null, unit: '', go: { page: 'today', label: 'Open Command Center' } },
+    ...(new Date().getDay() === 5 ? [
+      { id: 'fri_ideas', title: 'Friday: review ideas', doneWhen: 'Ideas for review have a decision or next step.', count: null, unit: '', go: { page: 'operations', label: 'Open Operations' } },
+      { id: 'fri_balance', title: 'Friday: review team capacity', doneWhen: 'Next week’s workload is balanced.', count: null, unit: '', go: { page: 'today', label: 'Open workload' } },
+      { id: 'fri_health', title: 'Friday: review project health', doneWhen: 'Project risks and progress have been reviewed.', count: null, unit: '', go: { page: 'projects', label: 'Open Projects' } },
+    ] : []),
   ];
 
   const isDone = (s: Step) => {
@@ -224,6 +238,10 @@ export default function DailyChecklistPanel({
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
+      <RoutineCatchUp ticks={ticked} priorities={priorities} onRestore={(serverTicks, serverPriorities) => {
+        setTicked(serverTicks);
+        setPriorities([serverPriorities[0] ?? '', serverPriorities[1] ?? '', serverPriorities[2] ?? '']);
+      }} />
       <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -6,6 +6,10 @@ return [
         'provider' => env('PM_AI_PROVIDER', 'groq'),
         'fallback_provider' => env('PM_AI_FALLBACK_PROVIDER', 'openrouter'),
     ],
+    'routine' => [
+        'timezone' => env('PM_ROUTINE_TIMEZONE', 'Australia/Sydney'),
+        'nudge_time' => env('PM_ROUTINE_NUDGE_TIME', '17:30'),
+    ],
     'weekly_capacity_hours' => (float) env('PM_WEEKLY_CAPACITY_HOURS', 40),
     'automation' => [
         'idle_days' => (int) env('PM_NUDGE_IDLE_DAYS', 3),

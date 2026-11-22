@@ -13,6 +13,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\PmQaController;
 use App\Http\Controllers\PmActionItemController;
+use App\Http\Controllers\PmRoutineController;
 use Illuminate\Support\Facades\Route;
 
 // Pages: one real URL per tab, so each opens on its own and Back/Forward/bookmarks work.
@@ -42,6 +43,9 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::post('assistant/actions/{action}/confirm', [PmAssistantController::class, 'confirm'])->whereUuid('action')->name('assistant.confirm');
     Route::post('assistant/actions/{action}/cancel', [PmAssistantController::class, 'cancel'])->whereUuid('action')->name('assistant.cancel');
     Route::get('today', [PmController::class, 'today'])->name('today');
+    Route::get('routine', [PmRoutineController::class, 'show'])->name('routine.show');
+    Route::put('routine', [PmRoutineController::class, 'save'])->name('routine.save');
+    Route::post('routine/{day}/catch-up', [PmRoutineController::class, 'catchUp'])->where('day', '\\d{4}-\\d{2}-\\d{2}')->name('routine.catch-up');
     Route::post('sync', [PmController::class, 'sync'])->name('sync');
     Route::get('digest', [PmController::class, 'digest'])->name('digest');
     Route::post('digest/send', [PmController::class, 'digestSend'])->name('digest.send');
