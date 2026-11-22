@@ -54,7 +54,20 @@ function useDaily<T>(name: string, initial: T): [T, (v: T | ((c: T) => T)) => vo
       /* Still works for this page view. */
     }
   }, [key, value]);
-  return [value, setValue];
+  const updateValue = (next: T | ((current: T) => T)) => {
+    setValue((current) => {
+      const resolved = typeof next === 'function'
+        ? (next as (current: T) => T)(current)
+        : next;
+      try {
+        window.localStorage.setItem(key, JSON.stringify(resolved));
+      } catch {
+        /* Keep the in-memory checklist usable if storage is unavailable. */
+      }
+      return resolved;
+    });
+  };
+  return [value, updateValue];
 }
 
 export default function DailyChecklistPanel({
@@ -226,12 +239,11 @@ export default function DailyChecklistPanel({
             <button
               type="button"
               onClick={() => {
-                if (!window.confirm('Reset today’s manual checklist ticks and top 3 priorities? Live task counts will remain unchanged.')) return;
                 setTicked({});
                 setPriorities(['', '', '']);
               }}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-              title="Clear manual progress and priorities for today"
+              title="Immediately clear manual ticks and today’s priorities. Live zero-count steps stay complete."
             >
               Reset progress
             </button>
@@ -274,7 +286,7 @@ export default function DailyChecklistPanel({
                 <div className="min-w-0 flex-1 basis-56">
                   <div className={`text-sm font-semibold ${finished ? 'text-slate-500' : 'text-slate-900'}`}>{s.title}</div>
                   <div className="mt-0.5 text-xs text-slate-500">
-                    {s.unknown ? 'Checking…' : finished ? (auto ? 'Clear: nothing left to do.' : 'Marked done.') : s.count !== null ? `${s.count > 0 && s.id !== 'late' ? `${s.count} ` : ''}${s.unit}` : s.doneWhen}
+                    {s.unknown ? 'Checking…' : finished ? (auto ? 'Auto-complete: live count is zero.' : 'Manually marked done.') : s.count !== null ? `${s.count > 0 && s.id !== 'late' ? `${s.count} ` : ''}${s.unit}` : s.doneWhen}
                   </div>
                 </div>
                 <button type="button" onClick={() => onNavigate(s.go.page, s.go.params)} className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">{s.go.label} →</button>
