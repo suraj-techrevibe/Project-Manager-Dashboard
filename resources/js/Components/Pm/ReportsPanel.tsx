@@ -949,43 +949,48 @@ export default function ReportsPanel() {
                                   <span className="text-[11px] text-slate-400">{p.tasks?.length || 0} listed</span>
                                 </div>
                                 {p.tasks?.length ? (
-                                  <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-2">
+                                  <div className="grid min-w-0 grid-cols-1 gap-2">
                                     {p.tasks.map((t: any) => (
-                                      <div key={t.id} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
-                                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                                          <div className="min-w-0 flex-1">
-                                            <div className="break-words text-sm font-medium text-slate-800">{t.title}</div>
-                                            <div className="mt-1 break-words text-xs text-slate-500">{t.assignee || 'Unassigned'} · Due {t.due_at || 'not set'}</div>
-                                          </div>
-                                          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${t.status === 'Completed' ? 'bg-green-50 text-green-700' : t.status === 'Blocked' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{t.status}</span>
+                                      <details key={t.id} className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                                        <summary className="flex min-w-0 cursor-pointer list-none flex-col gap-2 p-3 hover:bg-slate-50 [&::-webkit-details-marker]:hidden sm:flex-row sm:items-center sm:justify-between">
+                                          <span className="flex min-w-0 flex-1 items-start gap-2">
+                                            <span aria-hidden="true" className="mt-0.5 shrink-0 text-slate-400">▸</span>
+                                            <span className="min-w-0">
+                                              <span className="block break-words text-sm font-medium text-slate-800">{t.title}</span>
+                                              <span className="mt-1 block break-words text-xs text-slate-500">{t.assignee || 'Unassigned'} · Due {t.due_at || 'not set'}</span>
+                                            </span>
+                                          </span>
+                                          <span className="flex shrink-0 flex-wrap items-center gap-2 pl-5 sm:pl-0">
+                                            <span className={`rounded-full px-2 py-1 text-[10px] ${t.status === 'Completed' ? 'bg-green-50 text-green-700' : t.status === 'Blocked' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{t.status}</span>
+                                            {t.qa_status && <span className={`rounded-full px-2 py-1 text-[10px] ${t.qa_status === 'Passed' ? 'bg-green-50 text-green-700' : t.qa_status === 'Failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>QA {t.qa_status}</span>}
+                                            {t.subtasks_total > 0 && <span className="text-[10px] text-slate-500">{t.subtasks_completed}/{t.subtasks_total} subtasks</span>}
+                                          </span>
+                                        </summary>
+                                        <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 p-3">
+                                          {t.url && <a href={t.url} target="_blank" rel="noreferrer" className="inline-block text-xs text-indigo-600 underline">Open in Taskmandu</a>}
+                                          {t.qa_history?.length > 0 && (
+                                            <details className="rounded-md border border-slate-200 bg-white p-2 text-xs">
+                                              <summary className="cursor-pointer select-none text-slate-600">QA history · {t.qa_history.length} events (cycle {t.qa_cycle || 1})</summary>
+                                              <div className="mt-2 space-y-1 break-words pl-2 text-slate-500">
+                                                {t.qa_history.map((event: any, index: number) => <p key={index}>Cycle {event.cycle}: <strong>{event.result}</strong>{event.severity ? ' · ' + event.severity : ''}{event.notes ? ' · ' + event.notes : ''}</p>)}
+                                              </div>
+                                            </details>
+                                          )}
+                                          {t.subtasks?.length > 0 && (
+                                            <details className="rounded-md border border-slate-200 bg-white p-2 text-xs">
+                                              <summary className="cursor-pointer select-none text-slate-600">Subtasks · {t.subtasks.length}</summary>
+                                              <div className="mt-2 space-y-2">
+                                                {t.subtasks.map((sub: any) => (
+                                                  <div key={sub.id} className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                                                    <span className="min-w-0 flex-1 break-words text-slate-700">{sub.title}<span className="text-slate-400"> · {sub.assignee || 'Unassigned'}</span></span>
+                                                    <span className={sub.status === 'Completed' ? 'shrink-0 text-green-700' : 'shrink-0 text-slate-500'}>{sub.status}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </details>
+                                          )}
                                         </div>
-                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-                                          {t.subtasks_total > 0 && <span className="text-slate-500">{t.subtasks_completed}/{t.subtasks_total} subtasks done</span>}
-                                          {t.qa_status && <span className={`rounded-full px-2 py-0.5 ${t.qa_status === 'Passed' ? 'bg-green-50 text-green-700' : t.qa_status === 'Failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>QA {t.qa_status}</span>}
-                                          {t.url && <a href={t.url} target="_blank" rel="noreferrer" className="text-indigo-600 underline">Open in Taskmandu</a>}
-                                        </div>
-                                        {t.qa_history?.length > 0 && (
-                                          <details className="mt-3 border-t border-slate-100 pt-2 text-xs">
-                                            <summary className="cursor-pointer select-none text-slate-500">QA history · {t.qa_history.length} events (cycle {t.qa_cycle || 1})</summary>
-                                            <div className="mt-2 space-y-1 break-words pl-2 text-slate-500">
-                                              {t.qa_history.map((event: any, index: number) => <p key={index}>Cycle {event.cycle}: <strong>{event.result}</strong>{event.severity ? ' · ' + event.severity : ''}{event.notes ? ' · ' + event.notes : ''}</p>)}
-                                            </div>
-                                          </details>
-                                        )}
-                                        {t.subtasks?.length > 0 && (
-                                          <details className="mt-2 border-t border-slate-100 pt-2 text-xs">
-                                            <summary className="cursor-pointer select-none text-slate-500">Subtasks · {t.subtasks.length}</summary>
-                                            <div className="mt-2 space-y-2">
-                                              {t.subtasks.map((sub: any) => (
-                                                <div key={sub.id} className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                                                  <span className="min-w-0 flex-1 break-words text-slate-700">{sub.title}<span className="text-slate-400"> · {sub.assignee || 'Unassigned'}</span></span>
-                                                  <span className={sub.status === 'Completed' ? 'shrink-0 text-green-700' : 'shrink-0 text-slate-500'}>{sub.status}</span>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </details>
-                                        )}
-                                      </div>
+                                      </details>
                                     ))}
                                   </div>
                                 ) : <p className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-400">No tasks found for this business.</p>}
