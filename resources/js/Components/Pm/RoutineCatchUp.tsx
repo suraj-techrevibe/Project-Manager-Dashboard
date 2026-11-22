@@ -78,11 +78,11 @@ export default function RoutineCatchUp({
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [ticks, priorities, ready]);
 
-  const markDayOff = async () => {
+  const setDayOff = async (skipped: boolean) => {
     try {
-      const { data } = await axios.put('/pm/api/routine', { skipped: true });
+      const { data } = await axios.put('/pm/api/routine', { skipped });
       setToday(data.day); setError('');
-    } catch { setError('Could not mark this day off.'); }
+    } catch { setError(skipped ? 'Could not mark this day off.' : 'Could not restore today as a working day.'); }
   };
 
   const catchUp = async (record: DayRecord) => {
@@ -115,8 +115,8 @@ export default function RoutineCatchUp({
       {error && <p role="status" className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">{error}</p>}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-slate-500">{saving ? 'Saving…' : ready ? 'Synced' : 'Loading…'}</span>
-        {today && !today.skipped && <button type="button" onClick={markDayOff} className="ml-auto rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Mark today as day off</button>}
-        {today?.skipped && <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Today marked as day off</span>}
+        {today && <button type="button" onClick={() => void setDayOff(!today.skipped)} className="ml-auto rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">{today.skipped ? 'Undo day off' : 'Mark today as day off'}</button>}
+        {today?.skipped && <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Today is marked as a day off</span>}
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-5">

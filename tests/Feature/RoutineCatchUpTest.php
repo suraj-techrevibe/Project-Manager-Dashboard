@@ -42,13 +42,20 @@ class RoutineCatchUpTest extends TestCase
         ])->assertStatus(404);
     }
 
-    public function test_day_off_is_recorded_without_being_counted_as_complete(): void
+    public function test_day_off_can_be_undone_without_losing_saved_progress(): void
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->putJson('/pm/api/routine', ['skipped' => true])
+        $this->actingAs($user)->putJson('/pm/api/routine', [
+            'ticks' => ['sync' => true],
+            'priorities' => ['Review launch tasks'],
+            'skipped' => true,
+        ])->assertOk()->assertJsonPath('day.skipped', true);
+
+        $this->actingAs($user)->putJson('/pm/api/routine', ['skipped' => false])
             ->assertOk()
-            ->assertJsonPath('day.skipped', true)
-            ->assertJsonPath('day.complete', false);
+            ->assertJsonPath('day.skipped', false)
+            ->assertJsonPath('day.ticks.sync', true)
+            ->assertJsonPath('day.priorities.0', 'Review launch tasks');
     }
 }
