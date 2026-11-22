@@ -31,6 +31,18 @@ const tone: Record<ReportPill['tone'], string> = {
   slate: 'bg-slate-100 text-slate-600',
 };
 
+
+function StructuredEditor({ label, value, onChange, depth = 0 }: { label: string; value: any; onChange: (next: any) => void; depth?: number }) {
+  const human = label.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  if (Array.isArray(value)) {
+    return <details open={depth === 0} className="rounded-lg border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{human} <span className="font-normal text-slate-400">({value.length})</span></summary><div className="mt-3 space-y-3">{value.map((item, index) => <div key={index} className="rounded-md bg-white p-2"><div className="mb-2 flex items-center justify-between"><span className="text-xs font-medium text-slate-500">Item {index + 1}</span><button type="button" className="text-xs text-red-600" onClick={() => onChange(value.filter((_: any, i: number) => i !== index))}>Remove</button></div><StructuredEditor label={typeof item === 'object' && item !== null ? `Item ${index + 1}` : `Item ${index + 1}`} value={item} depth={depth + 1} onChange={next => onChange(value.map((v: any, i: number) => i === index ? next : v))} /></div>)}<button type="button" className="rounded-md border px-3 py-1.5 text-xs" onClick={() => onChange([...value, (value[0] && typeof value[0] === 'object' ? Object.fromEntries(Object.keys(value[0]).map(k => [k, typeof value[0][k] === 'number' ? 0 : typeof value[0][k] === 'boolean' ? false : ''])) : '')])}>+ Add item</button></div></details>;
+  }
+  if (value !== null && typeof value === 'object') {
+    return <details open={depth === 0} className="rounded-lg border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{human}</summary><div className="mt-3 space-y-3">{Object.entries(value).map(([key, child]) => <StructuredEditor key={key} label={key} value={child} depth={depth + 1} onChange={next => onChange({ ...value, [key]: next })} />)}</div></details>;
+  }
+  return <label className="block text-xs font-medium text-slate-600">{human}{typeof value === 'boolean' ? <input type="checkbox" className="ml-2" checked={value} onChange={e => onChange(e.target.checked)} /> : typeof value === 'number' ? <input type="number" className={inputCls + ' mt-1 block w-full'} value={value} onChange={e => onChange(Number(e.target.value))} /> : typeof value === 'string' && (value.length > 100 || value.includes('\n')) ? <textarea rows={3} className={inputCls + ' mt-1 block w-full'} value={value} onChange={e => onChange(e.target.value)} /> : <input className={inputCls + ' mt-1 block w-full'} value={value ?? ''} onChange={e => onChange(e.target.value)} />}</label>;
+}
+
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
   return (
     <section className="border-t border-slate-100 py-3 first:border-t-0 first:pt-0">
@@ -505,7 +517,7 @@ export default function ReportsPanel() {
   const [savedPeriodFilter,setSavedPeriodFilter]=useState<'all'|'daily'|'weekly'|'date_range'>('all');
   const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'|'qa'|'minutes'|'performance'>('all');
   const [editId,setEditId]=useState<number|null>(null);
-  const [editJson,setEditJson]=useState('');
+  const [editContent,setEditContent]=useState<any>(null);
   const [editNotes,setEditNotes]=useState('');
   const [editSaving,setEditSaving]=useState(false);
 
@@ -860,7 +872,7 @@ export default function ReportsPanel() {
                       ))}
                     </span>
                   </button>
-                  {open && <><div className="flex flex-wrap gap-2 px-4 pt-3"><button onClick={()=>{setEditId(r.id);setEditJson(JSON.stringify(r.content,null,2));setEditNotes(r.notes||'');}} className={btnSecondary}>Edit report</button><button onClick={()=>window.location.href='/pm/api/reports/'+r.id+'/docx'} className={btnSecondary}>Export DOCX</button></div>{editId===r.id&&<div className="mx-4 mt-3 rounded-lg border bg-slate-50 p-3"><label className="block text-xs font-medium">Report content (JSON)<textarea rows={18} value={editJson} onChange={e=>setEditJson(e.target.value)} className={inputCls+' mt-1 w-full font-mono text-xs'}/></label><label className="mt-3 block text-xs font-medium">Notes<textarea rows={3} value={editNotes} onChange={e=>setEditNotes(e.target.value)} className={inputCls+' mt-1 w-full'}/></label><div className="mt-2 flex gap-2"><button disabled={editSaving} onClick={async()=>{try{setEditSaving(true);const content=JSON.parse(editJson);const res=await pmApi.updateReport(r.id,content,editNotes);setReports(prev=>sorted(prev.map(x=>x.id===r.id?res.data.report:x)));setEditId(null);}catch(e:any){setListError(e?.message||'Unable to save report edit. JSON must be valid.');}finally{setEditSaving(false);}}} className={btnPrimary}>{editSaving?'Saving…':'Save changes'}</button><button onClick={()=>setEditId(null)} className={btnSecondary}>Cancel</button></div></div>}<ReportBody report={r} copied={copied?.id === r.id ? copied.part : null} onCopy={(part) => copy(r, part)} onDelete={() => remove(r)} /></>}
+                  {open && <><div className="flex flex-wrap gap-2 px-4 pt-3"><button onClick={()=>{setEditId(r.id);setEditContent(JSON.parse(JSON.stringify(r.content || {})));setEditNotes(r.notes||'');}} className={btnSecondary}>Edit report</button><button onClick={()=>window.location.href='/pm/api/reports/'+r.id+'/docx'} className={btnSecondary}>Export DOCX</button></div>{editId===r.id&&<div className="mx-4 mt-3 rounded-lg border bg-slate-50 p-3"><div><p className="mb-2 text-xs text-slate-500">Edit the saved report using fields and expandable sections. Source records are not changed.</p><StructuredEditor label="Report content" value={editContent} onChange={setEditContent}/></div><label className="mt-3 block text-xs font-medium">Notes<textarea rows={3} value={editNotes} onChange={e=>setEditNotes(e.target.value)} className={inputCls+' mt-1 w-full'}/></label><div className="mt-2 flex gap-2"><button disabled={editSaving} onClick={async()=>{try{setEditSaving(true);const res=await pmApi.updateReport(r.id,editContent,editNotes);setReports(prev=>sorted(prev.map(x=>x.id===r.id?res.data.report:x)));setEditId(null);}catch(e:any){setListError(e?.message||'Unable to save report edit. JSON must be valid.');}finally{setEditSaving(false);}}} className={btnPrimary}>{editSaving?'Saving…':'Save changes'}</button><button onClick={()=>setEditId(null)} className={btnSecondary}>Cancel</button></div></div>}<ReportBody report={r} copied={copied?.id === r.id ? copied.part : null} onCopy={(part) => copy(r, part)} onDelete={() => remove(r)} /></>}
                 </div>
               );
             })}
