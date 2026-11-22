@@ -29,7 +29,8 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('git', [PmPageController::class, 'git'])->name('page.git');
     Route::get('qa', [PmPageController::class, 'qa'])->name('page.qa');
     Route::get('qa-reports', [PmPageController::class, 'qaReports'])->name('page.qa-reports');
-    Route::get('checklist', [PmPageController::class, 'checklist'])->name('page.checklist');\n    Route::get('action-list', [PmPageController::class, 'actionList'])->name('page.action-list');
+    Route::get('checklist', [PmPageController::class, 'checklist'])->name('page.checklist');
+    Route::get('action-list', [PmPageController::class, 'actionList'])->name('page.action-list');
 });
 
 // JSON API used by those pages.
@@ -72,7 +73,11 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::patch('drafts/{draft}', [PmDraftController::class, 'update'])->name('drafts.update');
     Route::post('drafts/{draft}/verify', [PmDraftController::class, 'verify'])->name('drafts.verify');
     Route::delete('drafts/{draft}', [PmDraftController::class, 'destroy'])->name('drafts.destroy');
-    Route::get('action-items', [PmActionItemController::class, 'index'])->name('action-items.index');\n    Route::post('action-items', [PmActionItemController::class, 'store'])->name('action-items.store');\n    Route::patch('action-items/{item}', [PmActionItemController::class, 'update'])->name('action-items.update');\n    Route::delete('action-items/{item}', [PmActionItemController::class, 'destroy'])->name('action-items.destroy');\n    Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
+    Route::get('action-items', [PmActionItemController::class, 'index'])->name('action-items.index');
+    Route::post('action-items', [PmActionItemController::class, 'store'])->name('action-items.store');
+    Route::patch('action-items/{item}', [PmActionItemController::class, 'update'])->name('action-items.update');
+    Route::delete('action-items/{item}', [PmActionItemController::class, 'destroy'])->name('action-items.destroy');
+    Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
     Route::post('qa/quick-capture/draft', [PmQaController::class, 'draftQuickCapture'])->middleware('throttle:10,1')->name('qa.quick-capture.draft');
     Route::post('qa/quick-capture/save', [PmQaController::class, 'saveQuickCapture'])->name('qa.quick-capture.save');
     Route::get('qa/reports', [PmQaController::class, 'reports'])->name('qa.reports.index');
