@@ -76,9 +76,9 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
 function Dock({ active, onOpen, onCapture, onSearch }: { active: DockSheet | null; onOpen: (k: DockSheet) => void; onCapture: () => void; onSearch: () => void }) {
   const { open: aiOpen, unread, pending } = useAssistant();
   const badge = pending > 0 ? pending : unread;
-  const slot = (on: boolean) => `relative flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-medium transition ${on ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`;
+  const slot = (on: boolean) => `relative flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-medium transition ${on ? 'bg-white/20 text-white' : 'text-indigo-100 hover:bg-white/10 hover:text-white'}`;
   return (
-    <nav aria-label="Quick actions" className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-4px_16px_rgba(15,23,42,0.06)] backdrop-blur lg:left-64">
+    <nav aria-label="Quick actions" className="fixed inset-x-0 bottom-0 z-40 border-t border-indigo-500/60 bg-indigo-700 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-6px_20px_rgba(30,27,75,0.25)] lg:left-64">
       <div className="grid grid-cols-5 items-end">
         <button type="button" onClick={onSearch} aria-label="Search" title="Search (Ctrl K)" className={slot(false)}>
           <Icon name="search" className="h-5 w-5" />Search
@@ -86,8 +86,8 @@ function Dock({ active, onOpen, onCapture, onSearch }: { active: DockSheet | nul
         <button type="button" onClick={() => onOpen('action-list')} aria-pressed={active === 'action-list'} className={slot(active === 'action-list')}>
           <Icon name="clipboard-list" className="h-5 w-5" />Action list
         </button>
-        <button type="button" onClick={onCapture} aria-label="Capture" className="-mt-6 flex flex-col items-center gap-0.5 text-[11px] font-semibold text-indigo-700">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg ring-4 ring-white transition hover:bg-indigo-700"><Icon name="plus" className="h-7 w-7" /></span>
+        <button type="button" onClick={onCapture} aria-label="Capture" className="-mt-6 flex flex-col items-center gap-0.5 text-[11px] font-semibold text-white">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-indigo-700 shadow-lg ring-4 ring-indigo-700 transition hover:bg-indigo-50"><Icon name="plus" className="h-7 w-7" /></span>
           <span className="pb-1">Capture</span>
         </button>
         <button type="button" onClick={() => onOpen('checklist')} aria-pressed={active === 'checklist'} className={slot(active === 'checklist')}>
@@ -95,7 +95,7 @@ function Dock({ active, onOpen, onCapture, onSearch }: { active: DockSheet | nul
         </button>
         <button type="button" onClick={() => setAssistantOpen(!aiOpen)} aria-pressed={aiOpen} aria-label={badge > 0 ? `PM assistant, ${badge} waiting` : 'PM assistant'} title="PM assistant (Ctrl+/)" className={slot(aiOpen)}>
           <span className="relative"><Icon name="spark" className="h-5 w-5" />
-            {badge > 0 && <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">{badge > 9 ? '9+' : badge}</span>}
+            {badge > 0 && <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-indigo-700">{badge > 9 ? '9+' : badge}</span>}
           </span>Assistant
         </button>
       </div>
