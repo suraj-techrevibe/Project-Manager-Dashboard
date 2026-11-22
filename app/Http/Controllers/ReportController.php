@@ -237,7 +237,7 @@ class ReportController extends Controller
         foreach ($definitions as $reportType => $definition) {
             $content = ['kind' => 'pack', 'report_type' => $reportType, 'title' => $definition['title'], 'period_type' => $type, 'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()], 'generated_at' => now()->toIso8601String(), 'data' => $definition['data']];
             $content['summary'] = $reportType === 'qa' ? ['reports' => count($definition['data']['reports'] ?? []), 'findings' => collect($definition['data']['reports'] ?? [])->sum(fn ($row) => count($row['findings'] ?? []))] : ($reportType === 'minutes' ? ['meetings' => count($definition['data']['meetings'] ?? [])] : ($definition['data']['summary'] ?? []));
-            $body = implode("\n", [$definition['title'], 'Period: '.$content['period']['from'].' to '.$content['period']['to'], 'Summary: '.json_encode($content['summary']), '', json_encode($definition['data'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)]);
+            $body = $this->formatPackBody($definition['title'], $content);
             $report = PmReport::updateOrCreate(['kind' => $reportType, 'report_date' => $from->toDateString()], ['period_type' => $type, 'period_end' => $to->toDateString(), 'content' => $content, 'body' => $body, 'notes' => null, 'generated_by' => (string) ($request->user()?->name ?? 'PM'), 'auto' => false]);
             $saved[] = $this->present($report);
         }
@@ -387,10 +387,68 @@ class ReportController extends Controller
             'content' => 'required|array', 'content.kind' => ['required', Rule::in(['daily','weekly','pack'])],
             'content.report_type' => 'required_if:content.kind,pack|in:qa,minutes,performance',
             'notes' => 'nullable|string|max:6000',
+            'body' => 'sometimes|required|string|max:100000',
         ]);
         if (($data['content']['kind'] === 'pack' ? ($data['content']['report_type'] ?? null) : $data['content']['kind']) !== $report->kind) return response()->json(['message'=>'Report type cannot be changed.'], 422);
-        $report->update(['content' => $data['content'], 'body' => (($data['content']['kind'] ?? null) === 'pack' ? implode("\n", [$data['content']['title'] ?? 'Report', json_encode($data['content'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)]) : $this->reports->render($data['content'])), 'notes' => $data['notes'] ?? $report->notes, 'auto' => false]);
+        $body = array_key_exists('body', $data) ? $data['body'] : (($data['content']['kind'] ?? null) === 'pack' ? $this->formatPackBody($data['content']['title'] ?? 'Report', $data['content']) : $this->reports->render($data['content']));
+        $report->update(['content' => $data['content'], 'body' => $body, 'notes' => $data['notes'] ?? $report->notes, 'auto' => false]);
         return response()->json(['report' => $this->present($report->fresh())]);
+    }
+
+    /** Turn report-pack data into readable document text rather than exposing JSON. */
+    private function formatPackBody(string $title, array $content): string
+    {
+        $lines = [$title, 'Period: '.($content['period']['from'] ?? '').' to '.($content['period']['to'] ?? ''), ''];
+        $summary = $content['summary'] ?? [];
+        if ($summary) {
+            $lines[] = 'SUMMARY';
+            foreach ($summary as $key => $value) {
+                $label = str($key)->replace('_', ' ')->title();
+                $lines[] = $label.': '.(is_scalar($value) ? (string) $value : '');
+            }
+            $lines[] = '';
+        }
+        foreach (($content['data'] ?? []) as $key => $value) {
+            $label = str((string) $key)->replace('_', ' ')->title();
+            $lines[] = strtoupper($label);
+            $this->appendReadableValue($lines, $value, 0);
+            $lines[] = '';
+        }
+        return trim(implode("\n", $lines))."\n";
+    }
+
+    /** @param array<int, string> $lines */
+    private function appendReadableValue(array &$lines, mixed $value, int $depth): void
+    {
+        $indent = str_repeat('  ', min($depth, 5));
+        if (! is_array($value)) {
+            if ($value !== null && $value !== '') $lines[] = $indent.'• '.(is_bool($value) ? ($value ? 'Yes' : 'No') : (string) $value);
+            return;
+        }
+        if ($value === []) {
+            $lines[] = $indent.'• None recorded';
+            return;
+        }
+        foreach ($value as $key => $child) {
+            if (is_int($key)) {
+                if (is_array($child)) {
+                    $heading = $child['title'] ?? $child['name'] ?? $child['business'] ?? $child['project'] ?? null;
+                    if ($heading) $lines[] = $indent.'• '.$heading;
+                    $this->appendReadableValue($lines, $child, $depth + 1);
+                } else {
+                    $this->appendReadableValue($lines, $child, $depth);
+                }
+                continue;
+            }
+            $label = str((string) $key)->replace('_', ' ')->title();
+            if (is_array($child)) {
+                $lines[] = $indent.$label.':';
+                $this->appendReadableValue($lines, $child, $depth + 1);
+            } elseif ($child !== null && $child !== '') {
+                $display = is_bool($child) ? ($child ? 'Yes' : 'No') : (string) $child;
+                $lines[] = $indent.$label.': '.$display;
+            }
+        }
     }
 
     public function destroy(PmReport $report): JsonResponse
