@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { reportText } from '../../lib/Reporttext';
 import type { DailyContent, Report, ReportItem, ReportPill, WeeklyContent } from '../../types/pm';
@@ -426,6 +426,124 @@ function ExecutiveBrief({ c }: { c: DailyContent | WeeklyContent }) {
   );
 }
 
+
+/** Saved report-pack renderer mirrors the three Date-range Report Centre views. */
+function PackReportView({ report }: { report: Report }) {
+  const c: any = report.content;
+  const d: any = c.data || {};
+  const period = c.period || {};
+  const summary = d.summary || c.summary || {};
+  const qaReports: any[] = d.reports || [];
+  const meetings: any[] = d.meetings || [];
+  const businesses: any[] = d.businesses || [];
+  const team: any[] = d.team || [];
+  const subtasks: any = d.subtasks || {};
+  const activities: any[] = d.activities || [];
+  const metricCards = [
+    ['Activity events', summary.activity_events],
+    ['Tasks created', summary.tasks_created],
+    ['Tasks completed', summary.tasks_completed],
+    ['Newly blocked', summary.tasks_blocked],
+    ['Comments', summary.comments],
+    ['Follow-ups', summary.follow_ups],
+    ['Verified', summary.verified],
+    ['Subtasks created', summary.subtasks_created],
+    ['Subtasks completed', summary.subtasks_completed],
+  ];
+  return (
+    <div className="space-y-4 text-sm text-slate-700">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <h3 className="text-lg font-semibold text-slate-900">{c.title || 'Report'}</h3>
+        <p className="mt-1 text-xs text-slate-500">Reporting period: {period.from || report.report_date} → {period.to || report.period_end || report.report_date}</p>
+        {c.generated_at && <p className="mt-1 text-xs text-slate-400">Generated {new Date(c.generated_at).toLocaleString()}</p>}
+      </div>
+
+      {c.report_type === 'qa' && (
+        <section className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">QA reports</div><div className="mt-1 text-xl font-semibold">{d.count ?? qaReports.length}</div></div>
+            <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Total findings</div><div className="mt-1 text-xl font-semibold">{c.summary?.findings ?? qaReports.reduce((n, r) => n + (r.finding_count || r.findings?.length || 0), 0)}</div></div>
+            <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Handed over</div><div className="mt-1 text-xl font-semibold">{qaReports.filter(r => r.handed_over_at).length}</div></div>
+            <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Awaiting handover</div><div className="mt-1 text-xl font-semibold">{qaReports.filter(r => !r.handed_over_at).length}</div></div>
+          </div>
+          {qaReports.length ? <div className="divide-y divide-slate-100">
+            {qaReports.map((r, ri) => <div key={r.id ?? ri} className="py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0"><div className="font-semibold text-slate-800">{r.business} · {r.report_code}</div><div className="mt-0.5 text-xs text-slate-500">{r.report_date} · {r.site_app || 'Website / app'} · {r.finding_count ?? r.findings?.length ?? 0} findings</div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs"><span className="text-red-700">{r.severity_counts?.critical ?? r.findings?.filter((f:any)=>f.severity==='Critical').length ?? 0} Critical</span><span className="text-orange-700">{r.severity_counts?.high ?? r.findings?.filter((f:any)=>f.severity==='High').length ?? 0} High</span><span className="text-amber-700">{r.severity_counts?.medium ?? r.findings?.filter((f:any)=>f.severity==='Medium').length ?? 0} Medium</span><span className="text-slate-500">{r.severity_counts?.low ?? r.findings?.filter((f:any)=>f.severity==='Low').length ?? 0} Low</span></div>
+                </div>
+                <span className={r.handed_over_at ? 'text-xs font-medium text-emerald-700' : 'text-xs text-amber-700'}>{r.handed_over_at ? 'Handed over' : 'Not handed over'}</span>
+              </div>
+              {r.summary && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{r.summary}</p>}
+              {r.areas_tested && <p className="mt-2 text-xs text-slate-600"><strong>Areas tested:</strong> {r.areas_tested}</p>}
+              {r.environment && <p className="mt-1 text-xs text-slate-600"><strong>Environment:</strong> {r.environment}</p>}
+              {r.fix_first && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600"><strong>Fix first:</strong> {r.fix_first}</p>}
+              {(r.findings || []).map((f:any,i:number)=><div key={f.id ?? i} className="mt-3 border-t border-slate-100 pt-2 text-xs"><div className="font-semibold text-slate-800">QA-{String(i+1).padStart(2,'0')} · {f.title} <span className="font-normal text-slate-500">· {f.severity} · {f.status}</span></div>{f.page_url && <div className="mt-1 break-all text-slate-500">{f.page_url}</div>}{f.description && <p className="mt-1 whitespace-pre-wrap text-slate-600"><strong>Actual:</strong> {f.description}</p>}{f.expected_behaviour && <p className="mt-1 whitespace-pre-wrap text-slate-600"><strong>Expected:</strong> {f.expected_behaviour}</p>}{f.developer_notes && <p className="mt-1 whitespace-pre-wrap text-slate-600"><strong>Developer notes:</strong> {f.developer_notes}</p>}{f.assignee && <p className="mt-1 text-slate-500">Assigned: {f.assignee}</p>}{f.evidence_url && <a className="mt-1 inline-block break-all text-indigo-700 underline" href={f.evidence_url} target="_blank" rel="noreferrer">Open evidence</a>}</div>)}
+              {r.checklist?.length > 0 && <div className="mt-3 border-t border-slate-100 pt-2 text-xs"><strong>Checklist</strong>{r.checklist.map((item:any,i:number)=><div key={i} className="mt-1 flex justify-between gap-3"><span>{item.label}</span><span>{item.result}</span></div>)}</div>}
+              {r.open_questions && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600"><strong>Open questions:</strong> {r.open_questions}</p>}
+            </div>)}
+          </div> : <p className="text-sm text-slate-400">No QA reports in this period.</p>}
+        </section>
+      )}
+
+      {c.report_type === 'minutes' && (
+        <section className="divide-y divide-slate-100">
+          {meetings.length ? meetings.map((m, i) => <div key={m.id ?? i} className="py-3">
+            <div className="flex flex-wrap items-start justify-between gap-2"><div className="font-semibold text-slate-800">{m.title}</div><span className="text-xs text-slate-500">{m.meeting_date} · {m.status}</span></div>
+            <div className="mt-1 text-xs text-slate-500">Attendees: {m.attendees?.join(', ') || 'Not recorded'} · {m.action_items?.length || 0} action items · {m.work_items?.length || 0} work items</div>
+            {m.agenda_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Agenda:</strong> {m.agenda_items.join(' · ')}</div>}
+            {m.discussion && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600"><strong>Discussion:</strong> {m.discussion}</p>}
+            {m.decisions?.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">{m.decisions.map((v:string,j:number)=><li key={j}>{v}</li>)}</ul>}
+            {m.work_items?.map((w:any,j:number)=><div key={j} className="mt-3 rounded-md bg-slate-50 p-3 text-xs"><div className="font-semibold text-slate-700">{w.project || 'General'} · {w.owner || 'Owner not assigned'}</div><div className="mt-1 text-slate-700">{w.requirement}</div>{w.discussion && <p className="mt-1 whitespace-pre-wrap text-slate-500">{w.discussion}</p>}{w.action_items?.length > 0 && <ul className="mt-1 list-disc pl-4 text-slate-600">{w.action_items.map((a:any,k:number)=><li key={k}>{a.task}{a.due_date ? ` · due ${a.due_date}` : ''}</li>)}</ul>}</div>)}
+            {m.action_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Action items:</strong> {m.action_items.map((a:any)=>`${a.task} — ${a.owner || 'Unassigned'}${a.due_date ? ` (due ${a.due_date})` : ''}`).join(' · ')}</div>}
+          </div>) : <p className="py-3 text-sm text-slate-400">No meeting minutes in this period.</p>}
+        </section>
+      )}
+
+      {c.report_type === 'performance' && (
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+            {metricCards.map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-semibold text-slate-900">{value ?? 0}</div></div>)}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div><h4 className="mb-2 font-semibold text-slate-800">Business / project performance</h4>{businesses.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Business / project</th><th className="pb-2 text-right">Activity</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th><th className="pb-2 text-right">Blocked</th></tr></thead><tbody>{businesses.map((b:any)=><tr key={b.business} className="border-t border-slate-100"><td className="py-2 pr-2 font-medium">{b.business}</td><td className="py-2 text-right">{b.activity_count}</td><td className="py-2 text-right">{b.tasks_created}</td><td className="py-2 text-right">{b.tasks_completed}</td><td className="py-2 text-right">{b.blocked}</td></tr>)}</tbody></table></div>:<p className="text-xs text-slate-400">No task activity recorded.</p>}</div>
+            <div><h4 className="mb-2 font-semibold text-slate-800">Team performance / contribution</h4>{team.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Team member</th><th className="pb-2 text-right">Activity</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th><th className="pb-2 text-right">Blocked</th></tr></thead><tbody>{team.map((p:any)=><tr key={p.name} className="border-t border-slate-100"><td className="py-2 pr-2 font-medium">{p.name}</td><td className="py-2 text-right">{p.activity_count}</td><td className="py-2 text-right">{p.tasks_created}</td><td className="py-2 text-right">{p.tasks_completed}</td><td className="py-2 text-right">{p.blocked}</td></tr>)}</tbody></table></div>:<p className="text-xs text-slate-400">No team activity recorded.</p>}</div>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div><h4 className="mb-2 font-semibold text-slate-800">Subtask activity by project</h4>{subtasks.by_project?.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Project</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th></tr></thead><tbody>{subtasks.by_project.map((s:any)=><tr key={s.project_id} className="border-t border-slate-100"><td className="py-2 pr-2">{s.project}</td><td className="py-2 text-right">{s.created}</td><td className="py-2 text-right">{s.completed}</td></tr>)}</tbody></table></div>:<p className="text-xs text-slate-400">No subtask activity recorded.</p>}</div>
+            <div><h4 className="mb-2 font-semibold text-slate-800">Subtask activity by team member</h4>{subtasks.by_team?.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Team member</th><th className="pb-2 text-right">Created</th><th className="pb-2 text-right">Completed</th></tr></thead><tbody>{subtasks.by_team.map((s:any)=><tr key={s.name} className="border-t border-slate-100"><td className="py-2 pr-2">{s.name}</td><td className="py-2 text-right">{s.created}</td><td className="py-2 text-right">{s.completed}</td></tr>)}</tbody></table></div>:<p className="text-xs text-slate-400">No subtask activity recorded.</p>}</div>
+          </div>
+          <div><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold text-slate-800">Activity log</h4><span className="text-xs text-slate-400">Showing {activities.length} of {d.activity_total ?? activities.length}</span></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[38rem] text-left text-xs"><thead className="text-slate-400"><tr><th className="pb-2">Date / time</th><th className="pb-2">Business / project</th><th className="pb-2">Task / activity</th><th className="pb-2">Team member</th><th className="pb-2">Change</th></tr></thead><tbody>{activities.map((a:any)=><tr key={a.id} className="border-t border-slate-100"><td className="py-2 pr-2 whitespace-nowrap">{a.occurred_at ? new Date(a.occurred_at).toLocaleString() : '—'}</td><td className="py-2 pr-2">{a.business}</td><td className="py-2 pr-2">{a.title}<span className="block text-slate-400">{String(a.type || '').replaceAll('_',' ')}</span></td><td className="py-2 pr-2">{a.assignee}</td><td className="py-2">{a.from || a.to ? `${a.from || '—'} → ${a.to || '—'}` : '—'}</td></tr>)}</tbody></table></div>
+            {d.activity_truncated && <p className="mt-2 text-xs text-amber-700">Activity log is limited to the latest 500 events in this range; summary totals include all events.</p>}
+          </div>
+          <p className="text-xs text-slate-500">{d.data_note}</p>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function isReportHtml(value?: string | null): boolean {
+  return !!value && /<(div|section|table|h[1-6]|p|ul|ol)\b/i.test(value);
+}
+
+/** Only retain report-layout markup; remove executable elements and event handlers before rendering saved edits. */
+function safeReportHtml(value: string): string {
+  const doc = new DOMParser().parseFromString(value, 'text/html');
+  doc.querySelectorAll('script,style,iframe,object,embed,form,input,button,textarea,select,link,meta').forEach(el => el.remove());
+  doc.body.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      if (attr.name !== 'class' && !(el.tagName === 'A' && attr.name === 'href' && /^https?:\/\//i.test(attr.value))) el.removeAttribute(attr.name);
+    });
+  });
+  return doc.body.innerHTML;
+}
+
+function reportHtmlToText(value: string): string {
+  return value.replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/(p|div|section|h[1-6]|li|tr)>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCopy: (part: 'update' | 'full') => void; onDelete: () => void; copied: 'update' | 'full' | null }) {
   const c = report.content;
   const meta = 'prepared_by' in c ? c : null;
@@ -466,14 +584,7 @@ function ReportBody({ report, onCopy, onDelete, copied }: { report: Report; onCo
           </details>
         </>
       ) : c.kind === 'pack' ? (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <h3 className="text-base font-semibold text-slate-900">{c.title}</h3>
-            <p className="mt-1 text-xs text-slate-500">Period: {c.period?.from} to {c.period?.to}</p>
-            <div className="mt-2 flex flex-wrap gap-2">{Object.entries(c.summary || {}).map(([key,value])=><span key={key} className="rounded-md bg-white px-2 py-1 text-xs text-slate-600">{key.replaceAll('_',' ')}: <strong>{String(value)}</strong></span>)}</div>
-          </div>
-          <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 font-sans text-xs text-slate-700">{report.body}</pre>
-        </div>
+        isReportHtml(report.body) ? <div className="rounded-lg border border-slate-200 bg-white p-4" dangerouslySetInnerHTML={{ __html: safeReportHtml(report.body || '') }} /> : <PackReportView report={report} />
       ) : (
         <>
           <div className="mb-2 rounded-md bg-amber-50 p-2 text-xs text-amber-700">This report was made in the old format. Generate it again for this date to get the new layout.</div>
@@ -518,8 +629,8 @@ export default function ReportsPanel() {
   const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'|'qa'|'minutes'|'performance'>('all');
   const [editId,setEditId]=useState<number|null>(null);
   const [editContent,setEditContent]=useState<any>(null);
-  const [editBody,setEditBody]=useState('');
   const [editNotes,setEditNotes]=useState('');
+  const editReportRef = useRef<HTMLDivElement | null>(null);
   const [editSaving,setEditSaving]=useState(false);
 
   // Newest date first, always — never trust the order the server happened to return.
@@ -625,7 +736,7 @@ export default function ReportsPanel() {
   }
 
   async function copy(r: Report, part: 'update' | 'full') {
-    const text = reportText(r, part);
+    const text = r.content?.kind === 'pack' ? (isReportHtml(r.body) ? reportHtmlToText(r.body || '') : reportText(r, part)) : reportText(r, part);
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -873,7 +984,30 @@ export default function ReportsPanel() {
                       ))}
                     </span>
                   </button>
-                  {open && <><div className="flex flex-wrap gap-2 px-4 pt-3"><button onClick={()=>{setEditId(r.id);setEditContent(JSON.parse(JSON.stringify(r.content || {})));setEditBody(r.body || '');setEditNotes(r.notes||'');}} className={btnSecondary}>Edit report</button><button onClick={()=>window.location.href='/pm/api/reports/'+r.id+'/docx'} className={btnSecondary}>Export DOCX</button></div>{editId===r.id&&<div className="mx-4 mt-3 rounded-lg border bg-slate-50 p-3">{r.content?.kind === 'pack' ? <div><div className="mb-2"><p className="text-sm font-semibold text-slate-800">Edit report text</p><p className="text-xs text-slate-500">Edit the report like a document. This changes the saved report and DOCX export, not the original QA, meeting or task records.</p></div><textarea rows={22} value={editBody} onChange={e=>setEditBody(e.target.value)} spellCheck className="w-full rounded-lg border border-slate-300 bg-white p-3 font-mono text-sm leading-6 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div> : <div><p className="mb-2 text-xs text-slate-500">Edit the saved report using fields and expandable sections. Source records are not changed.</p><StructuredEditor label="Report content" value={editContent} onChange={setEditContent}/></div>}<label className="mt-3 block text-xs font-medium">Notes<textarea rows={3} value={editNotes} onChange={e=>setEditNotes(e.target.value)} className={inputCls+' mt-1 w-full'}/></label><div className="mt-2 flex gap-2"><button disabled={editSaving} onClick={async()=>{try{setEditSaving(true);const res=await pmApi.updateReport(r.id,editContent,editNotes,r.content?.kind === 'pack' ? editBody : undefined);setReports(prev=>sorted(prev.map(x=>x.id===r.id?res.data.report:x)));setEditId(null);}catch(e:any){setListError(e?.message||'Unable to save report edit. Please try again.');}finally{setEditSaving(false);}}} className={btnPrimary}>{editSaving?'Saving…':'Save changes'}</button><button onClick={()=>setEditId(null)} className={btnSecondary}>Cancel</button></div></div>}<ReportBody report={r} copied={copied?.id === r.id ? copied.part : null} onCopy={(part) => copy(r, part)} onDelete={() => remove(r)} /></>}
+                  {open && <>
+                    <div className="flex flex-wrap gap-2 px-4 pt-3">
+                      <button onClick={()=>{setEditId(r.id);setEditContent(JSON.parse(JSON.stringify(r.content || {})));setEditNotes(r.notes||'');}} className={btnSecondary}>Edit report inline</button>
+                      <button onClick={()=>window.location.href='/pm/api/reports/'+r.id+'/docx'} className={btnSecondary}>Export DOCX</button>
+                    </div>
+                    {editId===r.id && <div className="mx-4 mt-3 rounded-lg border border-indigo-200 bg-white p-3">
+                      {r.content?.kind === 'pack' ? <>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-semibold text-slate-800">Edit directly in the report</p><p className="text-xs text-slate-500">Click any heading, sentence, table cell or report detail and type. The report layout stays in place.</p></div><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">Inline editing</span></div>
+                        <div ref={editReportRef} contentEditable suppressContentEditableWarning spellCheck className="rounded-lg border border-slate-200 p-4 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100">
+                          {isReportHtml(r.body) ? <div dangerouslySetInnerHTML={{__html:safeReportHtml(r.body || '')}} /> : <PackReportView report={r}/>}
+                        </div>
+                      </> : <>
+                        <p className="mb-2 text-xs text-slate-500">Edit the daily or weekly report structure. Source records are not changed.</p>
+                        <StructuredEditor label="Report content" value={editContent} onChange={setEditContent}/>
+                        <label className="mt-3 block text-xs font-medium">Notes<textarea rows={3} value={editNotes} onChange={e=>setEditNotes(e.target.value)} className={inputCls+' mt-1 w-full'}/></label>
+                      </>}
+                      <div className="mt-3 flex gap-2">
+                        <button disabled={editSaving} onClick={async()=>{try{setEditSaving(true);const body=r.content?.kind==='pack' ? (editReportRef.current?.innerHTML || '') : undefined;const res=await pmApi.updateReport(r.id,editContent || r.content, r.content?.kind==='pack' ? r.notes : editNotes, body);setReports(prev=>sorted(prev.map(x=>x.id===r.id?res.data.report:x)));setEditId(null);}catch(e:any){setListError(errorText(e,'Unable to save report edit. Please try again.'));}finally{setEditSaving(false);}}} className={btnPrimary}>{editSaving?'Saving…':'Save report'}</button>
+                        <button onClick={()=>setEditId(null)} className={btnSecondary}>Cancel</button>
+                      </div>
+                    </div>}
+
+                    {editId!==r.id && <ReportBody report={r} copied={copied?.id === r.id ? copied.part : null} onCopy={(part) => copy(r, part)} onDelete={() => remove(r)} />}
+                  </>}
                 </div>
               );
             })}
