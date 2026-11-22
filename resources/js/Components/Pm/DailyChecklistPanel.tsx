@@ -223,7 +223,7 @@ export default function DailyChecklistPanel({
       title: 'Review QA fixes and retest important work',
       doneWhen: 'Ready fixes have been retested; failed or waiting fixes have a clear retest owner and next step.',
       count: awaitingQa + failedQa, unit: `${awaitingQa} awaiting · ${failedQa} failed`,
-      unknown: qa === null && !qaError,
+      unknown: qa === null,
       go: { page: 'qa', label: 'Open QA Center' },
     },
     {
