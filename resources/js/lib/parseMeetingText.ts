@@ -1,13 +1,14 @@
-import type { Employee, MeetingWorkItem, MeetingWorkItemAction } from '../types/pm';
+import type { ActionItem, Employee, MeetingWorkItem, MeetingWorkItemAction, MinutesTopic } from '../types/pm';
 import { findDueDate, matchEmployee } from './meetingNotes';
 
 /**
  * Turns a pasted block like
  *
- *   MEETING / Title: / Date: / Attendees: / WORK ITEM 1 / Owner: / Project: /
- *   Requirement: / Discussion: / Action Items: / Due Date:
+ *   MEETING / Title: / Date: / Attendees:
+ *   AGENDA / DISCUSSION / (DECISIONS) / FOLLOW-UPS
+ *   WORK ITEM 1 / Owner: / Project: / Requirement: / Discussion: / Action Items: / Due Date:   (optional Taskmandu tasks)
  *
- * into the wizard's fields. It is forgiving on purpose: labels in any order and case, markdown
+ * into the wizard's fields. Every section is optional — a meeting with no tasks is normal. It is forgiving on purpose: labels in any order and case, markdown
  * (**bold**, # headings, * bullets), ──── rules, and text that sits under no label (folded into
  * Discussion). No AI involved — the same text always gives the same result.
  */
@@ -26,6 +27,10 @@ export interface PastedMeeting {
   /** YYYY-MM-DD or null when the notes had no readable date. */
   date: string | null;
   attendees: string[];
+  /** Agenda titles with their discussion notes (and decision, when one was written). */
+  topics: MinutesTopic[];
+  followUps: ActionItem[];
+  /** Optional Taskmandu tasks (WORK ITEM blocks). */
   workItems: MeetingWorkItem[];
   /** One entry per work item, same order. */
   owners: OwnerResult[];
@@ -231,16 +236,142 @@ function actionItems(lines: string[], now: Date): MeetingWorkItemAction[] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Agenda / Discussion / Follow-ups                                     */
+/* ------------------------------------------------------------------ */
+
+const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const bulletText = (lines: string[]) => lines.map((l) => l.trim()).filter(Boolean).map((l) => real(stripBullet(l))).filter(Boolean);
+
+/** Agenda titles, plus the discussion under each. A heading is an agenda title (numbered or not, with or without ": notes"),
+ *  or an unindented "3. Something" line. Text before any heading becomes a "Discussion" topic. */
+function buildTopics(agenda: string[], discussion: string[], decisions: string[]): MinutesTopic[] {
+  const topics: MinutesTopic[] = bulletText(agenda).map((title) => ({ title: title.slice(0, 200), notes: '', decision: '' }));
+  const find = (t: string) => topics.find((x) => normKey(x.title) === normKey(t));
+  const loose: string[] = [];
+  let cur: MinutesTopic | null = null;
+  const add = (topic: MinutesTopic | null, text: string) => {
+    if (!text) return;
+    if (topic) topic.notes = topic.notes ? `${topic.notes}\n${text}` : text;
+    else loose.push(text);
+  };
+
+  for (const raw of discussion) {
+    const line = clean(raw).trim();
+    if (!line || RULE.test(line) || PLACEHOLDER.test(line)) continue;
+
+    const dec = line.match(/^decisions?\s*[:：]\s*(.+)$/i);
+    if (dec && cur) { cur.decision = cur.decision ? `${cur.decision}; ${dec[1].trim()}` : dec[1].trim(); continue; }
+
+    const plain = stripBullet(line);
+    let hit = find(plain.replace(/[:：]\s*$/, ''));
+    let rest = '';
+    if (!hit) {
+      const m = plain.match(/^(.{2,120}?)\s*[:：]\s+(.+)$/);
+      if (m && find(m[1])) { hit = find(m[1]); rest = m[2].trim(); }
+    }
+    if (!hit && /^\d+[.)]\s+/.test(raw.trim()) && !/^\s/.test(raw) && plain.length <= 120) {
+      hit = { title: plain, notes: '', decision: '' };
+      topics.push(hit);
+    }
+    if (hit) { cur = hit; add(cur, rest); continue; }
+    add(cur, BULLET.test(line) ? `- ${stripBullet(line)}` : line);
+  }
+  if (loose.length) topics.unshift({ title: 'Discussion', notes: loose.join('\n').slice(0, 8000), decision: '' });
+
+  const decs = bulletText(decisions);
+  if (decs.length) topics.push({ title: 'Decisions', notes: '', decision: decs.join('; ') });
+  return topics.map((t) => ({ ...t, notes: t.notes.slice(0, 8000) }));
+}
+
+/** "Ashim — fix login (due 14 Oct 2026)", "fix login — Ashim", "Ashim: fix login", "fix login (Ashim)", "@Ashim fix login [done]". */
+function followUpFrom(text: string, employees: Employee[], now: Date): ActionItem | null {
+  let t = text.trim();
+  let done = false;
+  t = t.replace(/\s*[[(]\s*done\s*[\])]\s*$/i, () => { done = true; return ''; });
+
+  let due: string | null = null;
+  const dm = t.match(/\(?\s*\bdue(?:\s+(?:on|by))?\s+([^()]+?)\s*\)?\s*$/i);
+  if (dm) {
+    const d = parseDate(dm[1], now);
+    if (d) { due = d; t = t.slice(0, dm.index).replace(/[\s,;:\-–—]+$/, '').trim(); }
+  }
+
+  const who = (name: string): string | null => {
+    const n = name.replace(/^@/, '').replace(HONORIFICS, ' ').replace(/\s+/g, ' ').trim();
+    if (!n || n.length > 40) return null;
+    const r = matchOne(n, employees);
+    return r.e && r.e !== 'ambiguous' ? r.e.name : null;
+  };
+
+  let owner = '';
+  let task = t;
+  const colon = t.match(/^@?([^:：]{1,40}?)\s*[:：]\s+(.+)$/);
+  const parts = t.split(/\s+[—–-]\s+/);
+  const paren = t.match(/^(.*\S)\s*\(([^()]{2,40})\)\s*$/);
+  const at = t.match(/^@(\S+)\s+(.+)$/);
+  if (colon && who(colon[1])) { owner = who(colon[1])!; task = colon[2]; }
+  else if (at && who(at[1])) { owner = who(at[1])!; task = at[2]; }
+  else if (parts.length > 1 && who(parts[0])) { owner = who(parts[0])!; task = parts.slice(1).join(' — '); }
+  else if (parts.length > 1 && who(parts[parts.length - 1])) { owner = who(parts[parts.length - 1])!; task = parts.slice(0, -1).join(' — '); }
+  else if (paren && who(paren[2])) { owner = who(paren[2])!; task = paren[1]; }
+
+  task = task.replace(/[\s,;:\-–—]+$/, '').trim().slice(0, 300);
+  return task ? { task, owner, due_date: due, done } : null;
+}
+
+function followUps(lines: string[], employees: Employee[], now: Date): ActionItem[] {
+  const rows = lines.map((l) => l.trim()).filter((l) => l && !RULE.test(l));
+  const hasBullets = rows.some((l) => BULLET.test(l));
+  const joined: string[] = [];
+  rows.forEach((l) => {
+    if (!hasBullets || BULLET.test(l) || !joined.length) joined.push(stripBullet(l));
+    else joined[joined.length - 1] += ` ${l}`;
+  });
+  return joined.map(real).filter(Boolean).map((t) => followUpFrom(t, employees, now)).filter((x): x is ActionItem => !!x);
+}
+
+/* ------------------------------------------------------------------ */
 /* Main                                                                 */
 /* ------------------------------------------------------------------ */
 
+type Mode = 'head' | 'agenda' | 'discussion' | 'decisions' | 'followups' | 'work';
+
+/** Top-level headings. Inside a WORK ITEM only the follow-ups / tasks headings count, because "Discussion:" and "Action Items:" are that item's own labels. */
+const SECTION = /^(?:#+\s*)?(agenda|discussion|decisions?|follow[\s-]*ups?|action\s*items?)\s*[:：]?\s*$/i;
+const FOLLOW_ONLY = /^(?:#+\s*)?follow[\s-]*ups?\s*[:：]?\s*$/i;
+const TASKS_HEADING = /^(?:#+\s*)?(?:tasks?\s*\(taskmandu\)|taskmandu\s*tasks?|tasks|work\s*items)\s*[:：]?\s*$/i;
+const MEETING_HEADING = /^(?:meeting(?:\s*minutes)?)\s*[:：]?$/i;
+
 export function parseMeetingText(text: string, employees: Employee[], now: Date = new Date()): PastedMeeting {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  const starts = lines.map((l, i) => (WORK_ITEM.test(clean(l)) ? i : -1)).filter((i) => i >= 0);
   const notes: string[] = [];
 
-  const head = sections(starts.length ? lines.slice(0, starts[0]) : lines, ['title', 'date', 'attendees']);
-  const title = firstLine(head.fields.title);
+  const buckets: Record<Exclude<Mode, 'work'>, string[]> = { head: [], agenda: [], discussion: [], decisions: [], followups: [] };
+  const blocks: string[][] = [];
+  let mode: Mode = 'head';
+
+  for (const raw of lines) {
+    const line = clean(raw).trim();
+    if (WORK_ITEM.test(clean(raw))) { mode = 'work'; blocks.push([]); continue; }
+    if (mode === 'work') {
+      if (FOLLOW_ONLY.test(line)) { mode = 'followups'; continue; }
+      if (TASKS_HEADING.test(line)) continue;
+      blocks[blocks.length - 1].push(raw);
+      continue;
+    }
+    if (TASKS_HEADING.test(line)) continue;
+    const sec = line.match(SECTION);
+    if (sec) {
+      const k = sec[1].toLowerCase();
+      mode = k.startsWith('agenda') ? 'agenda' : k.startsWith('discussion') ? 'discussion' : k.startsWith('decision') ? 'decisions' : 'followups';
+      continue;
+    }
+    buckets[mode].push(raw);
+  }
+
+  const head = sections(buckets.head.filter((l) => !MEETING_HEADING.test(clean(l).trim())), ['title', 'date', 'attendees']);
+  // The standard layout prints the title on its own line under "MEETING MINUTES".
+  const title = firstLine(head.fields.title) || real(head.preamble.find((l) => l.trim()) ?? '');
   const dateText = firstLine(head.fields.date);
   const date = dateText ? parseDate(dateText, now) : null;
   if (dateText && !date) notes.push(`Couldn't read the date “${dateText}” — set it in Basics.`);
@@ -255,13 +386,13 @@ export function parseMeetingText(text: string, employees: Employee[], now: Date 
     )
   );
 
-  if (!starts.length) notes.push('No “WORK ITEM 1 / 2 …” headings found, so no work items were created. Add them and paste again.');
+  const topics = buildTopics(buckets.agenda, buckets.discussion, buckets.decisions);
+  const followUpItems = followUps(buckets.followups, employees, now);
 
   const workItems: MeetingWorkItem[] = [];
   const owners: OwnerResult[] = [];
 
-  starts.forEach((start, n) => {
-    const block = lines.slice(start + 1, starts[n + 1] ?? lines.length);
+  blocks.forEach((block, n) => {
     const s = sections(block, ['owner', 'project', 'requirement', 'discussion', 'actions', 'due']);
 
     // Text under no label is the discussion (that's where it was meant to live).
@@ -274,7 +405,7 @@ export function parseMeetingText(text: string, employees: Employee[], now: Date 
     const ownerText = firstLine(s.fields.owner);
     const dueText = firstLine(s.fields.due);
     const due = dueText ? parseDate(dueText, now) : null;
-    if (dueText && !due) notes.push(`Work Item ${n + 1}: couldn't read the due date “${dueText}”.`);
+    if (dueText && !due) notes.push(`Task ${n + 1}: couldn't read the due date “${dueText}”.`);
 
     const o = resolveOwner(ownerText, employees);
     owners.push(o);
@@ -289,5 +420,9 @@ export function parseMeetingText(text: string, employees: Employee[], now: Date 
     });
   });
 
-  return { title, date, attendees, workItems, owners, notes };
+  if (!topics.length && !followUpItems.length && !workItems.length) {
+    notes.push('Nothing to import. Use AGENDA, DISCUSSION and FOLLOW-UPS headings (and WORK ITEM 1 … only for things that should become Taskmandu tasks).');
+  }
+
+  return { title, date, attendees, topics, followUps: followUpItems, workItems, owners, notes };
 }

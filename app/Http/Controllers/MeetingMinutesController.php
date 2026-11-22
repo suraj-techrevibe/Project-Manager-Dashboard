@@ -118,10 +118,39 @@ class MeetingMinutesController extends Controller
             'work_items.*.action_items' => 'nullable|array|max:50',
             'work_items.*.action_items.*.task' => 'required_with:work_items.*.action_items|string|max:300',
             'work_items.*.action_items.*.due_date' => 'nullable|date_format:Y-m-d',
-            'topics' => 'nullable|array', 'agenda_items' => 'nullable|array',
-            'discussion' => 'nullable|string|max:8000', 'decisions' => 'nullable|array',
-            'action_items' => 'nullable|array', 'raw_notes' => 'nullable|string|max:8000',
+            // Agenda + discussion: one topic per agenda item.
+            'topics' => 'nullable|array|max:100',
+            'topics.*.title' => 'nullable|string|max:200',
+            'topics.*.notes' => 'nullable|string|max:8000',
+            'topics.*.decision' => 'nullable|string|max:1000',
+            'agenda_items' => 'nullable|array', 'agenda_items.*' => 'nullable|string|max:200',
+            'discussion' => 'nullable|string|max:20000', 'decisions' => 'nullable|array', 'decisions.*' => 'nullable|string|max:1000',
+            // Follow-ups. `done` is ticked from the saved meeting; `from` names the meeting a follow-up was carried over from.
+            'action_items' => 'nullable|array|max:200',
+            'action_items.*.task' => 'required|string|max:300',
+            'action_items.*.owner' => 'nullable|string|max:100',
+            'action_items.*.due_date' => 'nullable|date_format:Y-m-d',
+            'action_items.*.done' => 'nullable|boolean',
+            'action_items.*.from' => 'nullable|string|max:200',
+            'raw_notes' => 'nullable|string|max:8000',
         ]);
+
+        if (isset($data['action_items'])) {
+            $data['action_items'] = collect($data['action_items'])->map(fn ($a) => [
+                'task' => (string) $a['task'],
+                'owner' => (string) ($a['owner'] ?? ''),
+                'due_date' => $a['due_date'] ?? null,
+                'done' => (bool) ($a['done'] ?? false),
+                'from' => $a['from'] ?? null,
+            ])->values()->all();
+        }
+        if (isset($data['topics'])) {
+            $data['topics'] = collect($data['topics'])->map(fn ($t) => [
+                'title' => (string) ($t['title'] ?? ''),
+                'notes' => (string) ($t['notes'] ?? ''),
+                'decision' => (string) ($t['decision'] ?? ''),
+            ])->values()->all();
+        }
 
         // Blank fields arrive as null (Laravel turns '' into null); store them as '' so the UI never has to guess.
         if (isset($data['work_items'])) {

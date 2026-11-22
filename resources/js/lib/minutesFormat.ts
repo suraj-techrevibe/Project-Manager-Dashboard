@@ -151,6 +151,73 @@ export function minutesWarnings(m: TextInput): string[] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Standard minutes: Agenda → Discussion → Follow-ups (+ optional tasks) */
+/* ------------------------------------------------------------------ */
+
+interface StandardTextInput {
+  title: string;
+  meeting_date: string;
+  attendees: string[];
+  topics: MinutesTopic[];
+  follow_ups: ActionItem[];
+  work_items: MeetingWorkItem[];
+}
+
+const followUpLine = (a: ActionItem) =>
+  `${a.task.trim()}${a.owner?.trim() ? ` — ${a.owner.trim()}` : ''}${a.due_date ? ` (due ${shortDate(a.due_date)})` : ''}${a.done ? ' [done]' : ''}`;
+
+/** The standard layout the boss reads: header, AGENDA, DISCUSSION, FOLLOW-UPS. Tasks only appear when there are some. */
+export function meetingToText(m: StandardTextInput): string {
+  const f = deriveFields(m.topics, m.follow_ups);
+  const L: string[] = ['MEETING MINUTES', m.title.trim() || '(untitled)', `Date: ${m.meeting_date ? longDate(m.meeting_date) : '(no date)'}`];
+  if (m.attendees.length) L.push(`Attendees: ${m.attendees.join(', ')}`);
+
+  L.push('', 'AGENDA');
+  if (f.topics.length) f.topics.forEach((t, i) => L.push(`${i + 1}. ${t.title}`));
+  else L.push('(none)');
+
+  L.push('', 'DISCUSSION');
+  const talked = f.topics.map((t, i) => ({ t, i })).filter(({ t }) => t.notes.trim() || t.decision.trim());
+  if (talked.length) {
+    talked.forEach(({ t, i }) => {
+      L.push(`${i + 1}. ${t.title}`);
+      t.notes.trim().split('\n').filter((line) => line.trim()).forEach((line) => L.push(`   ${line.trim()}`));
+      if (t.decision.trim()) L.push(`   Decision: ${t.decision.trim()}`);
+    });
+  } else L.push('(none)');
+
+  L.push('', 'FOLLOW-UPS');
+  if (f.action_items.length) f.action_items.forEach((a, i) => L.push(`${i + 1}. ${followUpLine(a)}`));
+  else L.push('(none)');
+
+  const tasks = m.work_items.filter(workItemHasContent);
+  if (tasks.length) {
+    L.push('', 'TASKS (TASKMANDU)');
+    tasks.forEach((w, i) => {
+      L.push('', `WORK ITEM ${i + 1}`, `Owner: ${w.owner.trim() || '(unassigned)'}`, `Project: ${w.project.trim() || '(not set)'}`, `Requirement: ${w.requirement.trim() || '(not set)'}`);
+      if (w.discussion.trim()) L.push('Discussion:', ...w.discussion.trim().split('\n').map((line) => `  ${line.trim()}`));
+      const acts = w.action_items.filter((a) => a.task.trim());
+      if (acts.length) L.push('Action Items:', ...acts.map((a) => `- ${a.task.trim()}${a.due_date ? ` (due ${shortDate(a.due_date)})` : ''}`));
+      L.push(`Due Date: ${w.due_date ? shortDate(w.due_date) : 'Not set'}`);
+    });
+  }
+  return L.join('\n');
+}
+
+/** Non-blocking nudges for the Review step. A meeting with no tasks is normal, so tasks are only checked when they exist. */
+export function meetingWarnings(m: { attendees: string[]; topics: MinutesTopic[]; follow_ups: ActionItem[]; work_items: MeetingWorkItem[] }, now: Date = new Date()): string[] {
+  const w: string[] = [];
+  const f = deriveFields(m.topics, m.follow_ups);
+  if (m.attendees.length === 0) w.push('No attendees added.');
+  if (f.topics.length === 0) w.push('No agenda items added.');
+  const open = f.action_items.filter((a) => !a.done);
+  if (open.some((a) => !a.owner?.trim())) w.push(`${open.filter((a) => !a.owner?.trim()).length} follow-up(s) have no owner.`);
+  if (open.some((a) => !a.due_date)) w.push(`${open.filter((a) => !a.due_date).length} follow-up(s) have no due date.`);
+  if (m.work_items.some(workItemHasContent)) w.push(...workItemWarnings(m.work_items, m.attendees, now).filter((x) => x !== 'No attendees added.'));
+  return w;
+}
+
+/* ------------------------------------------------------------------ */
 /* Work Item minutes (the structure "From saved meeting" reads)        */
 /* ------------------------------------------------------------------ */
 

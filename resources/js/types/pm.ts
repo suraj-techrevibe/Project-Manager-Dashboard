@@ -78,7 +78,8 @@ export interface NewTaskInput { title:string; description?:string; assignedToId?
 export interface NewSubTaskInput { title:string; assignedToId?:string[]; assignedByName?:string; status?:TaskStatus; completedAt?:string|null; }
 export interface VariableInput { key:string; value?:string; isSecret?:boolean; type?:VariableType; description?:string; }
 export interface PullRequest { number:number; title:string; author:string|null; branch:string; base:string; draft:boolean; mergeable_state:string|null; checks_state:'success'|'failure'|'pending'|'unknown'; review_comments:number; updated_at:string; url:string; }
-export interface ActionItem { task:string; owner:string; due_date:string|null; }
+/** A follow-up. Stored in the minutes' action_items column. `done` is ticked in the detail view; `from` names the meeting it was carried over from. */
+export interface ActionItem { task:string; owner:string; due_date:string|null; done?:boolean; from?:string|null; }
 export interface MeetingWorkItemAction { task:string; due_date:string|null; }
 export interface MeetingWorkItem { owner:string; project:string; /** Set when the work item is saved as final: the Taskmandu project it points to. */ project_id?:string|null; requirement:string; discussion:string; action_items:MeetingWorkItemAction[]; due_date:string|null; /** Why a carried-over item is here. Shown in the editor only; never saved. */ note?:string; }
 export type MinutesStatus='draft'|'final';
