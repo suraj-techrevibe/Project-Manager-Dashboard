@@ -5,6 +5,7 @@ import ScrollToTop from '@/Components/ScrollToTop';
 import AssistantBubble from '@/Components/Pm/AssistantBubble';
 import { Icon } from '@/Components/Pm/ui/kit';
 import { PM_PAGES, visitPm, type PmPage } from '@/lib/pmNav';
+import { setOpen as setAssistantOpen, useAssistant } from '@/lib/assistantStore';
 
 /** Sidebar icons + the one-line description shown under each page title. */
 export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
@@ -71,24 +72,34 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-/** Global bottom bar: Action List · Capture (raised, centre) · Checklist. Sits over the content area, clear of the sidebar. */
-function Dock({ active, onOpen, onCapture }: { active: DockSheet | null; onOpen: (k: DockSheet) => void; onCapture: () => void }) {
-  const side = (k: DockSheet, icon: string, label: string) => (
-    <button type="button" onClick={() => onOpen(k)} aria-pressed={active === k} className={`flex w-20 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[11px] font-medium transition sm:w-24 ${active === k ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}>
-      <Icon name={icon} className="h-5 w-5" />{label}
-    </button>
-  );
+/** Full-width bottom bar: Search · Action list · Capture (raised, centre) · Checklist · Assistant. Sits beside the sidebar on desktop. */
+function Dock({ active, onOpen, onCapture, onSearch }: { active: DockSheet | null; onOpen: (k: DockSheet) => void; onCapture: () => void; onSearch: () => void }) {
+  const { open: aiOpen, unread, pending } = useAssistant();
+  const badge = pending > 0 ? pending : unread;
+  const slot = (on: boolean) => `relative flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-medium transition ${on ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:left-64">
-      <nav aria-label="Quick actions" className="pointer-events-auto flex items-end gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 shadow-xl backdrop-blur">
-        {side('action-list', 'clipboard-list', 'Action list')}
-        <button type="button" onClick={onCapture} aria-label="Capture" className="-mt-6 flex w-20 flex-col items-center gap-0.5 text-[11px] font-semibold text-indigo-700 sm:w-24">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg ring-4 ring-white transition hover:bg-indigo-700"><Icon name="plus" className="h-7 w-7" /></span>
-          Capture
+    <nav aria-label="Quick actions" className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-4px_16px_rgba(15,23,42,0.06)] backdrop-blur lg:left-64">
+      <div className="grid grid-cols-5 items-end">
+        <button type="button" onClick={onSearch} aria-label="Search" title="Search (Ctrl K)" className={slot(false)}>
+          <Icon name="search" className="h-5 w-5" />Search
         </button>
-        {side('checklist', 'check-square', 'Checklist')}
-      </nav>
-    </div>
+        <button type="button" onClick={() => onOpen('action-list')} aria-pressed={active === 'action-list'} className={slot(active === 'action-list')}>
+          <Icon name="clipboard-list" className="h-5 w-5" />Action list
+        </button>
+        <button type="button" onClick={onCapture} aria-label="Capture" className="-mt-6 flex flex-col items-center gap-0.5 text-[11px] font-semibold text-indigo-700">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg ring-4 ring-white transition hover:bg-indigo-700"><Icon name="plus" className="h-7 w-7" /></span>
+          <span className="pb-1">Capture</span>
+        </button>
+        <button type="button" onClick={() => onOpen('checklist')} aria-pressed={active === 'checklist'} className={slot(active === 'checklist')}>
+          <Icon name="check-square" className="h-5 w-5" />Checklist
+        </button>
+        <button type="button" onClick={() => setAssistantOpen(!aiOpen)} aria-pressed={aiOpen} aria-label={badge > 0 ? `PM assistant, ${badge} waiting` : 'PM assistant'} title="PM assistant (Ctrl+/)" className={slot(aiOpen)}>
+          <span className="relative"><Icon name="spark" className="h-5 w-5" />
+            {badge > 0 && <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">{badge > 9 ? '9+' : badge}</span>}
+          </span>Assistant
+        </button>
+      </div>
+    </nav>
   );
 }
 
@@ -260,16 +271,6 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
               </select>
             </label>
           )}
-          <button
-            type="button"
-            onClick={onOpenSearch}
-            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-500 transition hover:border-slate-300 hover:bg-white sm:w-64 md:w-72"
-            aria-label="Search"
-          >
-            <Icon name="search" className="h-4 w-4 shrink-0" />
-            <span className="hidden flex-1 truncate text-left sm:block">Search or ask the assistant…</span>
-            <kbd className="hidden rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-500 md:inline">Ctrl K</kbd>
-          </button>
         </header>
 
         <main className="mx-auto w-full max-w-[1400px] px-3 pb-32 pt-4 sm:px-6 sm:pb-32 sm:pt-6">{children}</main>
@@ -286,7 +287,7 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
           <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setCaptureOpen(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">Cancel</button><button disabled={captureSaving || !captureTitle.trim()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{captureSaving ? 'Saving…' : 'Save capture'}</button></div>
         </form>
       </div>}
-      <Dock active={sheet} onOpen={(k) => setSheet((cur) => (cur === k ? null : k))} onCapture={() => { setSheet(null); setCaptureOpen(true); }} />
+      <Dock onSearch={onOpenSearch} active={sheet} onOpen={(k) => setSheet((cur) => (cur === k ? null : k))} onCapture={() => { setSheet(null); setCaptureOpen(true); }} />
       {sheet && renderSheet && <Sheet title={SHEET_TITLE[sheet]} onClose={closeSheet}>{renderSheet(sheet, closeSheet)}</Sheet>}
       <ScrollToTop raised />
       <AssistantBubble />

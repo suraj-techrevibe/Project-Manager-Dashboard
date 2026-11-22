@@ -4,8 +4,8 @@ import { Icon } from '@/Components/Pm/ui/kit';
 import { clearChat, loadStatus, setOpen, useAssistant } from '@/lib/assistantStore';
 
 /**
- * The assistant, always one click away: a round button bottom-right on every PM page that opens a
- * chat window and minimises back to the button.
+ * The assistant, always one click away: its button lives in the bottom dock (bottom-right) on every PM page and opens
+ * this chat window above it.
  * Ctrl/Cmd + / toggles it; Esc minimises.
  */
 export default function AssistantBubble() {
@@ -39,7 +39,7 @@ export default function AssistantBubble() {
           role="dialog"
           aria-label="PM assistant"
           onKeyDown={onPanelKey}
-          className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-3 z-40 flex h-[min(640px,calc(100dvh-5rem))] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:right-6 sm:w-[400px]"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-40 flex h-[min(640px,calc(100dvh-9rem))] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:right-6 sm:w-[400px]"
         >
           <header className="flex items-center gap-2.5 border-b border-slate-100 bg-white px-3 py-2.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100">
@@ -70,23 +70,6 @@ export default function AssistantBubble() {
         </div>
       )}
 
-      {!open && (
-        <button
-          type="button"
-          aria-label={badge > 0 ? `Open PM assistant, ${badge} waiting` : 'Open PM assistant'}
-          title="PM assistant (Ctrl+/)"
-          onClick={() => setOpen(true)}
-          className="fixed bottom-[max(6rem,calc(env(safe-area-inset-bottom)+5.5rem))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl ring-4 ring-white transition hover:scale-105 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-indigo-300 sm:right-6"
-        >
-          <Icon name="spark" className="h-6 w-6" />
-          {busy && <span className="absolute inset-0 animate-ping rounded-full bg-indigo-400/40" aria-hidden />}
-          {badge > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white">
-              {badge > 9 ? '9+' : badge}
-            </span>
-          )}
-        </button>
-      )}
     </>
   );
 }

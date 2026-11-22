@@ -18,7 +18,7 @@ export default function ScrollToTop({ raised = false }: { raised?: boolean }) {
             title="Scroll to top"
             tabIndex={show ? 0 : -1}
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className={`fixed ${raised ? 'bottom-[max(10.5rem,calc(env(safe-area-inset-bottom)+10rem))]' : 'bottom-[max(1.25rem,env(safe-area-inset-bottom))]'} right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg transition duration-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-indigo-500 sm:right-6 ${
+            className={`fixed ${raised ? 'bottom-[max(6rem,calc(env(safe-area-inset-bottom)+5.5rem))]' : 'bottom-[max(1.25rem,env(safe-area-inset-bottom))]'} right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg transition duration-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-indigo-500 sm:right-6 ${
                 show ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
             }`}
         >
