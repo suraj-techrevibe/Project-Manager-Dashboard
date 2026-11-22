@@ -30,6 +30,14 @@ return [
 
     'disks' => [
 
+                'qa-evidence' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/qa-evidence'),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
