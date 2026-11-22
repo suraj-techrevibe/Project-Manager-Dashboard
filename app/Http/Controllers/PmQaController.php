@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PmQaIssue;
+use App\Models\PmQaEvidence;
 use App\Models\PmQaReport;
 use Illuminate\Support\Str;
 use App\Models\PmBusiness;
@@ -15,6 +16,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use App\Services\Pm\PmQaDocxExportService;
 
 class PmQaController extends Controller
 {
@@ -27,7 +30,7 @@ class PmQaController extends Controller
         $subtasks = PmSubtask::query()->orderBy('title')->get(['project_id', 'task_id', 'subtask_id', 'title']);
 
         return response()->json([
-            'issues' => PmQaIssue::where('created_by', $request->user()->id)->latest()->limit(300)->get(),
+            'issues' => PmQaIssue::where('created_by', $request->user()->id)->with('evidenceFiles')->latest()->limit(300)->get(),
             'filters' => [
                 'businesses' => PmBusiness::query()->orderBy('name')->pluck('name'),
                 'projects' => $projects->map(fn ($p) => ['id' => $p->project_id, 'name' => $p->project_name])->values(),
@@ -107,12 +110,13 @@ class PmQaController extends Controller
             'page_url'=>'nullable|string|max:500',
             'title'=>'required|string|max:200','description'=>'nullable|string|max:5000',
             'expected_behaviour'=>'nullable|string|max:5000','developer_notes'=>'nullable|string|max:5000',
-            'severity'=>['required',Rule::in(['Critical','High','Medium','Low'])],
+            'severity'=>['required',Rule::in(['Critical','High','Medium','Low','Enhancement'])],
             'status'=>['required',Rule::in(['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'])],
             'assignee'=>'nullable|string|max:160','evidence_url'=>'nullable|string|max:1000','pm_task_url'=>'nullable|url|max:1000','retest_notes'=>'nullable|string|max:5000',
         ]);
         $data['created_by']=$request->user()->id;
-        return response()->json(['issue'=>PmQaIssue::create($data)],201);
+        $issue = PmQaIssue::create($data);
+        return response()->json(['issue' => $issue->load('evidenceFiles')], 201);
     }
     public function update(Request $request, PmQaIssue $issue): JsonResponse {
         abort_unless($issue->created_by === $request->user()->id, 404);
@@ -128,7 +132,7 @@ class PmQaController extends Controller
             'assignee'=>'nullable|string|max:160','evidence_url'=>'nullable|string|max:1000','pm_task_url'=>'nullable|url|max:1000','retest_notes'=>'nullable|string|max:5000',
         ]);
         $issue->update($data);
-        return response()->json(['issue'=>$issue->fresh()]);
+        return response()->json(['issue' => $issue->fresh('evidenceFiles')]);
     }
     public function destroy(Request $request, PmQaIssue $issue): JsonResponse {
         abort_unless($issue->created_by === $request->user()->id, 404);
@@ -136,6 +140,95 @@ class PmQaController extends Controller
         return response()->json(['deleted'=>true]);
     }
 
+
+
+    /** Upload up to five private screenshots per QA finding. */
+    public function storeEvidence(Request $request, PmQaIssue $issue): JsonResponse
+    {
+        abort_unless($issue->created_by === $request->user()->id, 404);
+        $data = $request->validate([
+            'files' => 'required|array|max:5',
+            'files.*' => 'required|image|mimes:jpg,jpeg,png|max:5120',
+        ]);
+        $remaining = max(0, 5 - $issue->evidenceFiles()->count());
+        if (count($data['files']) > $remaining) {
+            return response()->json(['message' => 'A finding can have up to five screenshots. Remove the extra files and try again.'], 422);
+        }
+
+        $paths = [];
+        try {
+            DB::transaction(function () use ($request, $issue, $data, &$paths) {
+                foreach ($data['files'] as $file) {
+                    $path = $file->store('qa-evidence/' . $request->user()->id . '/' . $issue->id, 'qa-evidence');
+                    if (!$path) throw new \RuntimeException('The evidence file could not be stored.');
+                    $paths[] = $path;
+                    $original = basename($file->getClientOriginalName());
+                    $original = preg_replace('/[\x00-\x1F\x7F]/', '', $original);
+                    PmQaEvidence::create([
+                        'issue_id' => $issue->id, 'created_by' => $request->user()->id,
+                        'disk' => 'qa-evidence', 'path' => $path,
+                        'original_name' => mb_substr($original ?: 'screenshot', 0, 255),
+                        'mime_type' => $file->getMimeType(), 'size' => $file->getSize(),
+                    ]);
+                }
+            });
+        } catch (\Throwable $exception) {
+            foreach ($paths as $path) Storage::disk('qa-evidence')->delete($path);
+            throw $exception;
+        }
+
+        return response()->json(['evidence_files' => $issue->fresh('evidenceFiles')->evidenceFiles->map(fn (PmQaEvidence $file) => $this->evidenceMetadata($file))->values()], 201);
+    }
+
+    /** Private preview for a currently linked finding. */
+    public function showEvidence(Request $request, PmQaEvidence $evidence)
+    {
+        abort_unless($evidence->created_by === $request->user()->id && $evidence->issue_id, 404);
+        abort_unless($evidence->issue?->created_by === $request->user()->id, 404);
+        return $this->privateEvidenceResponse($evidence);
+    }
+
+    /** Private preview for evidence frozen into a saved report snapshot. */
+    public function showReportEvidence(Request $request, PmQaReport $report, PmQaEvidence $evidence)
+    {
+        abort_unless($report->created_by === $request->user()->id, 404);
+        $snapshotContains = collect($report->findings ?? [])->contains(function ($finding) use ($evidence) {
+            return collect($finding['evidence_files'] ?? [])->contains(fn ($file) => (int) ($file['id'] ?? 0) === (int) $evidence->id);
+        });
+        abort_unless($snapshotContains && $evidence->created_by === $request->user()->id, 404);
+        return $this->privateEvidenceResponse($evidence);
+    }
+
+    public function exportDocx(Request $request, PmQaReport $report, PmQaDocxExportService $exporter)
+    {
+        abort_unless($report->created_by === $request->user()->id, 404);
+        return $exporter->export($report);
+    }
+
+    private function privateEvidenceResponse(PmQaEvidence $evidence)
+    {
+        $disk = Storage::disk($evidence->disk);
+        abort_unless($disk->exists($evidence->path), 404);
+        return response()->file($disk->path($evidence->path), [
+            'Content-Type' => $evidence->mime_type,
+            'Content-Disposition' => 'inline; filename="' . str_replace('"', '', $evidence->original_name) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    private function evidenceMetadata(PmQaEvidence $evidence): array
+    {
+        return ['id' => $evidence->id, 'original_name' => $evidence->original_name, 'mime_type' => $evidence->mime_type, 'size' => $evidence->size, 'created_at' => $evidence->created_at];
+    }
+
+    private function snapshotFinding(PmQaIssue $issue): array
+    {
+        $issue->loadMissing('evidenceFiles');
+        $snapshot = $issue->toArray();
+        $snapshot['evidence_files'] = $issue->evidenceFiles->map(fn (PmQaEvidence $file) => $this->evidenceMetadata($file))->values()->all();
+        return $snapshot;
+    }
 
     /** Turn free-form inspection notes into editable QA finding drafts. Nothing is persisted here. */
     public function draftQuickCapture(Request $request): JsonResponse
@@ -179,7 +272,7 @@ QA_PROMPT;
         if (!is_array($out)) {
             throw new \RuntimeException("The AI provider returned an invalid draft. Please try again.");
         }
-        $allowedSeverity = ['Critical', 'High', 'Medium', 'Low'];
+        $allowedSeverity = ['Critical', 'High', 'Medium', 'Low', 'Enhancement'];
         $allowedTypes = ['Bug', 'UI/UX', 'Content', 'Performance', 'Functional', 'Enhancement', 'Observation'];
         $findings = collect($out['findings'] ?? [])->filter(fn ($f) => is_array($f) && filled($f['title'] ?? null))
             ->take(40)->map(fn ($f) => [
@@ -219,7 +312,7 @@ QA_PROMPT;
             'findings.*.description' => 'nullable|string|max:5000',
             'findings.*.expected_behaviour' => 'nullable|string|max:5000',
             'findings.*.developer_notes' => 'nullable|string|max:5000',
-            'findings.*.severity' => ['required', Rule::in(['Critical', 'High', 'Medium', 'Low'])],
+            'findings.*.severity' => ['required', Rule::in(['Critical', 'High', 'Medium', 'Low', 'Enhancement'])],
             'findings.*.finding_type' => ['nullable', Rule::in(['Bug', 'UI/UX', 'Content', 'Performance', 'Functional', 'Enhancement', 'Observation'])],
         ]);
 
@@ -254,7 +347,7 @@ QA_PROMPT;
             'checklist' => 'nullable|array', 'checklist.*.label' => 'required_with:checklist|string|max:300',
             'checklist.*.result' => ['required_with:checklist', Rule::in(['Pass', 'Fail', 'Not tested', 'Retest required'])],
         ]);
-        $findings = PmQaIssue::where('created_by', $request->user()->id)->whereIn('id', $data['issue_ids'])->orderBy('id')->get();
+        $findings = PmQaIssue::where('created_by', $request->user()->id)->whereIn('id', $data['issue_ids'])->with('evidenceFiles')->orderBy('id')->get();
         if ($findings->count() !== count($data['issue_ids'])) {
             return response()->json(['message' => 'One or more selected findings could not be found. Refresh and try again.'], 422);
         }
@@ -268,7 +361,7 @@ QA_PROMPT;
             'report_date' => $data['report_date'], 'areas_tested' => $data['areas_tested'] ?? null,
             'environment' => $data['environment'] ?? null, 'summary' => $data['summary'] ?? null,
             'fix_first' => $data['fix_first'] ?? null, 'open_questions' => $data['open_questions'] ?? null,
-            'findings' => $findings->map(fn (PmQaIssue $issue) => $issue->toArray())->values()->all(),
+            'findings' => $findings->map(fn (PmQaIssue $issue) => $this->snapshotFinding($issue))->values()->all(),
             'checklist' => $data['checklist'] ?? [],
         ]);
         return response()->json(['report' => $report], 201);
@@ -282,13 +375,19 @@ QA_PROMPT;
             'areas_tested' => 'nullable|string|max:5000', 'environment' => 'nullable|string|max:1000',
             'summary' => 'nullable|string|max:5000', 'fix_first' => 'nullable|string|max:5000',
             'open_questions' => 'nullable|string|max:5000', 'findings' => 'required|array|max:200',
-            'findings.*.title' => 'required|string|max:200', 'findings.*.severity' => ['required', Rule::in(['Critical','High','Medium','Low'])],
+            'findings.*.id' => 'required|integer', 'findings.*.title' => 'required|string|max:200', 'findings.*.severity' => ['required', Rule::in(['Critical','High','Medium','Low','Enhancement'])],
             'findings.*.status' => 'required|string|max:100', 'findings.*.description' => 'nullable|string|max:5000',
             'findings.*.expected_behaviour' => 'nullable|string|max:5000', 'findings.*.developer_notes' => 'nullable|string|max:5000',
             'findings.*.retest_notes' => 'nullable|string|max:5000', 'findings.*.assignee' => 'nullable|string|max:160',
             'findings.*.page_url' => 'nullable|string|max:500', 'findings.*.evidence_url' => 'nullable|string|max:1000',
             'findings.*.pm_task_url' => 'nullable|string|max:1000',
         ]);
+        $existingFindings = collect($report->findings ?? []);
+        $data['findings'] = collect($data['findings'])->map(function (array $finding) use ($existingFindings) {
+            $original = $existingFindings->firstWhere('id', $finding['id']);
+            $finding['evidence_files'] = $original['evidence_files'] ?? [];
+            return $finding;
+        })->values()->all();
         $report->update($data);
         return response()->json(['report' => $report->fresh()]);
     }
