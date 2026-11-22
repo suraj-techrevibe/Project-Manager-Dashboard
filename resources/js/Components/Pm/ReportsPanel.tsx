@@ -628,6 +628,7 @@ export default function ReportsPanel() {
   const [savedPeriodFilter,setSavedPeriodFilter]=useState<'all'|'daily'|'weekly'|'date_range'>('all');
   const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'|'qa'|'minutes'|'performance'>('all');
   const [editId,setEditId]=useState<number|null>(null);
+  const [editContent,setEditContent]=useState<any>(null);
   const [editNotes,setEditNotes]=useState('');
   const editReportRef = useRef<HTMLDivElement | null>(null);
   const [editSaving,setEditSaving]=useState(false);
@@ -985,24 +986,26 @@ export default function ReportsPanel() {
                   </button>
                   {open && <>
                     <div className="flex flex-wrap gap-2 px-4 pt-3">
-                      <button onClick={()=>{setEditId(r.id);setEditNotes(r.notes||'');}} className={btnSecondary}>Edit report inline</button>
+                      <button onClick={()=>{setEditId(r.id);setEditContent(JSON.parse(JSON.stringify(r.content || {})));setEditNotes(r.notes||'');}} className={btnSecondary}>Edit report inline</button>
                       <button onClick={()=>window.location.href='/pm/api/reports/'+r.id+'/docx'} className={btnSecondary}>Export DOCX</button>
                     </div>
                     {editId===r.id && <div className="mx-4 mt-3 rounded-lg border border-indigo-200 bg-white p-3">
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <div><p className="text-sm font-semibold text-slate-800">Edit directly in the report</p><p className="text-xs text-slate-500">Click any heading, sentence, table cell or report detail and type. The report layout stays in place.</p></div>
-                        <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">Inline editing</span>
-                      </div>
-                      <div ref={editReportRef} contentEditable suppressContentEditableWarning spellCheck onInput={()=>{}} className="rounded-lg border border-slate-200 p-4 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100">
-                        {r.content?.kind === 'pack'
-                          ? (isReportHtml(r.body) ? <div dangerouslySetInnerHTML={{__html:safeReportHtml(r.body || '')}} /> : <PackReportView report={r} />)
-                          : <div className="text-sm text-slate-700"><ExecutiveBrief c={r.content as any}/><UpdatePart c={r.content as any}/><details open className="mt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-600">Project details</summary><div className="mt-3">{r.content.kind === 'daily' ? <DailyDetails c={r.content as DailyContent}/> : <WeeklyDetails c={r.content as WeeklyContent}/>}</div></details></div>}
-                      </div>
+                      {r.content?.kind === 'pack' ? <>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-semibold text-slate-800">Edit directly in the report</p><p className="text-xs text-slate-500">Click any heading, sentence, table cell or report detail and type. The report layout stays in place.</p></div><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">Inline editing</span></div>
+                        <div ref={editReportRef} contentEditable suppressContentEditableWarning spellCheck className="rounded-lg border border-slate-200 p-4 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100">
+                          {isReportHtml(r.body) ? <div dangerouslySetInnerHTML={{__html:safeReportHtml(r.body || '')}} /> : <PackReportView report={r}/>}
+                        </div>
+                      </> : <>
+                        <p className="mb-2 text-xs text-slate-500">Edit the daily or weekly report structure. Source records are not changed.</p>
+                        <StructuredEditor label="Report content" value={editContent} onChange={setEditContent}/>
+                        <label className="mt-3 block text-xs font-medium">Notes<textarea rows={3} value={editNotes} onChange={e=>setEditNotes(e.target.value)} className={inputCls+' mt-1 w-full'}/></label>
+                      </>}
                       <div className="mt-3 flex gap-2">
-                        <button disabled={editSaving} onClick={async()=>{try{setEditSaving(true);const html=editReportRef.current?.innerHTML || '';const body=r.content?.kind==='pack' ? html : reportHtmlToText(html);const res=await pmApi.updateReport(r.id,r.content, r.notes, body);setReports(prev=>sorted(prev.map(x=>x.id===r.id?res.data.report:x)));setEditId(null);}catch(e:any){setListError(errorText(e,'Unable to save report edit. Please try again.'));}finally{setEditSaving(false);}}} className={btnPrimary}>{editSaving?'Saving…':'Save report'}</button>
+                        <button disabled={editSaving} onClick={async()=>{try{setEditSaving(true);const body=r.content?.kind==='pack' ? (editReportRef.current?.innerHTML || '') : undefined;const res=await pmApi.updateReport(r.id,editContent || r.content, r.content?.kind==='pack' ? r.notes : editNotes, body);setReports(prev=>sorted(prev.map(x=>x.id===r.id?res.data.report:x)));setEditId(null);}catch(e:any){setListError(errorText(e,'Unable to save report edit. Please try again.'));}finally{setEditSaving(false);}}} className={btnPrimary}>{editSaving?'Saving…':'Save report'}</button>
                         <button onClick={()=>setEditId(null)} className={btnSecondary}>Cancel</button>
                       </div>
                     </div>}
+
                     {editId!==r.id && <ReportBody report={r} copied={copied?.id === r.id ? copied.part : null} onCopy={(part) => copy(r, part)} onDelete={() => remove(r)} />}
                   </>}
                 </div>
