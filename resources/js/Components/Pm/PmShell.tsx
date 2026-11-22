@@ -1,6 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import axios from 'axios';
-import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type ReactNode, type FormEvent } from 'react';
 import ScrollToTop from '@/Components/ScrollToTop';
 import AssistantBubble from '@/Components/Pm/AssistantBubble';
 import { Icon } from '@/Components/Pm/ui/kit';
@@ -27,7 +27,7 @@ const GROUPS: { title: string; keys: PmPage[] }[] = [
   { title: '1 · Daily workflow', keys: ['today', 'tasks', 'minutes', 'projects', 'operations', 'brief', 'reports'] },
   { title: '2 · Quality assurance', keys: ['qa-reports', 'qa'] },
   { title: '3 · Project controls', keys: ['scope', 'git'] },
-  { title: '4 · Daily routine', keys: ['checklist', 'action-list'] },
+  // Daily Checklist and My Action List now open from the bottom dock (they keep their own /pm/... pages).
 ];
 
 interface Props {
@@ -39,7 +39,57 @@ interface Props {
   businesses?: { id: string; name: string }[];
   businessId?: string;
   onBusinessChange?: (id: string) => void;
+  /** Content of a dock sheet. `close` lets the sheet's own buttons dismiss it before navigating. */
+  renderSheet?: (key: DockSheet, close: () => void) => ReactNode;
   children: ReactNode;
+}
+
+export type DockSheet = 'action-list' | 'checklist';
+const SHEET_TITLE: Record<DockSheet, string> = { 'action-list': 'My Action List', checklist: 'Daily Checklist' };
+
+/** A slide-up panel over the current page, with a ✕ in the corner. Esc or a tap on the dark area also closes it. */
+function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setShown(true));
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`absolute inset-0 bg-slate-950/50 transition-opacity duration-200 ${shown ? 'opacity-100' : 'opacity-0'}`} onClick={onClose} />
+      <div className={`absolute inset-x-0 bottom-0 mx-auto flex max-h-[92dvh] w-full max-w-5xl flex-col rounded-t-2xl bg-slate-50 shadow-2xl transition-transform duration-200 ease-out ${shown ? 'translate-y-0' : 'translate-y-full'}`}>
+        <div className="flex shrink-0 items-center justify-between gap-3 rounded-t-2xl border-b border-slate-200 bg-white px-4 py-3">
+          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"><Icon name="close" className="h-5 w-5" /></button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Global bottom bar: Action List · Capture (raised, centre) · Checklist. Sits over the content area, clear of the sidebar. */
+function Dock({ active, onOpen, onCapture }: { active: DockSheet | null; onOpen: (k: DockSheet) => void; onCapture: () => void }) {
+  const side = (k: DockSheet, icon: string, label: string) => (
+    <button type="button" onClick={() => onOpen(k)} aria-pressed={active === k} className={`flex w-20 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[11px] font-medium transition sm:w-24 ${active === k ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}>
+      <Icon name={icon} className="h-5 w-5" />{label}
+    </button>
+  );
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:left-64">
+      <nav aria-label="Quick actions" className="pointer-events-auto flex items-end gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 shadow-xl backdrop-blur">
+        {side('action-list', 'clipboard-list', 'Action list')}
+        <button type="button" onClick={onCapture} aria-label="Capture" className="-mt-6 flex w-20 flex-col items-center gap-0.5 text-[11px] font-semibold text-indigo-700 sm:w-24">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg ring-4 ring-white transition hover:bg-indigo-700"><Icon name="plus" className="h-7 w-7" /></span>
+          Capture
+        </button>
+        {side('checklist', 'check-square', 'Checklist')}
+      </nav>
+    </div>
+  );
 }
 
 function NavItems({ page, attention, onGo }: { page: PmPage; attention: number; onGo?: () => void }) {
@@ -123,10 +173,12 @@ function UserCard({ name, email }: { name: string; email: string }) {
  * The frame around the whole PM dashboard: a fixed dark sidebar on desktop, a top bar with a slide-over
  * menu on phones/tablets, and a sticky page header (title, search, shortcut) over the content.
  */
-export default function PmShell({ page, attention = 0, onOpenSearch, businesses = [], businessId = 'all', onBusinessChange, children }: Props) {
+export default function PmShell({ page, attention = 0, onOpenSearch, businesses = [], businessId = 'all', onBusinessChange, renderSheet, children }: Props) {
   const user = usePage().props.auth.user;
   const [drawer, setDrawer] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [sheet, setSheet] = useState<DockSheet | null>(null);
+  const closeSheet = useCallback(() => setSheet(null), []);
   const [captureKind, setCaptureKind] = useState<'Action' | 'Rough note'>('Action');
   const [captureTitle, setCaptureTitle] = useState('');
   const [captureNotes, setCaptureNotes] = useState('');
@@ -208,7 +260,6 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
               </select>
             </label>
           )}
-          <button type="button" onClick={() => setCaptureOpen(true)} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">+ Capture</button>
           <button
             type="button"
             onClick={onOpenSearch}
@@ -221,7 +272,7 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
           </button>
         </header>
 
-        <main className="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">{children}</main>
+        <main className="mx-auto w-full max-w-[1400px] px-3 pb-32 pt-4 sm:px-6 sm:pb-32 sm:pt-6">{children}</main>
       </div>
 
       {captureOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Capture follow-up" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
@@ -235,6 +286,8 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
           <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setCaptureOpen(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">Cancel</button><button disabled={captureSaving || !captureTitle.trim()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{captureSaving ? 'Saving…' : 'Save capture'}</button></div>
         </form>
       </div>}
+      <Dock active={sheet} onOpen={(k) => setSheet((cur) => (cur === k ? null : k))} onCapture={() => { setSheet(null); setCaptureOpen(true); }} />
+      {sheet && renderSheet && <Sheet title={SHEET_TITLE[sheet]} onClose={closeSheet}>{renderSheet(sheet, closeSheet)}</Sheet>}
       <ScrollToTop raised />
       <AssistantBubble />
     </div>

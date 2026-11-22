@@ -76,7 +76,7 @@ export default function AssistantBubble() {
           aria-label={badge > 0 ? `Open PM assistant, ${badge} waiting` : 'Open PM assistant'}
           title="PM assistant (Ctrl+/)"
           onClick={() => setOpen(true)}
-          className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl ring-4 ring-white transition hover:scale-105 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-indigo-300 sm:right-6"
+          className="fixed bottom-[max(6rem,calc(env(safe-area-inset-bottom)+5.5rem))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl ring-4 ring-white transition hover:scale-105 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-indigo-300 sm:right-6"
         >
           <Icon name="spark" className="h-6 w-6" />
           {busy && <span className="absolute inset-0 animate-ping rounded-full bg-indigo-400/40" aria-hidden />}

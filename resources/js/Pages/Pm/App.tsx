@@ -287,6 +287,9 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       businesses={business.options}
       businessId={business.selectedId}
       onBusinessChange={business.setSelectedId}
+      renderSheet={(key, close) => key === 'checklist'
+        ? <DailyChecklistPanel today={today} taskCounts={{ overdue: counts.overdue, blocked: counts.blocked, no_owner: counts.unassigned }} scopeLabel={business.selected?.name ?? null} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => { close(); visitPm(target, params); }} />
+        : <MyActionListPanel />}
     >
       <Head title={`${current.label} · Company Operations`} />
       <QuickSearch
