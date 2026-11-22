@@ -372,6 +372,7 @@ class ReportController extends Controller
         if (($report->content['kind'] ?? null) === 'pack' && str_contains($text, '<')) {
             $text = preg_replace('/<br\\s*\\/?\\s*>/i', "\\n", $text);
             $text = preg_replace('/<\\/(p|div|section|h[1-6]|li|tr)>/i', "\\n", $text);
+            $text = preg_replace('/<\\/td>/i', "  ", $text);
             $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $text = preg_replace("/\\n{3,}/", "\\n\\n", $text);
         }
@@ -395,7 +396,7 @@ class ReportController extends Controller
             'content' => 'required|array', 'content.kind' => ['required', Rule::in(['daily','weekly','pack'])],
             'content.report_type' => 'required_if:content.kind,pack|in:qa,minutes,performance',
             'notes' => 'nullable|string|max:6000',
-            'body' => 'sometimes|required|string|max:100000',
+            'body' => 'sometimes|required|string|max:500000',
         ]);
         if (($data['content']['kind'] === 'pack' ? ($data['content']['report_type'] ?? null) : $data['content']['kind']) !== $report->kind) return response()->json(['message'=>'Report type cannot be changed.'], 422);
         $body = array_key_exists('body', $data) ? $data['body'] : (($data['content']['kind'] ?? null) === 'pack' ? $this->formatPackBody($data['content']['title'] ?? 'Report', $data['content']) : $this->reports->render($data['content']));
