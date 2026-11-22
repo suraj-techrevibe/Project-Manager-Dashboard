@@ -84,7 +84,6 @@ function MinuteDetail({ minute, onEdit, onDuplicate, onDelete, onChanged }: { mi
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   useEffect(() => { setFollowUps((minute.action_items ?? []).map(normalizeFollowUp)); }, [minute]);
-  const open = followUps.filter(a => a.task.trim() && !a.done).length;
 
   async function toggle(i: number) {
     const before = followUps;
@@ -99,6 +98,7 @@ function MinuteDetail({ minute, onEdit, onDuplicate, onDelete, onChanged }: { mi
   }
   return <div className="flex flex-col gap-4">
     <MeetingMinutesDocument meeting={minute} followUps={followUps} onToggleFollowUp={toggle} />
+    {msg && <p className="mt-1 text-xs text-red-600">{msg}</p>}
     <p className="text-xs text-slate-400">Created {formatTimestamp(minute.created_at)}{minute.created_by ? ` by ${minute.created_by}` : ''}</p>
     <div className="flex flex-wrap gap-2">
       {tasks.length > 0 && <button onClick={() => visitPm('brief', { meeting: String(minute.id) })} title="Review owners and projects, then push to Taskmandu" className={primaryBtn}>Push {tasks.length} ticket{tasks.length === 1 ? '' : 's'} to Taskmandu</button>}
