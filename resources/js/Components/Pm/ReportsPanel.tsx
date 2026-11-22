@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { reportText } from '../../lib/Reporttext';
+import MeetingMinutesDocument from './MeetingMinutesDocument';
 import type { DailyContent, Report, ReportItem, ReportPill, WeeklyContent } from '../../types/pm';
 import { EmptyState, JumpNav, Notice, PageHeader, Section as UiSection, btnChip, btnPrimary, btnSecondary } from './ui/kit';
 
@@ -488,15 +489,11 @@ function PackReportView({ report }: { report: Report }) {
 
       {c.report_type === 'minutes' && (
         <section className="divide-y divide-slate-100">
-          {meetings.length ? meetings.map((m, i) => <div key={m.id ?? i} className="py-3">
-            <div className="flex flex-wrap items-start justify-between gap-2"><div className="font-semibold text-slate-800">{m.title}</div><span className="text-xs text-slate-500">{m.meeting_date} · {m.status}</span></div>
-            <div className="mt-1 text-xs text-slate-500">Attendees: {m.attendees?.join(', ') || 'Not recorded'} · {m.action_items?.length || 0} action items · {m.work_items?.length || 0} work items</div>
-            {m.agenda_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Agenda:</strong> {m.agenda_items.join(' · ')}</div>}
-            {m.discussion && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600"><strong>Discussion:</strong> {m.discussion}</p>}
-            {m.decisions?.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">{m.decisions.map((v:string,j:number)=><li key={j}>{v}</li>)}</ul>}
-            {m.work_items?.map((w:any,j:number)=><div key={j} className="mt-3 rounded-md bg-slate-50 p-3 text-xs"><div className="font-semibold text-slate-700">{w.project || 'General'} · {w.owner || 'Owner not assigned'}</div><div className="mt-1 text-slate-700">{w.requirement}</div>{w.discussion && <p className="mt-1 whitespace-pre-wrap text-slate-500">{w.discussion}</p>}{w.action_items?.length > 0 && <ul className="mt-1 list-disc pl-4 text-slate-600">{w.action_items.map((a:any,k:number)=><li key={k}>{a.task}{a.due_date ? ` · due ${a.due_date}` : ''}</li>)}</ul>}</div>)}
-            {m.action_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Action items:</strong> {m.action_items.map((a:any)=>`${a.task} — ${a.owner || 'Unassigned'}${a.due_date ? ` (due ${a.due_date})` : ''}`).join(' · ')}</div>}
-          </div>) : <p className="py-3 text-sm text-slate-400">No meeting minutes in this period.</p>}
+          {meetings.length ? meetings.map((meeting, index) => (
+            <div key={meeting.id ?? index} className="py-4">
+              <MeetingMinutesDocument meeting={meeting} />
+            </div>
+          )) : <p className="py-3 text-sm text-slate-400">No meeting minutes in this period.</p>}
         </section>
       )}
 
@@ -812,18 +809,15 @@ export default function ReportsPanel() {
         {!periodLoading && periodData && periodType === 'minutes' && (
           <div className="mt-3">
             {periodData.minutes.meetings.length ? <div className="divide-y divide-slate-100">
-              {periodData.minutes.meetings.map((m:any) => <div key={m.id} className="py-3">
-                <div className="flex flex-wrap items-start justify-between gap-2"><div className="text-sm font-semibold text-slate-800">{m.title}</div><span className="text-xs text-slate-500">{m.meeting_date} · {m.status}</span></div>
-                <div className="mt-1 text-xs text-slate-500">Attendees: {m.attendees?.join(', ') || 'Not recorded'} · {m.action_items?.length || 0} action items · {m.work_items?.length || 0} work items</div>
-                {m.agenda_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Agenda:</strong> {m.agenda_items.join(' · ')}</div>}
-                {m.discussion && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600"><strong>Discussion:</strong> {m.discussion}</p>}
-                {m.decisions?.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">{m.decisions.map((d:string,i:number)=><li key={i}>{d}</li>)}</ul>}
-                {m.work_items?.map((w:any,i:number)=><div key={i} className="mt-3 rounded-md bg-slate-50 p-2 text-xs"><div className="font-semibold text-slate-700">{w.project || 'General'} · {w.owner || 'Owner not assigned'}</div><div className="mt-1 text-slate-700">{w.requirement}</div>{w.discussion && <p className="mt-1 whitespace-pre-wrap text-slate-500">{w.discussion}</p>}{w.action_items?.length > 0 && <ul className="mt-1 list-disc pl-4 text-slate-600">{w.action_items.map((a:any,j:number)=><li key={j}>{a.task}{a.due_date ? ` · due ${a.due_date}` : ''}</li>)}</ul>}</div>)}
-                {m.action_items?.length > 0 && <div className="mt-2 text-xs text-slate-600"><strong>Action items:</strong> {m.action_items.map((a:any)=>`${a.task} — ${a.owner || 'Unassigned'}${a.due_date ? ` (due ${a.due_date})` : ''}`).join(' · ')}</div>}
-              </div>)}
+              {periodData.minutes.meetings.map((meeting: any) => (
+                <div key={meeting.id} className="py-4">
+                  <MeetingMinutesDocument meeting={meeting} />
+                </div>
+              ))}
             </div> : <EmptyState title="No meeting minutes in this period">Meeting minutes are matched using the meeting date, not the date they were last edited.</EmptyState>}
           </div>
         )}
+
         {!periodLoading && periodData && periodType === 'performance' && (
           <div className="mt-3 space-y-4">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">

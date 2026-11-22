@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import TaskmanduActivityMinutes from './TaskmanduActivityMinutes';
+import MeetingMinutesDocument from './MeetingMinutesDocument';
 import { pmApi } from '../../lib/pmApi';
 import { localISO } from '../../lib/meetingNotes';
 import { TOPIC_SUGGESTIONS, blankTopic, deriveFields, meetingToText, meetingWarnings, shortDate, splitProjectNames, topicsFor, workItemHasContent, workItemTitle } from '../../lib/minutesFormat';
@@ -79,12 +80,10 @@ export default function StructuredMeetingMinutesPanel() {
 
 function MinuteDetail({ minute, onEdit, onDuplicate, onDelete, onChanged }: { minute: MeetingMinutesFull; onEdit: () => void; onDuplicate: () => void; onDelete: () => void; onChanged: (m: MeetingMinutesFull) => void }) {
   const tasks = (minute.work_items ?? []).filter(workItemHasContent);
-  const topics = topicsFor(minute).filter(t => t.title.trim() || t.notes.trim() || t.decision.trim());
   const [followUps, setFollowUps] = useState<ActionItem[]>((minute.action_items ?? []).map(normalizeFollowUp));
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   useEffect(() => { setFollowUps((minute.action_items ?? []).map(normalizeFollowUp)); }, [minute]);
-  const open = followUps.filter(a => a.task.trim() && !a.done).length;
 
   async function toggle(i: number) {
     const before = followUps;
@@ -97,18 +96,9 @@ function MinuteDetail({ minute, onEdit, onDuplicate, onDelete, onChanged }: { mi
     const text = meetingToText({ title: minute.title, meeting_date: minute.meeting_date, attendees: minute.attendees, topics: topicsFor(minute), follow_ups: followUps, work_items: minute.work_items ?? [] });
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
   }
-  const label = 'mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500';
-
   return <div className="flex flex-col gap-4">
-    {minute.attendees.length > 0 && <div><div className={label}>Attendees</div><p className="text-sm text-slate-700">{minute.attendees.join(', ')}</p></div>}
-    <div><div className={label}>Agenda &amp; discussion</div>
-      {topics.length === 0 ? <p className="text-sm text-slate-400">Nothing recorded.</p> : <ol className="flex flex-col gap-3">{topics.map((t, i) => <li key={i} className="text-sm"><div className="font-medium text-slate-900">{i + 1}. {t.title}</div>{t.notes.trim() && <p className="mt-0.5 whitespace-pre-wrap pl-5 text-slate-600">{t.notes}</p>}{t.decision.trim() && <p className="mt-0.5 pl-5 text-slate-800"><b>Decision:</b> {t.decision}</p>}</li>)}</ol>}
-    </div>
-    <div><div className={label}>Follow-ups{followUps.length > 0 ? ` · ${open} open` : ''}</div>
-      {followUps.length === 0 ? <p className="text-sm text-slate-400">No follow-ups.</p> : <ul className="flex flex-col gap-1.5">{followUps.map((a, i) => <li key={i} className="flex items-start gap-2 text-sm"><input type="checkbox" checked={!!a.done} onChange={() => toggle(i)} className="mt-1" /><span className={a.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{a.task}<span className="text-slate-500">{a.owner ? ` — ${a.owner}` : ''}{a.due_date ? ` · due ${shortDate(a.due_date)}` : ''}{a.from ? ` · carried from “${a.from}”` : ''}</span></span></li>)}</ul>}
-      {msg && <p className="mt-1 text-xs text-red-600">{msg}</p>}
-    </div>
-    {tasks.length > 0 && <div><div className={label}>Taskmandu tasks</div><div className="flex flex-col gap-2">{tasks.map((w, i) => <div key={i} className="rounded-lg border border-slate-200 p-3 text-sm"><div className="font-medium text-slate-900">{workItemTitle(w)}</div><div className="text-xs text-slate-500">{w.owner || 'Unassigned'} · {w.project || 'No project'}{w.due_date ? ` · due ${w.due_date}` : ''}</div>{w.discussion && <p className="mt-1 whitespace-pre-wrap text-slate-600">{w.discussion}</p>}{w.action_items?.length > 0 && <ul className="mt-1 list-disc pl-5 text-slate-700">{w.action_items.map((a, j) => <li key={j}>{a.task}{a.due_date ? ` — due ${a.due_date}` : ''}</li>)}</ul>}</div>)}</div></div>}
+    <MeetingMinutesDocument meeting={minute} followUps={followUps} onToggleFollowUp={toggle} />
+    {msg && <p className="mt-1 text-xs text-red-600">{msg}</p>}
     <p className="text-xs text-slate-400">Created {formatTimestamp(minute.created_at)}{minute.created_by ? ` by ${minute.created_by}` : ''}</p>
     <div className="flex flex-wrap gap-2">
       {tasks.length > 0 && <button onClick={() => visitPm('brief', { meeting: String(minute.id) })} title="Review owners and projects, then push to Taskmandu" className={primaryBtn}>Push {tasks.length} ticket{tasks.length === 1 ? '' : 's'} to Taskmandu</button>}
@@ -366,7 +356,7 @@ function WorkItemWizard({ initial, copy, startPaste = false, onCancel, onSaved }
 
     {!pasting && step === 4 && <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between"><div className="text-xs font-medium text-slate-500">The whole meeting, in the standard layout</div><button onClick={copyText} className={ghostBtn}>{copied ? 'Copied ✓' : 'Copy as text'}</button></div>
-      <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">{text}</pre>
+      <MeetingMinutesDocument meeting={{ title, meeting_date: date, attendees, topics, action_items: followUps, work_items: workItems }} />
       {warnings.length > 0 && <ul className="list-inside list-disc text-xs text-amber-700">{warnings.map((x) => <li key={x}>{x}</li>)}</ul>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">Agenda items</div><div className="text-lg font-semibold text-slate-800">{agendaCount}</div></div>
