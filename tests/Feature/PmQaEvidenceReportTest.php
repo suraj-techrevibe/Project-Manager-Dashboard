@@ -78,7 +78,9 @@ class PmQaEvidenceReportTest extends TestCase
         $issue->delete();
         $this->assertNull($evidence->fresh()->issue_id);
         $this->actingAs($owner)->get('/pm/api/qa/reports/' . $reportId . '/evidence/' . $evidence->id)->assertOk();
-        $this->actingAs($owner)->get('/pm/api/qa/reports/' . $reportId . '/docx')->assertDownload($report->report_code . '.docx');
+        $docx = $this->actingAs($owner)->get('/pm/api/qa/reports/' . $reportId . '/docx');
+        if (!class_exists(\\ZipArchive::class)) { $docx->assertStatus(501); return; }
+        $docx->assertDownload($report->report_code . '.docx');
     }
 
     public function test_report_evidence_cannot_be_accessed_by_another_user(): void
