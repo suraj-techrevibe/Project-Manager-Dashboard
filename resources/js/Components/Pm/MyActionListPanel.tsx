@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import axios from 'axios';
 
 type Item = {
@@ -41,7 +41,7 @@ export default function MyActionListPanel() {
   const openCount = items.filter((i) => i.status === 'Open').length;
   const waitingCount = items.filter((i) => i.status === 'Waiting').length;
 
-  const add = async (e: React.FormEvent) => {
+  const add = async (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
     setSaving(true); setError('');
