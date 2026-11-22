@@ -12,6 +12,7 @@ use App\Http\Controllers\PmMeetingTicketController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\PmQaController;
+use App\Http\Controllers\PmActionItemController;
 use Illuminate\Support\Facades\Route;
 
 // Pages: one real URL per tab, so each opens on its own and Back/Forward/bookmarks work.
