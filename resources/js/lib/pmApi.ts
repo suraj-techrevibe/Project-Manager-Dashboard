@@ -137,7 +137,7 @@ export const pmApi = {
 
   deleteReport: (id: number) => api.delete(`/reports/${id}`),
 
-  updateReport: (id: number, content: ReportContent, notes?: string | null) => api.patch<{ report: Report }>(`/reports/${id}`, { content, notes }),
+  updateReport: (id: number, content: ReportContent, notes?: string | null, body?: string) => api.patch<{ report: Report }>(`/reports/${id}`, { content, notes, body }),
 
   scopeCheck: (brief: string, message: string) =>
     api.post<{ items: ScopeItem[] }>('/scope', { brief, message }),
