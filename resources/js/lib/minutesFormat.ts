@@ -56,13 +56,18 @@ export const cleanTopic = (t: Partial<MinutesTopic>): MinutesTopic => ({
 });
 
 /** Topics for an entry. Entries made before the guided form only have the flat fields. */
-export function topicsFor(m: MeetingMinutesFull): MinutesTopic[] {
+export function topicsFor(m: {
+  topics?: MinutesTopic[] | null;
+  agenda_items?: string[] | null;
+  discussion?: string | null;
+  decisions?: string[] | null;
+}): MinutesTopic[] {
   if (m.topics && m.topics.length > 0) return m.topics.map(cleanTopic);
   const out: MinutesTopic[] = (m.agenda_items ?? []).map((t) => blankTopic(t));
   if (m.discussion?.trim()) out.push({ title: 'Discussion', notes: m.discussion.trim(), decision: '' });
-  if (m.decisions?.length > 0) {
+  if ((m.decisions ?? []).length > 0) {
     if (out.length === 0) out.push(blankTopic('General'));
-    out[out.length - 1] = { ...out[out.length - 1], decision: m.decisions.join('; ') };
+    out[out.length - 1] = { ...out[out.length - 1], decision: (m.decisions ?? []).join('; ') };
   }
   return out;
 }
