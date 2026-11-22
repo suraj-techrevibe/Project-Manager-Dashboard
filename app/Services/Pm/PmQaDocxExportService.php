@@ -99,7 +99,7 @@ class PmQaDocxExportService
                 $imageTypes[$ext] = $record->mime_type;
                 $relId = 'rId' . $relationshipCounter++;
                 $imageRelationships[] = '<Relationship Id="' . $relId . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' . $mediaName . '"/>';
-                $body[] = $this->imageParagraph($absolutePath, $relId, $qaId . ' evidence');
+                $body[] = $this->imageParagraph($absolutePath, $relId, 'Image' . $imageCounter . ' ' . $qaId . ' evidence', $imageCounter);
                 $body[] = $this->paragraph('Fig. ' . $imageCounter . ': Evidence for ' . $qaId . ' — ' . $record->original_name, false, 18, '666666');
             }
             $body[] = $this->paragraph('');
@@ -165,20 +165,24 @@ class PmQaDocxExportService
 
     private function table(array $rows, bool $header): string
     {
-        $xml = '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="B7C1CC"/><w:left w:val="single" w:sz="4" w:color="B7C1CC"/><w:bottom w:val="single" w:sz="4" w:color="B7C1CC"/><w:right w:val="single" w:sz="4" w:color="B7C1CC"/><w:insideH w:val="single" w:sz="4" w:color="B7C1CC"/><w:insideV w:val="single" w:sz="4" w:color="B7C1CC"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="1600"/><w:gridCol w:w="1600"/><w:gridCol w:w="4200"/><w:gridCol w:w="2600"/></w:tblGrid>';
+        $columnCount = max(1, count($rows[0] ?? []));
+        $columnWidth = (int) floor(10000 / $columnCount);
+        $grid = '';
+        for ($column = 0; $column < $columnCount; $column++) $grid .= '<w:gridCol w:w="' . $columnWidth . '"/>';
+        $xml = '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="B7C1CC"/><w:left w:val="single" w:sz="4" w:color="B7C1CC"/><w:bottom w:val="single" w:sz="4" w:color="B7C1CC"/><w:right w:val="single" w:sz="4" w:color="B7C1CC"/><w:insideH w:val="single" w:sz="4" w:color="B7C1CC"/><w:insideV w:val="single" w:sz="4" w:color="B7C1CC"/></w:tblBorders></w:tblPr><w:tblGrid>' . $grid . '</w:tblGrid>';
         foreach ($rows as $index => $row) {
             $xml .= '<w:tr>';
             foreach ($row as $cell) {
                 $shade = $header && $index === 0 ? '<w:shd w:fill="E5E7EB"/>' : '';
                 $bold = $header && $index === 0 ? '<w:b/>' : '';
-                $xml .= '<w:tc><w:tcPr>' . $shade . '<w:tcW w:w="2500" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr>' . $bold . '<w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">' . $this->xml((string) $cell) . '</w:t></w:r></w:p></w:tc>';
+                $xml .= '<w:tc><w:tcPr>' . $shade . '<w:tcW w:w="' . $columnWidth . '" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr>' . $bold . '<w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">' . $this->xml((string) $cell) . '</w:t></w:r></w:p></w:tc>';
             }
             $xml .= '</w:tr>';
         }
         return $xml . '</w:tbl>';
     }
 
-    private function imageParagraph(string $path, string $relationshipId, string $name): string
+    private function imageParagraph(string $path, string $relationshipId, string $name, int $drawingId): string
     {
         $size = @getimagesize($path);
         $width = $size[0] ?? 800;
@@ -188,7 +192,7 @@ class PmQaDocxExportService
         $scale = min(1, $maxWidth / max(1, $width * 9525), $maxHeight / max(1, $height * 9525));
         $cx = (int) ($width * 9525 * $scale);
         $cy = (int) ($height * 9525 * $scale);
-        $id = preg_replace('/[^A-Za-z0-9_-]/', '', $name);
+        $id = $drawingId;
         return '<w:p><w:r><w:drawing><wp:inline><wp:extent cx="' . $cx . '" cy="' . $cy . '"/><wp:docPr id="' . $id . '" name="' . $this->xml($name) . '"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="' . $id . '" name="' . $this->xml($name) . '"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="' . $relationshipId . '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
     }
 
