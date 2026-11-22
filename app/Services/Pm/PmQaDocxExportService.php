@@ -6,7 +6,6 @@ use App\Models\PmQaEvidence;
 use App\Models\PmQaReport;
 use Illuminate\Support\Facades\Storage;
 use ZipArchive;
-use ZipArchive;
 
 class PmQaDocxExportService
 {
