@@ -86,11 +86,13 @@ export default function MeetingMinutesDocument({ meeting, followUps, onToggleFol
             {actions.map(({ action, index }) => {
               const details = [action.owner?.trim(), action.due_date ? `Due ${shortDate(action.due_date)}` : '', action.from ? `Carried from “${action.from}”` : '', action.done && !onToggleFollowUp ? 'Done' : ''].filter(Boolean).join(' · ');
               return (
-                <li key={index} className="flex items-start gap-2">
-                  {onToggleFollowUp && <input type="checkbox" checked={!!action.done} onChange={() => onToggleFollowUp(index)} aria-label={`Mark follow-up ${index + 1} ${action.done ? 'open' : 'done'}`} className="mt-1" />}
-                  <div className="min-w-0">
-                    <span className={action.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{action.task}</span>
-                    {details && <span className="ml-1 text-xs text-slate-500">— {details}</span>}
+                <li key={index}>
+                  <div className="flex items-start gap-2">
+                    {onToggleFollowUp && <input type="checkbox" checked={!!action.done} onChange={() => onToggleFollowUp(index)} aria-label={`Mark follow-up ${index + 1} ${action.done ? 'open' : 'done'}`} className="mt-1" />}
+                    <div className="min-w-0">
+                      <span className={action.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{action.task}</span>
+                      {details && <span className="ml-1 text-xs text-slate-500">— {details}</span>}
+                    </div>
                   </div>
                 </li>
               );
