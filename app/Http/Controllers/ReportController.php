@@ -366,7 +366,9 @@ class ReportController extends Controller
     public function exportDocx(PmReport $report)
     {
         if (!class_exists('ZipArchive')) return response()->json(['message'=>'DOCX export requires the PHP Zip extension on the server.'], 501);
-        $text = $report->body ?: $this->reports->render($report->content ?? []);
+        $text = ($report->content['kind'] ?? null) === 'pack' && $this->isLegacyPackBody($report->body)
+            ? $this->formatPackBody($report->content['title'] ?? 'Report', $report->content)
+            : ($report->body ?: $this->reports->render($report->content ?? []));
         $paragraphs = collect(preg_split('/\\r?\\n/', $text))->map(function ($line) {
             $line = htmlspecialchars($line, ENT_XML1 | ENT_COMPAT, 'UTF-8');
             return '<w:p><w:r><w:t xml:space="preserve">'.$line.'</w:t></w:r></w:p>';
@@ -393,6 +395,11 @@ class ReportController extends Controller
         $body = array_key_exists('body', $data) ? $data['body'] : (($data['content']['kind'] ?? null) === 'pack' ? $this->formatPackBody($data['content']['title'] ?? 'Report', $data['content']) : $this->reports->render($data['content']));
         $report->update(['content' => $data['content'], 'body' => $body, 'notes' => $data['notes'] ?? $report->notes, 'auto' => false]);
         return response()->json(['report' => $this->present($report->fresh())]);
+    }
+
+    private function isLegacyPackBody(?string $body): bool
+    {
+        return filled($body) && (bool) preg_match('/\\n\\s*[\\{\\[]\\s*\\n/', $body);
     }
 
     /** Turn report-pack data into readable document text rather than exposing JSON. */
@@ -471,7 +478,9 @@ class ReportController extends Controller
             'generated_by' => $r->generated_by,
             'generated_at' => $r->updated_at?->toIso8601String(),
             'notes' => $r->notes,
-            'body' => $r->body,
+            'body' => ($r->content['kind'] ?? null) === 'pack' && $this->isLegacyPackBody($r->body)
+                ? $this->formatPackBody($r->content['title'] ?? 'Report', $r->content)
+                : $r->body,
             'content' => $r->content,
         ];
     }
