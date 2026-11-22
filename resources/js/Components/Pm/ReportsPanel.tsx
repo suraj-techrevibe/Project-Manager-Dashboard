@@ -890,25 +890,126 @@ export default function ReportsPanel() {
               </>
             )}
             {reportView === 'business' && (
-              <div className="flex flex-col gap-2">
-                {overview.projects.map((p: any) => {
-                  const expanded = expandedProjects.has(p.project_id);
-                  return <div key={p.project_id} className="overflow-hidden rounded-lg border border-slate-200">
-                    <button onClick={() => setExpandedProjects(prev => { const next = new Set(prev); expanded ? next.delete(p.project_id) : next.add(p.project_id); return next; })} className="flex w-full flex-wrap items-center gap-2 px-3 py-3 text-left hover:bg-slate-50">
-                      <span className="text-slate-400">{expanded ? '▾' : '▸'}</span><span className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{p.project_name}</span>
-                      <span className="text-xs text-slate-500">{p.task_count} tasks</span><span className="text-xs text-green-700">{p.completed} done</span><span className="text-xs text-red-600">{p.blocked + p.overdue} attention</span>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-slate-500">Select a business card to view its tasks, QA history, subtasks and team contribution.</p>
+                  {overview.projects.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedProjects(prev => prev.size === overview.projects.length ? new Set() : new Set(overview.projects.map((p: any) => p.project_id)))}
+                      className={btnSecondary}
+                    >
+                      {expandedProjects.size === overview.projects.length ? 'Collapse all' : 'Expand all'}
                     </button>
-                    {expanded && <div className="border-t border-slate-100">
-                      {p.tasks.map((t: any) => <div key={t.id} className="border-b border-slate-100 px-3 py-3 last:border-0">
-                        <div className="flex flex-wrap items-start gap-2"><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-800">{t.title}</div><div className="mt-0.5 text-xs text-slate-500">{t.assignee || 'Unassigned'} · Due {t.due_at || 'not set'}{t.subtasks_total ? ` · ${t.subtasks_completed}/${t.subtasks_total} subtasks done` : ''}</div></div><span className={`rounded-full px-2 py-0.5 text-[11px] ${t.status === 'Completed' ? 'bg-green-50 text-green-700' : t.status === 'Blocked' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{t.status}</span>{t.qa_status && <span className={`rounded-full px-2 py-0.5 text-[11px] ${t.qa_status === 'Passed' ? 'bg-green-50 text-green-700' : t.qa_status === 'Failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>QA {t.qa_status}</span>}{t.url && <a href={t.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 underline">Taskmandu</a>}</div>
-                        {t.qa_history?.length > 0 && <details className="mt-2 text-xs"><summary className="cursor-pointer text-slate-500">QA history · {t.qa_history.length} events (cycle {t.qa_cycle || 1})</summary><div className="mt-1 space-y-1 pl-3">{t.qa_history.map((event: any, index: number) => <div key={index} className="text-slate-500">Cycle {event.cycle}: <span className="font-medium">{event.result}</span>{event.severity ? ` · ${event.severity}` : ''}{event.notes ? ` · ${event.notes}` : ''}</div>)}</div></details>}
-                        {t.subtasks.length > 0 && <div className="mt-2 ml-3 border-l-2 border-slate-100 pl-3"><div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Subtasks</div>{t.subtasks.map((sub: any) => <div key={sub.id} className="flex flex-wrap justify-between gap-2 py-1 text-xs"><span className="text-slate-700">{sub.title} <span className="text-slate-400">· {sub.assignee || 'Unassigned'}</span></span><span className={sub.status === 'Completed' ? 'text-green-700' : 'text-slate-500'}>{sub.status}</span></div>)}</div>}
-                      </div>)}
-                      {p.tasks.length === 0 && <p className="p-3 text-sm text-slate-400">No tasks found.</p>}
-                      {p.team?.length > 0 && <div className="border-t border-slate-100 bg-slate-50/60 p-3"><div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Team contribution in this business</div><div className="flex flex-wrap gap-2">{p.team.map((member: any) => <div key={member.name} className="rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs"><div className="font-medium text-slate-800">{member.name}</div><div className="mt-0.5 text-slate-500">{member.tasks_completed} tasks done · {member.tasks_open} open · {member.subtasks_completed} subtasks done · {member.subtasks_open} open</div></div>)}</div></div>}
-                    </div>}
-                  </div>;
-                })}
+                  )}
+                </div>
+                {overview.projects.length ? (
+                  <div className="grid min-w-0 grid-cols-1 gap-3">
+                    {overview.projects.map((p: any) => {
+                      const expanded = expandedProjects.has(p.project_id);
+                      const attention = (p.blocked || 0) + (p.overdue || 0);
+                      return (
+                        <article key={p.project_id} className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            aria-controls={`business-report-${p.project_id}`}
+                            onClick={() => setExpandedProjects(prev => {
+                              const next = new Set(prev);
+                              expanded ? next.delete(p.project_id) : next.add(p.project_id);
+                              return next;
+                            })}
+                            className="flex w-full min-w-0 flex-col gap-3 p-3 text-left transition hover:bg-slate-50 sm:p-4"
+                          >
+                            <span className="flex w-full min-w-0 items-start justify-between gap-3">
+                              <span className="flex min-w-0 items-start gap-2">
+                                <span aria-hidden="true" className="mt-0.5 shrink-0 text-slate-400">{expanded ? '▾' : '▸'}</span>
+                                <span className="min-w-0 break-words text-sm font-semibold text-slate-900 sm:text-base">{p.project_name}</span>
+                              </span>
+                              <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{p.task_count} tasks</span>
+                            </span>
+                            <span className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+                              <span className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[10px] text-slate-500">Completed</span><strong className="mt-0.5 block text-base text-green-700">{p.completed}</strong></span>
+                              <span className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[10px] text-slate-500">Open</span><strong className="mt-0.5 block text-base text-slate-800">{p.open}</strong></span>
+                              <span className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[10px] text-slate-500">Blocked</span><strong className={`mt-0.5 block text-base ${p.blocked ? 'text-red-600' : 'text-slate-800'}`}>{p.blocked}</strong></span>
+                              <span className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[10px] text-slate-500">Overdue</span><strong className={`mt-0.5 block text-base ${p.overdue ? 'text-red-600' : 'text-slate-800'}`}>{p.overdue}</strong></span>
+                            </span>
+                            <span className="flex w-full flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                              <span>QA pending: {p.qa_pending}</span>
+                              <span>QA failed: {p.qa_failed}</span>
+                              <span>Subtasks: {p.subtasks_completed ?? 0} / {p.subtasks_total ?? 0} done</span>
+                              <span className={attention ? 'font-medium text-red-600' : 'text-green-700'}>{attention ? attention + ' need attention' : 'No blocked or overdue tasks'}</span>
+                            </span>
+                          </button>
+                          {expanded && (
+                            <div id={`business-report-${p.project_id}`} className="space-y-3 border-t border-slate-100 bg-slate-50/50 p-3 sm:p-4">
+                              <section className="min-w-0">
+                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tasks</h4>
+                                  <span className="text-[11px] text-slate-400">{p.tasks?.length || 0} listed</span>
+                                </div>
+                                {p.tasks?.length ? (
+                                  <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-2">
+                                    {p.tasks.map((t: any) => (
+                                      <div key={t.id} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+                                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                                          <div className="min-w-0 flex-1">
+                                            <div className="break-words text-sm font-medium text-slate-800">{t.title}</div>
+                                            <div className="mt-1 break-words text-xs text-slate-500">{t.assignee || 'Unassigned'} · Due {t.due_at || 'not set'}</div>
+                                          </div>
+                                          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${t.status === 'Completed' ? 'bg-green-50 text-green-700' : t.status === 'Blocked' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{t.status}</span>
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                                          {t.subtasks_total > 0 && <span className="text-slate-500">{t.subtasks_completed}/{t.subtasks_total} subtasks done</span>}
+                                          {t.qa_status && <span className={`rounded-full px-2 py-0.5 ${t.qa_status === 'Passed' ? 'bg-green-50 text-green-700' : t.qa_status === 'Failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>QA {t.qa_status}</span>}
+                                          {t.url && <a href={t.url} target="_blank" rel="noreferrer" className="text-indigo-600 underline">Open in Taskmandu</a>}
+                                        </div>
+                                        {t.qa_history?.length > 0 && (
+                                          <details className="mt-3 border-t border-slate-100 pt-2 text-xs">
+                                            <summary className="cursor-pointer select-none text-slate-500">QA history · {t.qa_history.length} events (cycle {t.qa_cycle || 1})</summary>
+                                            <div className="mt-2 space-y-1 break-words pl-2 text-slate-500">
+                                              {t.qa_history.map((event: any, index: number) => <p key={index}>Cycle {event.cycle}: <strong>{event.result}</strong>{event.severity ? ' · ' + event.severity : ''}{event.notes ? ' · ' + event.notes : ''}</p>)}
+                                            </div>
+                                          </details>
+                                        )}
+                                        {t.subtasks?.length > 0 && (
+                                          <details className="mt-2 border-t border-slate-100 pt-2 text-xs">
+                                            <summary className="cursor-pointer select-none text-slate-500">Subtasks · {t.subtasks.length}</summary>
+                                            <div className="mt-2 space-y-2">
+                                              {t.subtasks.map((sub: any) => (
+                                                <div key={sub.id} className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                                                  <span className="min-w-0 flex-1 break-words text-slate-700">{sub.title}<span className="text-slate-400"> · {sub.assignee || 'Unassigned'}</span></span>
+                                                  <span className={sub.status === 'Completed' ? 'shrink-0 text-green-700' : 'shrink-0 text-slate-500'}>{sub.status}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </details>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : <p className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-400">No tasks found for this business.</p>}
+                              </section>
+                              {p.team?.length > 0 && (
+                                <details className="rounded-lg border border-slate-200 bg-white p-3">
+                                  <summary className="cursor-pointer select-none text-xs font-semibold text-slate-600">Team contribution · {p.team.length} members</summary>
+                                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    {p.team.map((member: any) => (
+                                      <div key={member.name} className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                        <div className="break-words text-xs font-medium text-slate-800">{member.name}</div>
+                                        <div className="mt-1 text-[11px] leading-relaxed text-slate-500">{member.tasks_completed} tasks done · {member.tasks_open} open · {member.subtasks_completed} subtasks done · {member.subtasks_open} open</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              )}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-400">No businesses or projects found.</p>}
               </div>
             )}
             {reportView === 'team' && (
