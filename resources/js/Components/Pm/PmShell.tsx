@@ -138,7 +138,7 @@ export default function PmShell({ page, attention = 0, onOpenSearch, businesses 
     setCaptureSaving(true); setCaptureError('');
     try {
       await axios.post('/pm/api/action-items', { kind: captureKind, title: captureTitle.trim(), notes: captureNotes.trim() || null, source: current.label, priority: 'Medium' });
-      setCaptureTitle(''); setCaptureNotes(''); setCaptureOpen(false);
+      setCaptureTitle(''); setCaptureNotes(''); setCaptureOpen(false); window.dispatchEvent(new Event('pm:action-items-changed'));
     } catch { setCaptureError('Could not save this capture. Please try again.'); }
     finally { setCaptureSaving(false); }
   };
