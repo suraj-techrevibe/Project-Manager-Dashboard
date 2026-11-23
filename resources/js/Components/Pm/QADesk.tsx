@@ -20,7 +20,7 @@ const button = 'inline-flex items-center justify-center rounded-lg border border
 const primary = 'inline-flex items-center justify-center rounded-lg bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-800 disabled:opacity-50';
 const panelTitle = 'text-sm font-semibold text-slate-900';
 
-export default function QADesk() {
+export default function QADesk({ onManageWebsites }: { onManageWebsites: () => void }) {
   const [items, setItems] = useState<DeskItem[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -39,6 +39,7 @@ export default function QADesk() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickDraft, setQuickDraft] = useState({ title: '', business: '', site_app: '', assignee: '', url: '', checks: '' });
   const [reportScope, setReportScope] = useState('all');
+  const [previewShot, setPreviewShot] = useState<Screenshot | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -170,6 +171,12 @@ export default function QADesk() {
     setFailNote('');
   }
 
+  useEffect(() => {
+    if (selectedId === null && filtered.length > 0 && window.matchMedia('(min-width: 768px)').matches) {
+      setSelectedId(filtered[0].id);
+    }
+  }, [filtered, selectedId]);
+
   const reportRows = filtered.filter(x => reportScope === 'all' || (reportScope === 'open' ? x.status !== 'passed' : x.status === 'failed'));
   const reportText = [
     'QA Review Desk · ' + new Date().toLocaleDateString('en-AU'),
@@ -182,7 +189,7 @@ export default function QADesk() {
   return <div className="space-y-4">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-lg font-semibold text-slate-900">QA Review Desk</h2><p className="text-sm text-slate-500">Review website checks, Taskmandu work and quick QA requests in one place.</p></div>
-      <div className="flex flex-wrap gap-2"><button className={button} onClick={() => setQuickOpen(v => !v)}>＋ Quick QA</button><button className={button} onClick={() => void load()}>Refresh</button></div>
+      <div className="flex flex-wrap gap-2"><button className={button} onClick={onManageWebsites}>＋ Add site or app</button><button className={button} onClick={() => setQuickOpen(v => !v)}>＋ QA item</button><button className={button} onClick={() => void load()}>Refresh</button></div>
     </div>
     {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -220,15 +227,16 @@ export default function QADesk() {
           {filtered.map(item => <button key={item.id} onClick={() => { setSelectedId(item.id); setFailNote(item.fail_note || ''); }} className={'w-full rounded-lg border p-3 text-left ' + (selectedId === item.id ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-200 hover:border-slate-400')}><div className="flex flex-wrap items-center gap-2"><span className={'rounded-full px-2 py-1 text-[11px] font-semibold ' + (item.status === 'failed' ? 'bg-rose-100 text-rose-700' : item.status === 'passed' ? 'bg-emerald-100 text-emerald-700' : item.status === 'testing' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700')}>{labels[item.status]}</span><span className="ml-auto text-[11px] text-slate-400">{item.source}</span></div><div className="mt-2 text-sm font-semibold text-slate-900">{item.title}</div><div className="mt-1 text-xs text-slate-500">{item.business || 'Business not set'} · {item.site_app || 'No site'} · {item.assignee || 'Unassigned'}</div><div className="mt-2 flex gap-3 text-xs text-slate-500"><span>{item.checks.filter(c => c.done).length}/{item.checks.length} checks</span><span>{item.screenshots.length} screenshots</span></div></button>)}
           {!filtered.length && <div className="rounded-lg border border-dashed p-6 text-center text-sm text-slate-500">No QA items match these filters. Add Quick QA or add existing work above.</div>}
         </div>
-        <div className="min-h-[360px] rounded-xl border bg-slate-50 p-4">
+        <div className={selected ? 'fixed inset-0 z-50 min-h-screen overflow-y-auto bg-slate-50 p-4 md:static md:z-auto md:min-h-[360px] md:rounded-xl md:border' : 'hidden min-h-[360px] rounded-xl border bg-slate-50 p-4 md:grid md:place-items-center'}>
           {selected ? <>
+            <button className="mb-3 text-sm font-medium text-indigo-700 md:hidden" onClick={() => setSelectedId(null)}>← Back to queue</button>
             <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold uppercase text-slate-700">{selected.source}</span><span className="rounded-full bg-white px-2 py-1 text-xs">{labels[selected.status]}</span><span className="flex-1"/><button className={button} disabled={saving} onClick={() => void saveItem({ status: 'queue', checks: selected.checks.map(c => ({ ...c, done: false })) })}>Reset for retest</button></div>
             <h3 className="mt-3 text-lg font-semibold text-slate-900">{selected.title}</h3><p className="mt-1 text-sm text-slate-500">{[selected.business, selected.site_app, selected.assignee].filter(Boolean).join(' · ') || 'No additional details'}</p>
             {selected.url && <a className="mt-2 inline-block break-all text-sm text-indigo-700 underline" href={selected.url} target="_blank" rel="noreferrer">{selected.url}</a>}
             <div className="mt-5 flex items-center justify-between"><h4 className={panelTitle}>Checklist <span className="font-normal text-slate-500">({selected.checks.filter(c => c.done).length}/{selected.checks.length})</span></h4></div>
             <div className="mt-2 space-y-1">{selected.checks.map(check => <label key={check.id} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm"><input type="checkbox" checked={check.done} onChange={e => void saveItem({ checks: selected.checks.map(c => c.id === check.id ? { ...c, done: e.target.checked } : c) })}/><span className={check.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{check.text}</span></label>)}{!selected.checks.length && <p className="text-sm text-slate-500">No checks yet. Add the items you want to verify.</p>}</div>
             <div className="mt-2 flex gap-2"><input className={input} placeholder="Add a check…" value={newCheck} onChange={e => setNewCheck(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && newCheck.trim()) { void saveItem({ checks: [...selected.checks, { id: crypto.randomUUID(), text: newCheck.trim(), done: false }] }); setNewCheck(''); } }}/><button className={button} onClick={() => { if (newCheck.trim()) { void saveItem({ checks: [...selected.checks, { id: crypto.randomUUID(), text: newCheck.trim(), done: false }] }); setNewCheck(''); } }}>Add</button></div>
-            <div className="mt-5"><h4 className={panelTitle}>Screenshots <span className="font-normal text-slate-500">({selected.screenshots.length})</span></h4><div className="mt-2 flex flex-wrap gap-2">{selected.screenshots.map(s => <div key={s.id} className="group relative"><a href={s.url} target="_blank" rel="noreferrer"><img src={s.url} alt={s.name} className="h-16 w-20 rounded-lg border object-cover"/></a><button title="Remove screenshot" onClick={() => void removeScreenshot(s.id)} className="absolute -right-2 -top-2 rounded-full bg-rose-600 px-1.5 text-xs text-white">×</button></div>)}<label className="flex h-16 w-20 cursor-pointer items-center justify-center rounded-lg border border-dashed bg-white text-2xl text-slate-400">＋<input type="file" accept="image/*" multiple className="hidden" onChange={e => { void uploadScreenshots(e.target.files); e.currentTarget.value = ''; }}/></label></div></div>
+            <div className="mt-5"><h4 className={panelTitle}>Screenshots <span className="font-normal text-slate-500">({selected.screenshots.length})</span></h4><div className="mt-2 flex flex-wrap gap-2">{selected.screenshots.map(s => <div key={s.id} className="group relative"><button type="button" onClick={() => setPreviewShot(s)}><img src={s.url} alt={s.name} className="h-16 w-20 rounded-lg border object-cover"/></button><button title="Remove screenshot" onClick={() => void removeScreenshot(s.id)} className="absolute -right-2 -top-2 rounded-full bg-rose-600 px-1.5 text-xs text-white">×</button></div>)}<label className="flex h-16 w-20 cursor-pointer items-center justify-center rounded-lg border border-dashed bg-white text-2xl text-slate-400">＋<input type="file" accept="image/*" multiple className="hidden" onChange={e => { void uploadScreenshots(e.target.files); e.currentTarget.value = ''; }}/></label></div></div>
             {selected.status === 'failed' && <div className="mt-5 rounded-lg border border-rose-200 bg-rose-50 p-3"><h4 className="text-sm font-semibold text-rose-800">Sent back to developer</h4><p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{selected.fail_note || 'No failure note.'}</p></div>}
             {selected.status !== 'failed' && <div className="mt-5"><h4 className={panelTitle}>Failure note / testing notes</h4><textarea className={input + ' mt-2'} rows={3} value={failNote} onChange={e => setFailNote(e.target.value)} placeholder="If this fails, explain what is wrong and how to reproduce it."/></div>}
             <div className="mt-4 flex flex-wrap gap-2">
@@ -242,9 +250,15 @@ export default function QADesk() {
           </> : <div className="grid min-h-[320px] place-items-center text-center text-sm text-slate-500">Select an item from the queue to review its checks and evidence.</div>}
         </div>
       </div>}
-      {view === 'summary' && <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead className="bg-slate-100 text-xs text-slate-500"><tr>{['Business / site','Queue','Testing','Failed','Passed','Total'].map(x => <th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{businesses.map(b => { const rows = filtered.filter(x => x.business === b); return <tr key={b} className="border-t"><td className="p-3 font-medium">{b}</td>{statuses.map(s => <td key={s} className="p-3 tabular-nums">{rows.filter(x => x.status === s).length}</td>)}<td className="p-3">{rows.length}</td></tr>; })}</tbody></table></div>}
+      {view === 'summary' && <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead className="bg-slate-100 text-xs text-slate-500"><tr>{['Business / site','Queue','Testing','Failed','Passed','Total','Pass rate'].map(x => <th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{businesses.map(b => { const rows = filtered.filter(x => x.business === b); const sites = [...new Set(rows.map(x => x.site_app || 'Site not set'))].sort(); return <><tr key={b + '-group'} className="border-t bg-slate-50"><td className="p-3 font-semibold">{b}</td><td colSpan={6} className="p-3 text-xs text-slate-500">{rows.length} item(s)</td></tr>{sites.map(site => { const siteRows = rows.filter(x => (x.site_app || 'Site not set') === site); const passed = siteRows.filter(x => x.status === 'passed').length; return <tr key={b + site} className="border-t"><td className="p-3 pl-6">{site}</td>{statuses.map(s => <td key={s} className="p-3 tabular-nums">{siteRows.filter(x => x.status === s).length}</td>)}<td className="p-3">{siteRows.length}</td><td className="p-3">{siteRows.length ? Math.round(passed / siteRows.length * 100) : 0}%</td></tr>; })}</>; })}</tbody></table></div>}
       {view === 'detailed' && <div className="space-y-3">{filtered.map(x => <article key={x.id} className="rounded-lg border p-4"><div className="flex flex-wrap items-center gap-2"><span className="text-xs text-slate-500">{x.source}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{labels[x.status]}</span></div><h3 className="mt-2 font-semibold">{x.title}</h3><p className="text-xs text-slate-500">{x.business} · {x.site_app} · {x.assignee || 'Unassigned'}</p><p className="mt-2 text-sm">{x.checks.filter(c => c.done).length}/{x.checks.length} checks complete · {x.screenshots.length} screenshots</p>{x.fail_note && <p className="mt-2 whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-sm">{x.fail_note}</p>}</article>)}</div>}
       {view === 'report' && <div><div className="mb-3 flex flex-wrap items-center gap-2"><select className={input + ' max-w-xs'} value={reportScope} onChange={e => setReportScope(e.target.value)}><option value="all">All items</option><option value="open">Open items (not passed)</option><option value="failed">Failed only</option></select><button className={button} onClick={() => void navigator.clipboard.writeText(reportText)}>Copy report</button></div><pre className="whitespace-pre-wrap break-words rounded-lg border bg-slate-50 p-4 text-xs">{reportText}</pre></div>}
     </section>
+    {previewShot && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true" onClick={() => setPreviewShot(null)}>
+      <div className="max-h-full max-w-5xl rounded-xl bg-white p-3" onClick={e => e.stopPropagation()}>
+        <img src={previewShot.url} alt={previewShot.name} className="max-h-[75vh] max-w-full object-contain"/>
+        <div className="mt-2 flex items-center justify-between gap-3"><span className="truncate text-sm text-slate-600">{previewShot.name}</span><button className={button} onClick={() => setPreviewShot(null)}>Close</button></div>
+      </div>
+    </div>}
   </div>;
 }
