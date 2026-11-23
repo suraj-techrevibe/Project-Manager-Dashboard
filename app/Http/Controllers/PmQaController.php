@@ -102,6 +102,71 @@ class PmQaController extends Controller
         return response()->json(['review' => $review->fresh(['events.tester:id,name', 'tester:id,name'])]);
     }
 
+    public function runWebsiteCheck(Request $request, PmQaWebsite $website): JsonResponse
+    {
+        abort_unless($website->created_by === $request->user()->id, 404);
+
+        $parts = parse_url($website->url);
+        $scheme = strtolower($parts['scheme'] ?? '');
+        $host = strtolower($parts['host'] ?? '');
+        $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
+
+        if (!in_array($scheme, ['http', 'https'], true)
+            || $host === ''
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || !in_array($port, [80, 443], true)
+            || filter_var($host, FILTER_VALIDATE_IP)
+            || in_array($host, ['localhost', 'localhost.localdomain'], true)) {
+            return response()->json(['message' => 'Only public HTTP or HTTPS websites on standard ports can be checked.'], 422);
+        }
+
+        // Resolve and pin a public IPv4 address to reduce SSRF and DNS-rebinding risk.
+        $records = @dns_get_record($host, DNS_A) ?: [];
+        $ips = collect($records)->pluck('ip')->filter()->unique()->values();
+        if ($ips->isEmpty() || $ips->contains(fn ($ip) => !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE))) {
+            return response()->json(['message' => 'The website must resolve only to public IPv4 addresses before it can be checked.'], 422);
+        }
+
+        $ip = $ips->first();
+        $started = microtime(true);
+        try {
+            $response = Http::timeout(12)->withOptions([
+                'allow_redirects' => false,
+                'curl' => [CURLOPT_RESOLVE => [$host.':'.$port.':'.$ip]],
+            ])->withHeaders(['User-Agent' => 'PM-Dashboard-QA/1.0'])->get($website->url);
+
+            $httpStatus = $response->status();
+            $elapsed = (int) round((microtime(true) - $started) * 1000);
+            $checkStatus = $httpStatus >= 200 && $httpStatus < 300
+                ? 'Healthy'
+                : ($httpStatus >= 300 && $httpStatus < 400 ? 'Redirect' : 'Failed');
+            $result = $checkStatus === 'Healthy'
+                ? 'Website responded successfully.'
+                : ($checkStatus === 'Redirect'
+                    ? 'Website responded with a redirect. Redirect targets are not followed; register the final URL separately.'
+                    : 'Website returned an HTTP error response.');
+
+            $website->update([
+                'last_check_status' => $checkStatus,
+                'last_http_status' => $httpStatus,
+                'last_response_ms' => $elapsed,
+                'last_result' => $result,
+                'last_checked_at' => now(),
+            ]);
+        } catch (\\Throwable $exception) {
+            $website->update([
+                'last_check_status' => 'Failed',
+                'last_http_status' => null,
+                'last_response_ms' => (int) round((microtime(true) - $started) * 1000),
+                'last_result' => 'Website did not respond successfully. Check DNS, TLS and server availability.',
+                'last_checked_at' => now(),
+            ]);
+        }
+
+        return response()->json(['website' => $website->fresh()]);
+    }
+
     public function storeWebsite(Request $request): JsonResponse
     {
         $data = $request->validate([
