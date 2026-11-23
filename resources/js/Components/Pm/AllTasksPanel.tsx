@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Employee, Project, ProjectTask, TaskFocus } from '../../types/pm';
 import TaskDetail from './Projects/TaskDetail';
+import { NewTaskModal } from './Projects/TasksTab';
+import { pmApi } from '../../lib/pmApi';
 import { TASK_STATUSES } from '../../types/pm';
 import { EmptyState, Pill, btnChip, btnSecondary, type Tone } from './ui/kit';
 import { resolveEmployeeName, useEmployees } from './Projects/ui';
@@ -224,6 +226,8 @@ export default function AllTasksPanel({
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
   const [expandAll, setExpandAll] = useState<boolean | null>(null);
   const [activeTask, setActiveTask] = useState<{ projectId: string; taskId: string } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createProjectId, setCreateProjectId] = useState('');
   const { employees, nameFor } = useEmployees();
   const today = startOfToday();
 
@@ -284,7 +288,12 @@ export default function AllTasksPanel({
           <h3 className="text-base font-semibold tracking-tight text-slate-900">All tasks</h3>
           <p className="text-xs text-slate-500">Every task from your Taskmandu projects with its sub-tasks, plus standalone tasks.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <select aria-label="Business / project for new task" value={createProjectId} onChange={(e) => setCreateProjectId(e.target.value)} className={field}>
+            <option value="">Choose business / project</option>
+            {projectRecords.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+          </select>
+          <button type="button" disabled={!createProjectId} onClick={() => setCreateOpen(true)} className={btnSecondary}>+ New task</button>
           <button type="button" onClick={() => { setOpenMap({}); setExpandAll(true); }} className={btnSecondary}>
             Expand all
           </button>
@@ -457,6 +466,19 @@ export default function AllTasksPanel({
             </div>
           )}
         </>
+      )}
+
+      {createOpen && createProjectId && projectRecords.some((p) => p._id === createProjectId) && (
+        <NewTaskModal
+          employees={employees}
+          defaultStatus="Assigned"
+          onClose={() => setCreateOpen(false)}
+          onSubmit={async (input) => {
+            const { data } = await pmApi.addProjectTask(createProjectId, input);
+            onProjectChanged?.(data.project);
+            setCreateOpen(false);
+          }}
+        />
       )}
       {activeProject && activeProjectTask && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5" role="dialog" aria-modal="true" aria-label={`Task details: ${activeProjectTask.title}`} onMouseDown={(e) => { if (e.target === e.currentTarget) setActiveTask(null); }}>
