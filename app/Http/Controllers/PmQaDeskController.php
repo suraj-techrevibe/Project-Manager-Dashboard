@@ -127,7 +127,7 @@ class PmQaDeskController extends Controller
             'id' => (string) Str::uuid(),
             'name' => $file->getClientOriginalName(),
             'path' => $path,
-            'url' => Storage::disk('public')->url($path),
+            'url' => url(Storage::disk('public')->url($path)),
             'created_at' => now()->toIso8601String(),
         ];
         $item->screenshots = $shots;
