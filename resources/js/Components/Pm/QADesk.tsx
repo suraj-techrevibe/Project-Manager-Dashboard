@@ -150,6 +150,22 @@ export default function QADesk() {
       setError(!selected.checks.length ? 'Add at least one check before passing.' : 'Complete every checklist item before passing.'); return;
     }
     if (status === 'failed' && !failNote.trim()) { setError('Add a failure note so the developer knows what to fix.'); return; }
+    if (selected.source === 'Taskmandu' && (status === 'passed' || status === 'failed')) {
+      const reviewId = selected.source_id?.startsWith('task:') ? selected.source_id.slice(5) : '';
+      if (reviewId) {
+        try {
+          await axios.patch('/pm/api/qa/task-inbox/' + reviewId, {
+            result: status === 'passed' ? 'Pass' : 'Fail',
+            severity: status === 'failed' ? 'Medium' : undefined,
+            notes: status === 'failed' ? failNote.trim() : 'QA passed in the Review Desk.',
+            evidence_url: selected.screenshots[0]?.url || null,
+          });
+        } catch (e: any) {
+          setError(e?.response?.data?.message || 'The Taskmandu QA result could not be saved. The Review Desk status was not changed.');
+          return;
+        }
+      }
+    }
     await saveItem({ status, fail_note: status === 'failed' ? failNote.trim() : selected.fail_note });
     setFailNote('');
   }
