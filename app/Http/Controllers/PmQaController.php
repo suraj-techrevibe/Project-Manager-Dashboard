@@ -49,8 +49,8 @@ class PmQaController extends Controller
         $projectBusinesses = PmBusinessProjectLink::query()
             ->with('business:id,name')
             ->get()
-            ->filter(fn ($link) => filled($link->project_id) && filled($link->business?->name))
-            ->mapWithKeys(fn ($link) => [(string) $link->project_id => $link->business->name]);
+            ->filter(fn ($link) => filled($link->taskmandu_project_id) && filled($link->business?->name))
+            ->mapWithKeys(fn ($link) => [(string) $link->taskmandu_project_id => $link->business->name]);
 
         $websites = PmQaWebsite::where('created_by', $userId)->where('is_active', true)->get();
 
