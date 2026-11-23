@@ -17,6 +17,7 @@ type QARecord = {
 type Website = {
   id: number; business: string; project_id: string | null; project_name: string | null;
   name: string; url: string; website_type: string; frequency: string; is_active: boolean;
+  last_check_status?: string | null; last_http_status?: number | null; last_response_ms?: number | null; last_result?: string | null; last_checked_at?: string | null;
 };
 type Draft = Partial<QARecord> & { record_type: RecordType; title: string };
 type Filters = { businesses: string[]; projects: { id: string; name: string }[] };
@@ -42,6 +43,7 @@ export default function QACenter() {
   const [showWebsiteForm, setShowWebsiteForm] = useState(false);
   const [websiteDraft, setWebsiteDraft] = useState({ business: '', project_id: '', project_name: '', name: '', url: '', website_type: 'Business website', frequency: 'Manual' });
   const [websiteSaving, setWebsiteSaving] = useState(false);
+  const [checkingWebsiteId, setCheckingWebsiteId] = useState<number | null>(null);
 
   async function load() {
     setLoading(true); setError('');
@@ -113,6 +115,19 @@ export default function QACenter() {
     } catch (e: any) { setError(e?.response?.data?.message || 'Could not register this website.'); }
     finally { setWebsiteSaving(false); }
   }
+  async function runWebsiteCheck(site: Website) {
+    setCheckingWebsiteId(site.id);
+    setError('');
+    try {
+      const { data } = await axios.post('/pm/api/qa/websites/' + site.id + '/run');
+      setWebsites(current => current.map(item => item.id === site.id ? data.website : item));
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'Could not run the website availability check.');
+    } finally {
+      setCheckingWebsiteId(null);
+    }
+  }
+
   async function deleteWebsite(site: Website) {
     if (!window.confirm('Remove ' + site.name + ' from the website registry? Existing QA records will remain.')) return;
     try { await axios.delete('/pm/api/qa/websites/' + site.id); await load(); }
@@ -155,10 +170,10 @@ export default function QACenter() {
         <section className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Recent QA records</h2>{items.slice(0,6).map(x => <div key={x.id} className="flex flex-wrap items-center justify-between gap-2 border-t py-3 text-sm"><div><div className="font-medium">{x.title}</div><div className="text-xs text-slate-500">{x.business || 'Business not set'} · {x.record_type === 'Ad-hoc' ? 'Quick QA' : x.record_type} · {x.status}</div></div><button className="text-indigo-700" onClick={() => edit(x)}>Open</button></div>)}{!items.length && <p className="pt-3 text-sm text-slate-500">No QA records yet.</p>}</section>
       </>}
       {tab === 'websites' && <>
-        <section className="rounded-xl border bg-white p-4"><div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">Website registry</h2><p className="text-xs text-slate-500">Websites are grouped under your existing Taskmandu business names.</p></div><button onClick={() => setShowWebsiteForm(v => !v)} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white">＋ Add website</button></div>
+        <section className="rounded-xl border bg-white p-4"><div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">Website registry</h2><p className="text-xs text-slate-500">Websites are grouped under your existing Taskmandu business names. Run automated check tests public website availability and HTTP response.</p></div><button onClick={() => setShowWebsiteForm(v => !v)} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white">＋ Add website</button></div>
           {showWebsiteForm && <div className="mt-4 grid gap-2 rounded-lg border bg-slate-50 p-3 md:grid-cols-2"><select className={input} value={websiteDraft.business} onChange={e => setWebsiteDraft(v => ({ ...v, business: e.target.value }))}><option value="">Select business</option>{filters.businesses.map(b => <option key={b}>{b}</option>)}</select><input className={input} placeholder="Website name" value={websiteDraft.name} onChange={e => setWebsiteDraft(v => ({ ...v, name: e.target.value }))}/><input className={input + ' md:col-span-2'} placeholder="https://example.com" value={websiteDraft.url} onChange={e => setWebsiteDraft(v => ({ ...v, url: e.target.value }))}/><select className={input} value={websiteDraft.website_type} onChange={e => setWebsiteDraft(v => ({ ...v, website_type: e.target.value }))}>{['Business website','E-commerce','Event platform','Dashboard','Web application','Other'].map(v => <option key={v}>{v}</option>)}</select><select className={input} value={websiteDraft.frequency} onChange={e => setWebsiteDraft(v => ({ ...v, frequency: e.target.value }))}>{['Daily','Weekly','Manual'].map(v => <option key={v}>{v}</option>)}</select><select className={input} value={websiteDraft.project_id} onChange={e => { const p = filters.projects.find(x => x.id === e.target.value); setWebsiteDraft(v => ({ ...v, project_id: e.target.value, project_name: p?.name ?? '' })); }}><option value="">Link Taskmandu project (optional)</option>{filters.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><div className="flex gap-2"><button disabled={websiteSaving} onClick={() => void saveWebsite()} className="rounded-lg bg-indigo-700 px-3 py-2 text-sm text-white disabled:opacity-50">{websiteSaving ? 'Saving…' : 'Save website'}</button><button onClick={() => setShowWebsiteForm(false)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button></div></div>}
         </section>
-        {filters.businesses.map(b => { const rows = websites.filter(w => w.business === b); if (!rows.length) return null; return <section key={b} className="rounded-xl border bg-white p-4"><h3 className="font-semibold">{b}</h3><div className="mt-2 divide-y">{rows.map(site => <div key={site.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><div className="font-medium text-sm">{site.name}</div><a className="break-all text-xs text-indigo-700" href={site.url} target="_blank" rel="noreferrer">{site.url}</a><div className="text-xs text-slate-500">{site.project_name || 'No project linked'} · {site.website_type} · {site.frequency} QA</div></div><div className="flex gap-2"><button onClick={() => startWebsiteQA(site)} className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-semibold text-white">Start QA</button><button onClick={() => void deleteWebsite(site)} className="rounded-lg border px-2 py-2 text-xs text-rose-700">Remove</button></div></div>)}</div></section>; })}
+        {filters.businesses.map(b => { const rows = websites.filter(w => w.business === b); if (!rows.length) return null; return <section key={b} className="rounded-xl border bg-white p-4"><h3 className="font-semibold">{b}</h3><div className="mt-2 divide-y">{rows.map(site => <div key={site.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><div className="font-medium text-sm">{site.name}</div><a className="break-all text-xs text-indigo-700" href={site.url} target="_blank" rel="noreferrer">{site.url}</a><div className="text-xs text-slate-500">{site.project_name || 'No project linked'} · {site.website_type} · {site.frequency} QA preference</div>{site.last_result && <div className="mt-1 text-xs text-slate-600">{site.last_result} · HTTP {site.last_http_status ?? '—'} · {site.last_response_ms ?? '—'} ms · Last checked {site.last_checked_at ? new Date(site.last_checked_at).toLocaleString() : '—'}</div>}{site.last_check_status && <span className={'mt-1 inline-block rounded-full px-2 py-0.5 text-xs '+(site.last_check_status === 'Healthy' ? 'bg-emerald-50 text-emerald-700' : site.last_check_status === 'Redirect' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700')}>{site.last_check_status}</span>}</div><div className="flex flex-wrap gap-2"><button disabled={checkingWebsiteId !== null} onClick={() => void runWebsiteCheck(site)} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">{checkingWebsiteId === site.id ? 'Checking…' : 'Run automated check'}</button><button onClick={() => startWebsiteQA(site)} className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-semibold text-white">Start QA record</button><button onClick={() => void deleteWebsite(site)} className="rounded-lg border px-2 py-2 text-xs text-rose-700">Remove</button></div></div>)}</div></section>; })}
         {websites.length === 0 && <div className="rounded-xl border bg-white p-5 text-sm text-slate-500">No websites registered. Add your first website to begin recording website QA.</div>}
       </>}
       {tab === 'tasks' && <TaskQAInbox/>}
