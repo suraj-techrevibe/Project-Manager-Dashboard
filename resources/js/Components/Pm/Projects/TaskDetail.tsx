@@ -40,6 +40,7 @@ export default function TaskDetail({
   nameFor,
   onChanged,
   onBack,
+  showBackButton = true,
 }: {
   project: Project;
   task: ProjectTask;
@@ -47,6 +48,7 @@ export default function TaskDetail({
   nameFor: (employeeId: string) => string;
   onChanged: (p: Project) => void;
   onBack: () => void;
+  showBackButton?: boolean;
 }) {
   const { busy, error, run } = useRunner(onChanged);
   // The 15s poll lives across renders; read the freshest project through a ref.
@@ -198,7 +200,7 @@ export default function TaskDetail({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-700">← Back to {project.name}</button>
+        {showBackButton ? <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-700">← Back to {project.name}</button> : <span className="text-xs text-slate-500">{project.name}</span>}
         <div className="flex gap-2">
           {editing ? (
             <>
