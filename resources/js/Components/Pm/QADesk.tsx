@@ -189,8 +189,9 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
   }
 
   useEffect(() => {
-    if (selectedId === null && filtered.length > 0 && window.matchMedia('(min-width: 768px)').matches) {
-      setSelectedId(filtered[0].id);
+    const isVisible = selectedId !== null && filtered.some(item => item.id === selectedId);
+    if (!isVisible) {
+      setSelectedId(window.matchMedia('(min-width: 768px)').matches && filtered.length ? filtered[0].id : null);
     }
   }, [filtered, selectedId]);
 
