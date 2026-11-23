@@ -367,7 +367,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                       blocking: 'blocked', blocked: 'blocked', duesoon: 'week', due_soon: 'week', due_today: 'week',
                       unowned: 'unassigned', unassigned: 'unassigned', overdue: 'overdue', open: 'open', done_since: 'done',
                     };
-                    visitPm('tasks', { tq: quick[filter] ?? 'open' });
+                    visitPm('projects', { tq: quick[filter] ?? 'open' });
                   }}
                   onFilter={(type) => {
                     setActiveKey(type === 'blocked' ? 'blocking' : type === 'due_today' ? 'duesoon' : type);
