@@ -164,6 +164,7 @@ class PmQaController extends Controller
     public function update(Request $request, PmQaIssue $issue): JsonResponse {
         abort_unless($issue->created_by === $request->user()->id, 404);
         $data = $request->validate([
+            'record_type'=>['sometimes',Rule::in(['Website','Ad-hoc'])],
             'business'=>'nullable|string|max:160','site_app'=>'nullable|string|max:200',
             'project_id'=>'nullable|string|max:24','project_name'=>'nullable|string|max:200','task_id'=>'nullable|string|max:24',
             'task_title'=>'nullable|string|max:200','subtask_id'=>'nullable|string|max:24','subtask_title'=>'nullable|string|max:200',
