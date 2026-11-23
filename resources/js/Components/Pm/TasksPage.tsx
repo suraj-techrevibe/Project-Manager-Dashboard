@@ -16,6 +16,7 @@ export default function TasksPage({
   projects,
   projectsLoading,
   onOpenTask,
+  onProjectChanged,
 }: {
   tasks: AllTask[] | null;
   loading: boolean;
@@ -24,6 +25,7 @@ export default function TasksPage({
   projects: Project[];
   projectsLoading: boolean;
   onOpenTask: (f: TaskFocus) => void;
+  onProjectChanged?: (project: Project) => void;
 }) {
   const [view, setView] = useState<View>('tasks');
   const completed = useCompletedSubtasks(projects);
@@ -68,7 +70,7 @@ export default function TasksPage({
               <button onClick={onRetry} className="font-medium underline">Try again</button>
             </p>
           )}
-          <AllTasksPanel rows={rows} loading={projectsLoading || loading} onOpenTask={onOpenTask} quickParam={quickParam} />
+          <AllTasksPanel rows={rows} loading={projectsLoading || loading} projects={projects} onProjectChanged={onProjectChanged} quickParam={quickParam} />
         </>
       )}
 

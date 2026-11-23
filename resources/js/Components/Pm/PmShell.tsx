@@ -25,7 +25,7 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
-  { title: '1 · Daily workflow', keys: ['today', 'tasks', 'minutes', 'projects', 'operations', 'brief', 'reports'] },
+  { title: '1 · Daily workflow', keys: ['today', 'minutes', 'projects', 'operations', 'brief', 'reports'] },
   { title: '2 · Quality assurance', keys: ['qa-reports', 'qa'] },
   { title: '3 · Project controls', keys: ['scope', 'git'] },
   // Daily Checklist and My Action List now open from the bottom dock (they keep their own /pm/... pages).

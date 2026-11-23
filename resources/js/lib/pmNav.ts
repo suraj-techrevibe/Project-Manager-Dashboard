@@ -12,7 +12,6 @@ export type PmPage = 'today' | 'tasks' | 'operations' | 'projects' | 'minutes' |
 
 export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'today', label: 'Command center', href: '/pm' },
-  { key: 'tasks', label: 'All tasks', href: '/pm/tasks' },
   { key: 'operations', label: 'Operations & Requests', href: '/pm/operations' },
   { key: 'projects', label: 'Projects', href: '/pm/projects' },
   { key: 'minutes', label: 'Meeting minutes', href: '/pm/minutes' },
@@ -37,6 +36,7 @@ type Params = Record<string, string | null | undefined>;
 /** "/pm/projects" -> 'projects', "/pm" -> 'today'. */
 export function pageFromPath(pathname: string = window.location.pathname): PmPage {
   const seg = pathname.replace(/\/+$/, '').split('/')[2];
+  if (seg === 'tasks') return 'projects'; // Legacy All Tasks URL now opens the combined Projects workspace.
   return seg && isPmPage(seg) ? seg : 'today';
 }
 

@@ -298,7 +298,7 @@ function TaskList({
   );
 }
 
-function NewTaskModal({
+export function NewTaskModal({
   employees,
   defaultStatus,
   onClose,
