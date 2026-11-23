@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
 type Website = {
@@ -44,7 +44,7 @@ export default function WebsiteQA() {
     }, {});
   }, [websites, filter]);
 
-  async function addWebsite(event: React.FormEvent) {
+  async function addWebsite(event: FormEvent) {
     event.preventDefault();
     if (!business || !name.trim() || !url.trim()) return;
     setSaving(true); setError('');
