@@ -368,7 +368,7 @@ export default function AllTasksPanel({
           </div>
           <ul className="divide-y divide-slate-100">
             {visible.slice(0, limit).map((t) => {
-              const canOpen = Boolean((t.projectId && t.taskId) || t.url);
+              const canOpen = Boolean(t.url || (t.projectId && t.taskId && projectRecords.some((p) => p._id === t.projectId && p.tasks.some((task) => task._id === t.taskId))));
               const due = dueInfo(t, today);
               const open = isExpanded(t);
               const hasSubs = t.subs.length > 0;
@@ -381,7 +381,6 @@ export default function AllTasksPanel({
                         disabled={!canOpen}
                         onClick={() => {
                           if (t.projectId && t.taskId && projectRecords.some((p) => p._id === t.projectId && p.tasks.some((task) => task._id === t.taskId))) setActiveTask({ projectId: t.projectId, taskId: t.taskId });
-                          else if (t.projectId && t.taskId) onOpenTask({ projectId: t.projectId, taskId: t.taskId });
                           else if (t.url) window.open(t.url, '_blank', 'noopener');
                         }}
                         className={`block break-words text-left text-sm font-medium text-slate-900 ${canOpen ? 'hover:text-indigo-700' : 'cursor-default'}`}
@@ -432,8 +431,8 @@ export default function AllTasksPanel({
                           <li key={s.id}>
                             <button
                               type="button"
-                              disabled={!t.projectId || !t.taskId}
-                              onClick={() => t.projectId && t.taskId && (projectRecords.some((p) => p._id === t.projectId && p.tasks.some((task) => task._id === t.taskId)) ? setActiveTask({ projectId: t.projectId, taskId: t.taskId }) : onOpenTask({ projectId: t.projectId, taskId: t.taskId, subId: s.id }))}
+                              disabled={!t.projectId || !t.taskId || !projectRecords.some((p) => p._id === t.projectId && p.tasks.some((task) => task._id === t.taskId))}
+                              onClick={() => t.projectId && t.taskId && setActiveTask({ projectId: t.projectId, taskId: t.taskId })}
                               className={`flex w-full flex-col gap-1 rounded-lg px-3 py-2 text-left text-xs transition hover:bg-slate-50 md:grid md:grid-cols-[minmax(0,1fr)_10rem_8rem_8rem] md:items-center md:gap-4 ${
                                 match ? 'bg-indigo-50/60 ring-1 ring-indigo-200' : ''
                               } ${dim ? 'opacity-50' : ''}`}
