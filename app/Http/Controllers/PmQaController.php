@@ -132,10 +132,14 @@ class PmQaController extends Controller
         $ip = $ips->first();
         $started = microtime(true);
         try {
-            $response = Http::timeout(12)->withOptions([
+            $client = Http::timeout(12)->withOptions([
                 'allow_redirects' => false,
                 'curl' => [CURLOPT_RESOLVE => [$host.':'.$port.':'.$ip]],
-            ])->withHeaders(['User-Agent' => 'PM-Dashboard-QA/1.0'])->get($website->url);
+            ])->withHeaders(['User-Agent' => 'PM-Dashboard-QA/1.0']);
+            $response = $client->head($website->url);
+            if (in_array($response->status(), [405, 501], true)) {
+                $response = $client->get($website->url);
+            }
 
             $httpStatus = $response->status();
             $elapsed = (int) round((microtime(true) - $started) * 1000);
