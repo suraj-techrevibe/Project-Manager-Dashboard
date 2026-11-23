@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
-import type { Project, ProjectStatus } from '../../types/pm';
+import type { Project, ProjectStatus, TaskFocus } from '../../types/pm';
+import TasksPage from './TasksPage';
+import type { AllTask } from './AllTasksPanel';
 import { setUrlParams, useUrlParam } from '../../lib/urlState';
 import { PROJECT_STATUSES } from '../../types/pm';
 import { EmptyState, JumpNav, PageHeader, Pill, Section, StatTile, btnChip, btnPrimary, btnSecondary } from './ui/kit';
@@ -31,16 +33,27 @@ import {
 export default function ProjectsPanel({
   seedProjects = [],
   onProjectsChange,
+  tasks = null,
+  tasksLoading = false,
+  tasksError = null,
+  onRetryTasks,
+  onOpenTask,
 }: {
   /** Projects the app already loaded (e.g. for All tasks). Shown immediately so opening a task never waits on a re-fetch. */
   seedProjects?: Project[];
   /** Called when this tab changes its project list, so other tabs don't go stale. */
   onProjectsChange?: (projects: Project[]) => void;
+  tasks?: AllTask[] | null;
+  tasksLoading?: boolean;
+  tasksError?: string | null;
+  onRetryTasks?: () => void;
+  onOpenTask?: (focus: TaskFocus) => void;
 }) {
   const [projects, setProjects] = useState<Project[]>(seedProjects);
   const [loading, setLoading] = useState(seedProjects.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState<'projects' | 'tasks'>('projects');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
   // Quick filter driven by the overview tiles.
@@ -110,12 +123,15 @@ export default function ProjectsPanel({
   }, [openId, loading, projects]);
 
   const open = projects.find((p) => p._id === openId) ?? null;
+  const workspaceNav = <div role="tablist" aria-label="Projects workspace" className="flex gap-1 border-b border-slate-200"><button type="button" role="tab" aria-selected={workspaceView === 'projects'} onClick={() => setWorkspaceView('projects')} className={'border-b-2 px-4 py-2.5 text-sm font-medium ' + (workspaceView === 'projects' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500')}>Projects</button><button type="button" role="tab" aria-selected={workspaceView === 'tasks'} onClick={() => setWorkspaceView('tasks')} className={'border-b-2 px-4 py-2.5 text-sm font-medium ' + (workspaceView === 'tasks' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500')}>All tasks</button></div>;
 
-  if (openId && loading) return <p className="text-sm text-slate-500">Loading project…</p>;
+  if (workspaceView === 'tasks') return <div className="flex flex-col gap-4">{workspaceNav}<TasksPage tasks={tasks} loading={tasksLoading} error={tasksError} onRetry={onRetryTasks ?? (() => undefined)} projects={projects} projectsLoading={loading} onOpenTask={onOpenTask ?? (() => undefined)} onProjectChanged={(updated) => setProjects((ps) => ps.map((p) => p._id === updated._id ? updated : p))} /></div>;
+
+  if (openId && loading) return <div className="flex flex-col gap-4">{workspaceNav}<p className="text-sm text-slate-500">Loading project…</p></div>;
 
   if (open) {
     return (
-      <ProjectWorkspace
+      <div className="flex flex-col gap-4">{workspaceNav}<ProjectWorkspace
         key={open._id}
         project={open}
         onBack={closeProject}
@@ -124,7 +140,7 @@ export default function ProjectsPanel({
           setProjects((ps) => ps.filter((p) => p._id !== open._id));
           closeProject();
         }}
-      />
+      /></div>
     );
   }
 
@@ -159,6 +175,7 @@ export default function ProjectsPanel({
 
   return (
     <div className="flex flex-col gap-4">
+      {workspaceNav}
       <PageHeader
         icon="folder"
         title="Projects"
