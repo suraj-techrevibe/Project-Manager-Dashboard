@@ -20,9 +20,12 @@ const button = 'inline-flex items-center justify-center rounded-lg border border
 const primary = 'inline-flex items-center justify-center rounded-lg bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-800 disabled:opacity-50';
 const panelTitle = 'text-sm font-semibold text-slate-900';
 
-export default function QADesk({ onManageWebsites }: { onManageWebsites: () => void }) {
+export default function QADesk() {
   const [items, setItems] = useState<DeskItem[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [businesses, setBusinesses] = useState<string[]>([]);
+  const [siteOpen, setSiteOpen] = useState(false);
+  const [siteDraft, setSiteDraft] = useState({ business: '', name: '', url: '', website_type: 'Business website', frequency: 'Manual' });
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [view, setView] = useState<'board' | 'report' | 'summary' | 'detailed'>('board');
   const [statusFilter, setStatusFilter] = useState<'all' | Status>('all');
@@ -52,6 +55,7 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
         axios.get('/pm/api/qa/task-inbox'),
       ]);
       setItems(desk.data.items ?? []);
+      setBusinesses(qa.data.filters?.businesses ?? []);
       const issueCandidates: Candidate[] = (qa.data.issues ?? []).map((x: any) => ({
         source: x.record_type === 'Ad-hoc' ? 'Client report' : 'Site check',
         source_id: 'issue:' + x.id, title: x.title, business: x.business,
@@ -115,6 +119,17 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
       const { data } = await axios.patch('/pm/api/qa/review-desk/' + selected.id, patch);
       setItems(current => current.map(x => x.id === selected.id ? data.item : x));
     } catch (e: any) { setError(e?.response?.data?.message || 'Could not save this review.'); }
+    finally { setSaving(false); }
+  }
+
+  async function saveSite() {
+    if (!siteDraft.business || !siteDraft.name.trim() || !/^https?:\\/\\/.+/.test(siteDraft.url.trim())) { setError('Select a business and enter a website name and valid URL.'); return; }
+    setSaving(true); setError('');
+    try {
+      await axios.post('/pm/api/qa/websites', { ...siteDraft, name: siteDraft.name.trim(), url: siteDraft.url.trim() });
+      setSiteDraft({ business: '', name: '', url: '', website_type: 'Business website', frequency: 'Manual' });
+      setSiteOpen(false); await load();
+    } catch (e: any) { setError(e?.response?.data?.message || 'Could not register this website.'); }
     finally { setSaving(false); }
   }
 
@@ -207,8 +222,9 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
   return <div className="space-y-4">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-lg font-semibold text-slate-900">QA Review Desk</h2><p className="text-sm text-slate-500">Review website checks, Taskmandu work and quick QA requests in one place.</p></div>
-      <div className="flex flex-wrap gap-2"><button className={button} onClick={onManageWebsites}>＋ Add site or app</button><button className={button} onClick={() => setQuickOpen(v => !v)}>＋ QA item</button><button className={button} onClick={() => void load()}>Refresh</button></div>
+      <div className="flex flex-wrap gap-2"><button className={button} onClick={() => setSiteOpen(v => !v)}>＋ Add site or app</button><button className={button} onClick={() => setQuickOpen(v => !v)}>＋ QA item</button><button className={button} onClick={() => void load()}>Refresh</button></div>
     </div>
+    {siteOpen && <section className="rounded-xl border bg-white p-4"><div className="mb-3 flex items-center justify-between"><h3 className={panelTitle}>Register website or app</h3><button className="text-sm text-slate-500" onClick={() => setSiteOpen(false)}>Close</button></div><div className="grid gap-2 md:grid-cols-2"><select className={input} value={siteDraft.business} onChange={e => setSiteDraft(v => ({ ...v, business: e.target.value }))}><option value="">Select Taskmandu business</option>{businesses.map(b => <option key={b}>{b}</option>)}</select><input className={input} placeholder="Website / app name" value={siteDraft.name} onChange={e => setSiteDraft(v => ({ ...v, name: e.target.value }))}/><input className={input + ' md:col-span-2'} placeholder="https://example.com" value={siteDraft.url} onChange={e => setSiteDraft(v => ({ ...v, url: e.target.value }))}/><select className={input} value={siteDraft.website_type} onChange={e => setSiteDraft(v => ({ ...v, website_type: e.target.value }))}>{['Business website','E-commerce','Event platform','Dashboard','Web application','Other'].map(v => <option key={v}>{v}</option>)}</select><select className={input} value={siteDraft.frequency} onChange={e => setSiteDraft(v => ({ ...v, frequency: e.target.value }))}>{['Daily','Weekly','Manual'].map(v => <option key={v}>{v}</option>)}</select></div><div className="mt-3 flex gap-2"><button className={primary} disabled={saving} onClick={() => void saveSite()}>{saving ? 'Saving…' : 'Save site / app'}</button><button className={button} onClick={() => setSiteOpen(false)}>Cancel</button></div></section>}
     {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
       {statuses.map(s => <button key={s} onClick={() => setStatusFilter(statusFilter === s ? 'all' : s)} className={'rounded-xl border bg-white p-3 text-left ' + (statusFilter === s ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-200')}><div className="text-xs text-slate-500">{s === 'queue' ? 'In queue' : labels[s]}</div><div className="mt-1 text-2xl font-semibold tabular-nums">{counts[s]}</div></button>)}
