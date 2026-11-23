@@ -81,6 +81,14 @@ class PmQaDeskController extends Controller
             'fail_note' => 'nullable|string|max:5000',
         ]);
 
+        $nextChecks = $data['checks'] ?? ($item->checks ?? []);
+        if (($data['status'] ?? null) === 'passed' && (count($nextChecks) === 0 || collect($nextChecks)->contains(fn ($check) => empty($check['done'])))) {
+            return response()->json(['message' => 'Complete every checklist item before passing this QA review.'], 422);
+        }
+        if (($data['status'] ?? null) === 'failed' && !filled($data['fail_note'] ?? $item->fail_note)) {
+            return response()->json(['message' => 'Add a failure note before sending this item back.'], 422);
+        }
+
         $before = $item->status;
         $item->fill($data);
         $history = $item->history ?? [];
@@ -123,6 +131,9 @@ class PmQaDeskController extends Controller
             'created_at' => now()->toIso8601String(),
         ];
         $item->screenshots = $shots;
+        $history = $item->history ?? [];
+        $history[] = ['at' => now()->toIso8601String(), 'message' => 'Screenshot added'];
+        $item->history = array_slice($history, -40);
         $item->save();
 
         return response()->json(['item' => $item->fresh(), 'screenshot' => end($shots)], 201);
