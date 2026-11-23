@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PmQaIssue;
+use App\Models\PmQaWebsite;
 use App\Models\PmQaReport;
 use Illuminate\Support\Str;
 use App\Models\PmBusiness;
@@ -28,6 +29,7 @@ class PmQaController extends Controller
 
         return response()->json([
             'issues' => PmQaIssue::where('created_by', $request->user()->id)->latest()->limit(300)->get(),
+            'websites' => PmQaWebsite::where('created_by', $request->user()->id)->where('is_active', true)->orderBy('business')->orderBy('name')->get(),
             'filters' => [
                 'businesses' => PmBusiness::query()->orderBy('name')->pluck('name'),
                 'projects' => $projects->map(fn ($p) => ['id' => $p->project_id, 'name' => $p->project_name])->values(),
@@ -99,8 +101,53 @@ class PmQaController extends Controller
 
         return response()->json(['review' => $review->fresh(['events.tester:id,name', 'tester:id,name'])]);
     }
+
+    public function storeWebsite(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'business' => 'required|string|max:160',
+            'project_id' => 'nullable|string|max:24',
+            'project_name' => 'nullable|string|max:200',
+            'name' => 'required|string|max:200',
+            'url' => 'required|url|max:1000',
+            'website_type' => ['required', Rule::in(['Business website', 'E-commerce', 'Event platform', 'Dashboard', 'Web application', 'Other'])],
+            'frequency' => ['required', Rule::in(['Daily', 'Weekly', 'Manual'])],
+        ]);
+        $data['created_by'] = $request->user()->id;
+        $website = PmQaWebsite::create($data);
+
+        return response()->json(['website' => $website], 201);
+    }
+
+    public function updateWebsite(Request $request, PmQaWebsite $website): JsonResponse
+    {
+        abort_unless($website->created_by === $request->user()->id, 404);
+        $data = $request->validate([
+            'business' => 'required|string|max:160',
+            'project_id' => 'nullable|string|max:24',
+            'project_name' => 'nullable|string|max:200',
+            'name' => 'required|string|max:200',
+            'url' => 'required|url|max:1000',
+            'website_type' => ['required', Rule::in(['Business website', 'E-commerce', 'Event platform', 'Dashboard', 'Web application', 'Other'])],
+            'frequency' => ['required', Rule::in(['Daily', 'Weekly', 'Manual'])],
+            'is_active' => 'sometimes|boolean',
+        ]);
+        $website->update($data);
+
+        return response()->json(['website' => $website->fresh()]);
+    }
+
+    public function destroyWebsite(Request $request, PmQaWebsite $website): JsonResponse
+    {
+        abort_unless($website->created_by === $request->user()->id, 404);
+        $website->delete();
+
+        return response()->json(['deleted' => true]);
+    }
+
     public function store(Request $request): JsonResponse {
         $data = $request->validate([
+            'record_type'=>['required',Rule::in(['Website','Ad-hoc'])],
             'business'=>'nullable|string|max:160','site_app'=>'nullable|string|max:200',
             'project_id'=>'nullable|string|max:24','project_name'=>'nullable|string|max:200','task_id'=>'nullable|string|max:24',
             'task_title'=>'nullable|string|max:200','subtask_id'=>'nullable|string|max:24','subtask_title'=>'nullable|string|max:200',
