@@ -23,7 +23,7 @@ export default function QACenter(){
  const byBusiness=businesses.map(b=>({name:b,count:items.filter(x=>x.business===b&&x.status!=='Passed').length}));
  const edit=(x:QA)=>{setDraft({...x});setView('tracking');window.scrollTo({top:0,behavior:'smooth'});};
  return <div className="space-y-4">
-  <div className="flex flex-wrap gap-2">{(['websites','taskinbox','quickqa','dashboard','tracking','retest','reports'] as const).map(v=><button key={v} onClick={()=>setView(v==='quickqa'?'quickqa':v)} className={'rounded-lg px-3 py-2 text-sm '+(view===v?'bg-slate-900 text-white':'border bg-white')}>{v==='websites'?'Website QA':v==='quickqa'?'Quick QA':v==='taskinbox'?'Task QA Inbox':v==='dashboard'?'QA Overview':v==='tracking'?'QA Records':v==='retest'?'Retesting':'Reports'}</button>)}</div>
+  <div className="flex flex-wrap gap-2">{(['websites','taskinbox','quickqa','dashboard','tracking','retest'] as const).map(v=><button key={v} onClick={()=>setView(v==='quickqa'?'quickqa':v)} className={'rounded-lg px-3 py-2 text-sm '+(view===v?'bg-slate-900 text-white':'border bg-white')}>{v==='websites'?'Website QA':v==='quickqa'?'Quick QA':v==='taskinbox'?'Task QA Inbox':v==='dashboard'?'QA Overview':v==='tracking'?'QA Records':v==='retest'?'Retesting':'Reports'}</button>)}</div>
   {view==='websites'&&<WebsiteQA/>}
   {view==='quickqa'&&<><section className="rounded-xl border bg-white p-3"><h2 className="font-semibold">Quick QA</h2><p className="text-sm text-slate-500">Record an unexpected check, issue or observation from any business. Use this for requests and checks that do not belong to the Task QA Inbox.</p></section></>}
   {view==='taskinbox'&&<TaskQAInbox/>}
