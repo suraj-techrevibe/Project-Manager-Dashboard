@@ -40,6 +40,8 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
   const [quickDraft, setQuickDraft] = useState({ title: '', business: '', site_app: '', assignee: '', url: '', checks: '' });
   const [reportScope, setReportScope] = useState('all');
   const [previewShot, setPreviewShot] = useState<Screenshot | null>(null);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailDraft, setDetailDraft] = useState({ title: '', business: '', site_app: '', assignee: '', url: '' });
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -78,6 +80,10 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
   useEffect(() => { void load(); }, [load]);
 
   const selected = items.find(x => x.id === selectedId) ?? null;
+  useEffect(() => {
+    if (selected) setDetailDraft({ title: selected.title, business: selected.business || '', site_app: selected.site_app || '', assignee: selected.assignee || '', url: selected.url || '' });
+    setEditingDetails(false);
+  }, [selected?.id]);
   const businesses = [...new Set(items.map(x => x.business).filter(Boolean) as string[])].sort();
   const assignees = [...new Set(items.map(x => x.assignee).filter(Boolean) as string[])].sort();
   const counts = useMemo(() => statuses.reduce((acc, s) => ({ ...acc, [s]: items.filter(x => x.status === s).length }), { queue: 0, testing: 0, failed: 0, passed: 0 } as Record<Status, number>), [items]);
@@ -134,6 +140,17 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
       }
       await load();
     } catch (e: any) { setError(e?.response?.data?.message || 'Could not upload screenshot.'); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteItem() {
+    if (!selected || !window.confirm('Delete this QA review item and its screenshots?')) return;
+    setSaving(true);
+    try {
+      await axios.delete('/pm/api/qa/review-desk/' + selected.id);
+      setSelectedId(null);
+      await load();
+    } catch { setError('Could not delete this QA review item.'); }
     finally { setSaving(false); }
   }
 
@@ -230,11 +247,16 @@ export default function QADesk({ onManageWebsites }: { onManageWebsites: () => v
         <div className={selected ? 'fixed inset-0 z-50 min-h-screen overflow-y-auto bg-slate-50 p-4 md:static md:z-auto md:min-h-[360px] md:rounded-xl md:border' : 'hidden min-h-[360px] rounded-xl border bg-slate-50 p-4 md:grid md:place-items-center'}>
           {selected ? <>
             <button className="mb-3 text-sm font-medium text-indigo-700 md:hidden" onClick={() => setSelectedId(null)}>← Back to queue</button>
-            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold uppercase text-slate-700">{selected.source}</span><span className="rounded-full bg-white px-2 py-1 text-xs">{labels[selected.status]}</span><span className="flex-1"/><button className={button} disabled={saving} onClick={() => void saveItem({ status: 'queue', checks: selected.checks.map(c => ({ ...c, done: false })) })}>Reset for retest</button></div>
+            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold uppercase text-slate-700">{selected.source}</span><span className="rounded-full bg-white px-2 py-1 text-xs">{labels[selected.status]}</span><span className="flex-1"/><button className={button} onClick={() => setEditingDetails(v => !v)}>{editingDetails ? 'Close edit' : 'Edit details'}</button><button className={button} disabled={saving} onClick={() => void saveItem({ status: 'queue', checks: selected.checks.map(c => ({ ...c, done: false })) })}>Reset for retest</button><button className="rounded-lg px-2 py-2 text-sm text-rose-700 hover:bg-rose-50" disabled={saving} onClick={() => void deleteItem()}>Delete</button></div>
+            {editingDetails && <div className="mt-3 grid gap-2 rounded-lg border bg-white p-3">
+              <input className={input} aria-label="QA title" value={detailDraft.title} onChange={e => setDetailDraft(v => ({ ...v, title: e.target.value }))}/>
+              <div className="grid gap-2 sm:grid-cols-2"><input className={input} placeholder="Business" value={detailDraft.business} onChange={e => setDetailDraft(v => ({ ...v, business: e.target.value }))}/><input className={input} placeholder="Website / app" value={detailDraft.site_app} onChange={e => setDetailDraft(v => ({ ...v, site_app: e.target.value }))}/><input className={input} placeholder="Assignee" value={detailDraft.assignee} onChange={e => setDetailDraft(v => ({ ...v, assignee: e.target.value }))}/><input className={input} placeholder="Page URL" value={detailDraft.url} onChange={e => setDetailDraft(v => ({ ...v, url: e.target.value }))}/></div>
+              <div className="flex gap-2"><button className={primary} disabled={saving || !detailDraft.title.trim()} onClick={() => { void saveItem(detailDraft); setEditingDetails(false); }}>Save details</button><button className={button} onClick={() => setEditingDetails(false)}>Cancel</button></div>
+            </div>}
             <h3 className="mt-3 text-lg font-semibold text-slate-900">{selected.title}</h3><p className="mt-1 text-sm text-slate-500">{[selected.business, selected.site_app, selected.assignee].filter(Boolean).join(' · ') || 'No additional details'}</p>
             {selected.url && <a className="mt-2 inline-block break-all text-sm text-indigo-700 underline" href={selected.url} target="_blank" rel="noreferrer">{selected.url}</a>}
             <div className="mt-5 flex items-center justify-between"><h4 className={panelTitle}>Checklist <span className="font-normal text-slate-500">({selected.checks.filter(c => c.done).length}/{selected.checks.length})</span></h4></div>
-            <div className="mt-2 space-y-1">{selected.checks.map(check => <label key={check.id} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm"><input type="checkbox" checked={check.done} onChange={e => void saveItem({ checks: selected.checks.map(c => c.id === check.id ? { ...c, done: e.target.checked } : c) })}/><span className={check.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{check.text}</span></label>)}{!selected.checks.length && <p className="text-sm text-slate-500">No checks yet. Add the items you want to verify.</p>}</div>
+            <div className="mt-2 space-y-1">{selected.checks.map(check => <div key={check.id} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm"><label className="flex min-w-0 flex-1 items-center gap-2"><input type="checkbox" checked={check.done} onChange={e => void saveItem({ checks: selected.checks.map(c => c.id === check.id ? { ...c, done: e.target.checked } : c) })}/><span className={check.done ? 'text-slate-400 line-through' : 'text-slate-800'}>{check.text}</span></label><button className="text-slate-400 hover:text-rose-700" title="Remove check" onClick={() => void saveItem({ checks: selected.checks.filter(c => c.id !== check.id) })}>×</button></div>)}{!selected.checks.length && <p className="text-sm text-slate-500">No checks yet. Add the items you want to verify.</p>}</div>
             <div className="mt-2 flex gap-2"><input className={input} placeholder="Add a check…" value={newCheck} onChange={e => setNewCheck(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && newCheck.trim()) { void saveItem({ checks: [...selected.checks, { id: crypto.randomUUID(), text: newCheck.trim(), done: false }] }); setNewCheck(''); } }}/><button className={button} onClick={() => { if (newCheck.trim()) { void saveItem({ checks: [...selected.checks, { id: crypto.randomUUID(), text: newCheck.trim(), done: false }] }); setNewCheck(''); } }}>Add</button></div>
             <div className="mt-5"><h4 className={panelTitle}>Screenshots <span className="font-normal text-slate-500">({selected.screenshots.length})</span></h4><div className="mt-2 flex flex-wrap gap-2">{selected.screenshots.map(s => <div key={s.id} className="group relative"><button type="button" onClick={() => setPreviewShot(s)}><img src={s.url} alt={s.name} className="h-16 w-20 rounded-lg border object-cover"/></button><button title="Remove screenshot" onClick={() => void removeScreenshot(s.id)} className="absolute -right-2 -top-2 rounded-full bg-rose-600 px-1.5 text-xs text-white">×</button></div>)}<label className="flex h-16 w-20 cursor-pointer items-center justify-center rounded-lg border border-dashed bg-white text-2xl text-slate-400">＋<input type="file" accept="image/*" multiple className="hidden" onChange={e => { void uploadScreenshots(e.target.files); e.currentTarget.value = ''; }}/></label></div></div>
             {selected.status === 'failed' && <div className="mt-5 rounded-lg border border-rose-200 bg-rose-50 p-3"><h4 className="text-sm font-semibold text-rose-800">Sent back to developer</h4><p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{selected.fail_note || 'No failure note.'}</p></div>}
