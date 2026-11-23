@@ -12,7 +12,7 @@ use App\Http\Controllers\PmMeetingTicketController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\PmQaController;
-use App\Http\Controllers\PmQaDeskController;
+use App\Http\Controllers\PmQaCenterController;
 use App\Http\Controllers\PmActionItemController;
 use App\Http\Controllers\PmRoutineController;
 use Illuminate\Support\Facades\Route;
@@ -83,12 +83,18 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::patch('action-items/{item}', [PmActionItemController::class, 'update'])->name('action-items.update');
     Route::delete('action-items/{item}', [PmActionItemController::class, 'destroy'])->name('action-items.destroy');
     Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
-    Route::get('qa/review-desk', [PmQaDeskController::class, 'index'])->name('qa.review-desk.index');
-    Route::post('qa/review-desk', [PmQaDeskController::class, 'store'])->name('qa.review-desk.store');
-    Route::patch('qa/review-desk/{item}', [PmQaDeskController::class, 'update'])->name('qa.review-desk.update');
-    Route::delete('qa/review-desk/{item}', [PmQaDeskController::class, 'destroy'])->name('qa.review-desk.destroy');
-    Route::post('qa/review-desk/{item}/screenshots', [PmQaDeskController::class, 'storeScreenshot'])->name('qa.review-desk.screenshots.store');
-    Route::delete('qa/review-desk/{item}/screenshots/{screenshot}', [PmQaDeskController::class, 'destroyScreenshot'])->name('qa.review-desk.screenshots.destroy');
+    // QA Center tab: Queue -> Testing -> Failed / Passed over site checks and Taskmandu task reviews.
+    Route::prefix('qa-center')->name('qa-center.')->where(['kind' => 'issue|task', 'id' => '[0-9]+', 'check' => '[0-9]+'])->group(function () {
+        Route::get('/', [PmQaCenterController::class, 'index'])->name('index');
+        Route::post('items', [PmQaCenterController::class, 'store'])->name('items.store');
+        Route::patch('items/{kind}/{id}', [PmQaCenterController::class, 'update'])->name('items.update');
+        Route::delete('items/{kind}/{id}', [PmQaCenterController::class, 'destroy'])->name('items.destroy');
+        Route::post('items/{kind}/{id}/checks', [PmQaCenterController::class, 'storeChecks'])->name('items.checks.store');
+        Route::patch('items/{kind}/{id}/checks/{check}', [PmQaCenterController::class, 'updateCheck'])->name('items.checks.update');
+        Route::delete('items/{kind}/{id}/checks/{check}', [PmQaCenterController::class, 'destroyCheck'])->name('items.checks.destroy');
+        Route::post('items/{kind}/{id}/screenshots', [PmQaCenterController::class, 'storeScreenshot'])->name('items.screenshots.store');
+        Route::delete('items/{kind}/{id}/screenshots/{screenshot}', [PmQaCenterController::class, 'destroyScreenshot'])->name('items.screenshots.destroy');
+    });
     Route::post('qa/websites', [PmQaController::class, 'storeWebsite'])->name('qa.websites.store');
     Route::patch('qa/websites/{website}', [PmQaController::class, 'updateWebsite'])->name('qa.websites.update');
     Route::delete('qa/websites/{website}', [PmQaController::class, 'destroyWebsite'])->name('qa.websites.destroy');

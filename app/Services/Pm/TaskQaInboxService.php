@@ -4,6 +4,7 @@ namespace App\Services\Pm;
 
 use App\Models\PmBusinessProjectLink;
 use App\Models\PmCard;
+use App\Models\PmQaCheck;
 use App\Models\PmQaTaskReview;
 use Illuminate\Support\Facades\DB;
 
@@ -74,6 +75,11 @@ class TaskQaInboxService
         if ($newCycle) {
             $review->cycle = (int) $review->cycle + 1;
             $review->qa_status = 'Awaiting QA';
+            $review->qa_stage = QaStage::QUEUE;
+            $review->qa_fail_note = null;
+            $history = $review->qa_history ?? [];
+            $history[] = ['at' => now()->toIso8601String(), 'message' => "Round {$review->cycle}: task re-entered {$status}, back in the QA queue"];
+            $review->qa_history = array_slice($history, -40);
             $review->trigger_status = $status;
             $review->triggered_at = now();
             $review->tested_at = null;
@@ -90,6 +96,8 @@ class TaskQaInboxService
         $review->save();
 
         if ($newCycle) {
+            // A new QA round starts with a fresh, unticked checklist.
+            PmQaCheck::query()->where('item_type', 'task')->where('item_id', $review->id)->update(['is_done' => false]);
             $review->events()->create([
                 'cycle' => $review->cycle,
                 'result' => 'Queued',

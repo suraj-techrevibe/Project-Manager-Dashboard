@@ -1,0 +1,508 @@
+<?php
+
+namespace App\Services\Pm;
+
+use App\Models\PmBusiness;
+use App\Models\PmBusinessProjectLink;
+use App\Models\PmCard;
+use App\Models\PmQaCheck;
+use App\Models\PmQaIssue;
+use App\Models\PmQaTaskReview;
+use App\Models\PmQaWebsite;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * Everything behind the QA Center tab.
+ *
+ * A QA item is either a finding / site check (pm_qa_issues) or a Taskmandu task review
+ * (pm_qa_task_reviews). Both are presented in one shape so the screen treats them the same:
+ * a code (RBH-QA3), a pipeline stage, a checklist, screenshots, a failure note and remarks.
+ */
+class QaCenterService
+{
+    public const ISSUE = 'issue';
+    public const TASK = 'task';
+    public const MAX_CHECKS = 40;
+    public const DEFAULT_SITE_CHECKS = ['Works on desktop', 'Works on mobile'];
+
+    public function __construct(private QaCodeService $codes) {}
+
+    // ---------------------------------------------------------------- reading
+
+    public function payload(User $user): array
+    {
+        $websites = $this->websitesFor($user->id);
+        $projectBusinesses = $this->projectBusinesses();
+        $issues = PmQaIssue::query()->where('created_by', $user->id)->latest()->limit(300)->get();
+        $reviews = PmQaTaskReview::query()->orderByDesc('triggered_at')->orderByDesc('id')->limit(500)->get();
+        $checks = $this->checksFor($issues->pluck('id'), $reviews->pluck('id'));
+        $siteByProject = $websites->filter(fn (PmQaWebsite $w) => filled($w->project_id))->unique('project_id')->keyBy('project_id');
+
+        return [
+            'items' => $issues->map(fn (PmQaIssue $i) => $this->presentIssue($i, $checks, $websites, $projectBusinesses))
+                ->concat($reviews->map(fn (PmQaTaskReview $r) => $this->presentReview($r, $checks, $siteByProject)))
+                ->values(),
+            'sites' => $websites->values(),
+            'businesses' => PmBusiness::query()->orderBy('name')->pluck('name'),
+            'projects' => PmCard::query()->whereNotNull('project_id')->select('project_id', 'project_name')->distinct()
+                ->orderBy('project_name')->get()
+                ->map(fn ($p) => ['id' => $p->project_id, 'name' => $p->project_name])->values(),
+        ];
+    }
+
+    /** One item in the same shape as payload()['items']. */
+    public function present(Model $item, string $kind, User $user): array
+    {
+        $checks = $this->checksFor(
+            collect($kind === self::ISSUE ? [$item->id] : []),
+            collect($kind === self::TASK ? [$item->id] : []),
+        );
+
+        if ($kind === self::ISSUE) {
+            return $this->presentIssue($item, $checks, $this->websitesFor($user->id), $this->projectBusinesses());
+        }
+
+        $siteByProject = $this->websitesFor($user->id)->filter(fn (PmQaWebsite $w) => filled($w->project_id))->unique('project_id')->keyBy('project_id');
+
+        return $this->presentReview($item, $checks, $siteByProject);
+    }
+
+    /** Business for a finding that has none set, from its registered site or linked Taskmandu project. */
+    public function detectBusinessFor(PmQaIssue $issue): ?string
+    {
+        $websites = $issue->created_by ? $this->websitesFor((int) $issue->created_by) : collect();
+
+        return $this->detectBusiness($issue, $websites, $this->projectBusinesses());
+    }
+
+    // ---------------------------------------------------------------- creating / editing
+
+    /**
+     * Create a site check (registered site) or a client report / quick check (free-text site).
+     *
+     * @param array{title:string,business?:?string,site?:?string,url?:?string,assignee?:?string,checks?:array<int,string>} $data
+     */
+    public function create(User $user, array $data): PmQaIssue
+    {
+        $siteName = trim((string) ($data['site'] ?? ''));
+        $business = trim((string) ($data['business'] ?? ''));
+        $site = $siteName === '' ? null : PmQaWebsite::query()
+            ->where('created_by', $user->id)->where('is_active', true)->where('name', $siteName)
+            ->when($business !== '', fn ($q) => $q->where('business', $business))
+            ->first();
+
+        $url = $this->normalizeUrl($data['url'] ?? null) ?? $site?->url;
+        if (! filled($url)) {
+            throw ValidationException::withMessages(['url' => 'Enter the page URL so the developer can open it.']);
+        }
+
+        $labels = $this->cleanLabels($data['checks'] ?? []) ?: self::DEFAULT_SITE_CHECKS;
+
+        return DB::transaction(function () use ($user, $data, $site, $siteName, $business, $url, $labels) {
+            $issue = PmQaIssue::create([
+                'created_by' => $user->id,
+                'record_type' => $site ? 'Website' : 'Ad-hoc',
+                'business' => $site?->business ?? ($business !== '' ? $business : null),
+                'site_app' => $site?->name ?? ($siteName !== '' ? $siteName : null),
+                'project_id' => $site?->project_id,
+                'project_name' => $site?->project_name,
+                'page_url' => mb_substr($url, 0, 500),
+                'title' => trim($data['title']),
+                'severity' => 'Medium',
+                'status' => 'Draft',
+                'assignee' => filled($data['assignee'] ?? null) ? trim($data['assignee']) : null,
+                'qa_stage' => QaStage::QUEUE,
+                'qa_history' => [['at' => now()->toIso8601String(), 'message' => 'Added to QA queue', 'by' => $user->name]],
+            ]);
+
+            foreach (array_slice($labels, 0, self::MAX_CHECKS) as $i => $label) {
+                PmQaCheck::create(['item_type' => self::ISSUE, 'item_id' => $issue->id, 'label' => $label, 'sort' => $i]);
+            }
+
+            return $issue;
+        });
+    }
+
+    /**
+     * Change an item. Taskmandu task details (title, assignee, link) belong to Taskmandu and can't be edited here.
+     *
+     * @param array<string,mixed> $data
+     */
+    public function update(Model $item, string $kind, array $data, User $user): void
+    {
+        $ownFields = ['title', 'assignee', 'url', 'business', 'site'];
+        if ($kind === self::TASK && array_intersect_key($data, array_flip($ownFields))) {
+            throw ValidationException::withMessages(['title' => 'Task details come from Taskmandu and can only be changed there.']);
+        }
+
+        DB::transaction(function () use ($item, $kind, $data, $user) {
+            if ($kind === self::ISSUE) {
+                if (array_key_exists('title', $data)) $item->title = trim((string) $data['title']);
+                if (array_key_exists('assignee', $data)) $item->assignee = filled($data['assignee']) ? trim($data['assignee']) : null;
+                if (array_key_exists('business', $data)) $item->business = filled($data['business']) ? trim($data['business']) : null;
+                if (array_key_exists('site', $data)) $item->site_app = filled($data['site']) ? trim($data['site']) : null;
+                if (array_key_exists('url', $data)) {
+                    $url = $this->normalizeUrl($data['url']);
+                    if (! $url) {
+                        throw ValidationException::withMessages(['url' => 'Enter the page URL so the developer can open it.']);
+                    }
+                    $item->page_url = mb_substr($url, 0, 500);
+                }
+            }
+            if (array_key_exists('remarks', $data)) {
+                $item->qa_remarks = filled($data['remarks']) ? trim($data['remarks']) : null;
+            }
+
+            $stage = $data['stage'] ?? null;
+            if ($stage !== null && $stage !== ($item->qa_stage ?: QaStage::QUEUE)) {
+                $item->save();
+                $this->moveTo($item, $kind, $stage, $data['fail_note'] ?? null, $user);
+
+                return;
+            }
+
+            if (array_key_exists('fail_note', $data)) {
+                $note = trim((string) $data['fail_note']);
+                if ($note === '' && $item->qa_stage === QaStage::FAILED) {
+                    throw ValidationException::withMessages(['fail_note' => 'A failed item needs a failure note.']);
+                }
+                $item->qa_fail_note = $note === '' ? null : $note;
+            }
+            $item->save();
+        });
+    }
+
+    /** Move an item through the pipeline, enforcing the QA rules. */
+    public function moveTo(Model $item, string $kind, string $stage, ?string $note, User $user): void
+    {
+        $from = $item->qa_stage ?: QaStage::QUEUE;
+        if ($from === $stage) {
+            return;
+        }
+        if (! QaStage::canMove($from, $stage)) {
+            throw ValidationException::withMessages(['stage' => "A {$from} item can't move to {$stage}."]);
+        }
+
+        $note = trim((string) $note);
+        if ($stage === QaStage::PASSED) {
+            $checks = $this->checkQuery($item, $kind)->get();
+            if ($checks->isEmpty()) {
+                throw ValidationException::withMessages(['stage' => 'Add at least one check before passing.']);
+            }
+            if ($checks->contains(fn (PmQaCheck $c) => ! $c->is_done)) {
+                throw ValidationException::withMessages(['stage' => 'Complete every checklist item before passing.']);
+            }
+        }
+        if ($stage === QaStage::FAILED) {
+            $note = $note !== '' ? $note : trim((string) $item->qa_fail_note);
+            if ($note === '') {
+                throw ValidationException::withMessages(['stage' => 'Add a failure note so the developer knows what to fix.']);
+            }
+        }
+
+        DB::transaction(function () use ($item, $kind, $stage, $from, $note, $user) {
+            $item->qa_stage = $stage;
+            $item->qa_fail_note = $stage === QaStage::FAILED ? $note : null;
+
+            $restart = $stage === QaStage::QUEUE && in_array($from, [QaStage::FAILED, QaStage::PASSED], true);
+            if ($restart) {
+                $this->checkQuery($item, $kind)->update(['is_done' => false]);
+            }
+
+            if ($kind === self::ISSUE) {
+                $item->status = QaStage::toIssueStatus($stage, $item->status);
+            } else {
+                $this->applyReviewSideEffects($item, $stage, $restart, $note, $user);
+            }
+
+            $this->log($item, match (true) {
+                $stage === QaStage::TESTING => 'Started testing',
+                $stage === QaStage::FAILED => 'Failed and sent back',
+                $stage === QaStage::PASSED => 'Passed',
+                $from === QaStage::PASSED => 'Reopened for retest',
+                $from === QaStage::FAILED => 'Re-queued for retest',
+                default => 'Back to queue',
+            }, $user);
+            $item->save();
+        });
+    }
+
+    private function applyReviewSideEffects(PmQaTaskReview $review, string $stage, bool $restart, string $note, User $user): void
+    {
+        $review->qa_status = QaStage::toReviewStatus($stage);
+
+        if (in_array($stage, [QaStage::PASSED, QaStage::FAILED], true)) {
+            $passed = $stage === QaStage::PASSED;
+            $text = $passed ? 'QA passed in the QA Center.' : $note;
+            $review->last_result = $passed ? 'Pass' : 'Fail';
+            $review->last_severity = $passed ? null : 'Medium';
+            $review->last_notes = $text;
+            $review->last_evidence_url = ($review->qa_screenshots[0]['url'] ?? null);
+            $review->tested_at = now();
+            $review->tested_by = $user->id;
+            $review->events()->create([
+                'cycle' => $review->cycle, 'result' => $review->last_result, 'severity' => $review->last_severity,
+                'notes' => $text, 'evidence_url' => $review->last_evidence_url, 'tested_by' => $user->id,
+            ]);
+        }
+
+        if ($restart) {
+            $review->cycle = (int) $review->cycle + 1;
+            $review->triggered_at = now();
+            $review->tested_at = null;
+            $review->tested_by = null;
+            $review->last_result = null;
+            $review->last_severity = null;
+            $review->last_notes = null;
+            $review->last_evidence_url = null;
+            $review->events()->create(['cycle' => $review->cycle, 'result' => 'Queued', 'notes' => 'Re-queued for QA from the QA Center.']);
+        }
+    }
+
+    // ---------------------------------------------------------------- checklist
+
+    /** @param array<int,string> $labels */
+    public function addChecks(Model $item, string $kind, array $labels): void
+    {
+        $this->assertChecklistOpen($item);
+        $labels = $this->cleanLabels($labels);
+        if ($labels === []) {
+            throw ValidationException::withMessages(['label' => 'Type a check first.']);
+        }
+        $query = $this->checkQuery($item, $kind);
+        $existing = (clone $query)->count();
+        if ($existing + count($labels) > self::MAX_CHECKS) {
+            throw ValidationException::withMessages(['label' => 'An item can have at most '.self::MAX_CHECKS.' checks.']);
+        }
+        $sort = (int) ((clone $query)->max('sort') ?? -1);
+        foreach ($labels as $label) {
+            PmQaCheck::create(['item_type' => $kind, 'item_id' => $item->id, 'label' => $label, 'sort' => ++$sort]);
+        }
+    }
+
+    /** Ticking the first check of a queued item starts testing. */
+    public function setCheckDone(Model $item, string $kind, PmQaCheck $check, bool $done, User $user): void
+    {
+        $this->assertChecklistOpen($item);
+        $check->update(['is_done' => $done]);
+        if ($done && ($item->qa_stage ?: QaStage::QUEUE) === QaStage::QUEUE) {
+            $this->moveTo($item, $kind, QaStage::TESTING, null, $user);
+        }
+    }
+
+    public function removeCheck(Model $item, PmQaCheck $check): void
+    {
+        $this->assertChecklistOpen($item);
+        $check->delete();
+    }
+
+    private function assertChecklistOpen(Model $item): void
+    {
+        if ($item->qa_stage === QaStage::PASSED) {
+            throw ValidationException::withMessages(['stage' => 'Reopen this item before changing its checks.']);
+        }
+    }
+
+    // ---------------------------------------------------------------- screenshots
+
+    public function addScreenshot(Model $item, UploadedFile $file, User $user): void
+    {
+        $path = $file->store('qa-center/'.$user->id, 'public');
+        $shots = $item->qa_screenshots ?? [];
+        $shots[] = [
+            'id' => (string) Str::uuid(),
+            'name' => $file->getClientOriginalName(),
+            'path' => $path,
+            'url' => url(Storage::disk('public')->url($path)),
+            'created_at' => now()->toIso8601String(),
+        ];
+        $item->qa_screenshots = $shots;
+        $this->log($item, 'Screenshot added', $user);
+        $item->save();
+    }
+
+    public function removeScreenshot(Model $item, string $screenshotId, User $user): bool
+    {
+        $shots = $item->qa_screenshots ?? [];
+        $target = collect($shots)->firstWhere('id', $screenshotId);
+        if (! $target) {
+            return false;
+        }
+        if (! empty($target['path'])) {
+            Storage::disk('public')->delete($target['path']);
+        }
+        $item->qa_screenshots = array_values(array_filter($shots, fn ($s) => ($s['id'] ?? null) !== $screenshotId));
+        $this->log($item, 'Screenshot removed', $user);
+        $item->save();
+
+        return true;
+    }
+
+    /** Only site checks / client reports can be deleted; Taskmandu reviews mirror a real task. */
+    public function delete(PmQaIssue $issue): void
+    {
+        foreach (($issue->qa_screenshots ?? []) as $shot) {
+            if (! empty($shot['path'])) {
+                Storage::disk('public')->delete($shot['path']);
+            }
+        }
+        DB::transaction(function () use ($issue) {
+            PmQaCheck::query()->where('item_type', self::ISSUE)->where('item_id', $issue->id)->delete();
+            $issue->delete();
+        });
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private function log(Model $item, string $message, User $user): void
+    {
+        $history = $item->qa_history ?? [];
+        $history[] = ['at' => now()->toIso8601String(), 'message' => $message, 'by' => $user->name];
+        $item->qa_history = array_slice($history, -40);
+    }
+
+    private function checkQuery(Model $item, string $kind)
+    {
+        return PmQaCheck::query()->where('item_type', $kind)->where('item_id', $item->id);
+    }
+
+    /** @param array<int,mixed> $labels @return array<int,string> */
+    private function cleanLabels(array $labels): array
+    {
+        return array_values(array_filter(array_map(
+            fn ($l) => mb_substr(trim((string) $l), 0, 300),
+            $labels,
+        ), fn ($l) => $l !== ''));
+    }
+
+    /** Add https:// when missing. Returns null for blank input and rejects things that aren't web addresses. */
+    private function normalizeUrl(?string $url): ?string
+    {
+        $url = trim((string) $url);
+        if ($url === '') {
+            return null;
+        }
+        if (! preg_match('#^https?://#i', $url)) {
+            $url = 'https://'.$url;
+        }
+        if (! filter_var($url, FILTER_VALIDATE_URL)) {
+            throw ValidationException::withMessages(['url' => 'That page URL doesn\'t look right.']);
+        }
+
+        return $url;
+    }
+
+    private function websitesFor(int $userId): Collection
+    {
+        return PmQaWebsite::query()->where('created_by', $userId)->where('is_active', true)->orderBy('business')->orderBy('name')->get();
+    }
+
+    private function projectBusinesses(): Collection
+    {
+        return PmBusinessProjectLink::query()->with('business:id,name')->get()
+            ->filter(fn ($link) => filled($link->taskmandu_project_id) && filled($link->business?->name))
+            ->mapWithKeys(fn ($link) => [(string) $link->taskmandu_project_id => $link->business->name]);
+    }
+
+    private function detectBusiness(PmQaIssue $issue, Collection $websites, Collection $projectBusinesses): ?string
+    {
+        if (filled($issue->business)) {
+            return $issue->business;
+        }
+
+        $site = $websites->first(fn (PmQaWebsite $w) =>
+            ($issue->project_id && $w->project_id === $issue->project_id)
+            || ($issue->site_app && strcasecmp($w->name, $issue->site_app) === 0)
+            || ($issue->page_url && rtrim($w->url, '/') === rtrim($issue->page_url, '/'))
+        );
+
+        return $site?->business ?: ($issue->project_id ? ($projectBusinesses[(string) $issue->project_id] ?? null) : null);
+    }
+
+    private function checksFor(Collection $issueIds, Collection $reviewIds): Collection
+    {
+        $rows = collect();
+        foreach ([self::ISSUE => $issueIds, self::TASK => $reviewIds] as $type => $ids) {
+            if ($ids->isNotEmpty()) {
+                $rows = $rows->concat(PmQaCheck::query()->where('item_type', $type)->whereIn('item_id', $ids)->orderBy('sort')->orderBy('id')->get());
+            }
+        }
+
+        return $rows->groupBy(fn (PmQaCheck $c) => $c->item_type.':'.$c->item_id);
+    }
+
+    private function shape(Model $item, string $kind, Collection $checks, array $own): array
+    {
+        $key = $kind.':'.$item->id;
+
+        return [
+            'key' => $key,
+            'kind' => $kind,
+            'id' => $item->id,
+            'code' => $item->qa_code,
+            'stage' => $item->qa_stage ?: QaStage::QUEUE,
+            'checks' => ($checks->get($key) ?? collect())
+                ->map(fn (PmQaCheck $c) => ['id' => $c->id, 'label' => $c->label, 'is_done' => (bool) $c->is_done])->values(),
+            'screenshots' => array_values($item->qa_screenshots ?? []),
+            'fail_note' => $item->qa_fail_note,
+            'remarks' => $item->qa_remarks,
+            'history' => array_values($item->qa_history ?? []),
+            'created_at' => $item->created_at?->toIso8601String(),
+            'updated_at' => $item->updated_at?->toIso8601String(),
+        ] + $own;
+    }
+
+    private function presentIssue(PmQaIssue $issue, Collection $checks, Collection $websites, Collection $projectBusinesses): array
+    {
+        return $this->shape($issue, self::ISSUE, $checks, [
+            'title' => $issue->title,
+            'business' => $this->detectBusiness($issue, $websites, $projectBusinesses),
+            'site' => $issue->site_app ?: $issue->project_name,
+            'url' => $issue->page_url,
+            'source' => $issue->record_type === 'Ad-hoc' ? 'Client report' : 'Site check',
+            'assignee' => $issue->assignee,
+            'editable' => true,
+            'details' => $this->details([
+                ['What happened', $issue->description],
+                ['Expected', $issue->expected_behaviour],
+                ['Developer notes', $issue->developer_notes],
+                ['Severity', $issue->severity],
+                ['Evidence link', $issue->evidence_url],
+                ['Taskmandu task', $issue->pm_task_url],
+            ]),
+        ]);
+    }
+
+    private function presentReview(PmQaTaskReview $review, Collection $checks, Collection $siteByProject): array
+    {
+        return $this->shape($review, self::TASK, $checks, [
+            'title' => $review->task_title,
+            'business' => $review->business,
+            'site' => ($review->project_id ? $siteByProject->get($review->project_id)?->name : null) ?: $review->project_name,
+            'url' => $review->taskmandu_url,
+            'source' => 'Taskmandu',
+            'assignee' => $review->assignee,
+            'editable' => false,
+            'details' => $this->details([
+                ['Taskmandu status', $review->task_status],
+                ['Taskmandu project', $review->project_name],
+                ['QA round', 'Round '.(int) $review->cycle],
+                ['Task description', $review->task_description],
+            ]),
+        ]);
+    }
+
+    /** @param array<int,array{0:string,1:mixed}> $rows */
+    private function details(array $rows): array
+    {
+        return collect($rows)->filter(fn ($r) => filled($r[1]))
+            ->map(fn ($r) => ['label' => $r[0], 'value' => (string) $r[1]])->values()->all();
+    }
+}
