@@ -83,6 +83,7 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::delete('action-items/{item}', [PmActionItemController::class, 'destroy'])->name('action-items.destroy');
     Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
     Route::post('qa/websites', [PmQaController::class, 'storeWebsite'])->name('qa.websites.store');
+    Route::post('qa/websites/{website}/run', [PmQaController::class, 'runWebsiteCheck'])->name('qa.websites.run');
     Route::patch('qa/websites/{website}', [PmQaController::class, 'updateWebsite'])->name('qa.websites.update');
     Route::delete('qa/websites/{website}', [PmQaController::class, 'destroyWebsite'])->name('qa.websites.destroy');
     Route::post('qa/quick-capture/draft', [PmQaController::class, 'draftQuickCapture'])->middleware('throttle:10,1')->name('qa.quick-capture.draft');
