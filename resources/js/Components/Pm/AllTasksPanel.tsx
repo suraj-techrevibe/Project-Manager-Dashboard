@@ -154,8 +154,6 @@ const QUICK: { key: QuickKey; label: string; test: (t: TaskRow, today: number) =
 /** Same counts as the quick-filter chips on All tasks, so other screens can show matching numbers. */
 export function countQuick(rows: TaskRow[]): Record<QuickKey, number> {
   const today = startOfToday();
-  const activeProject = activeTask ? projectRecords.find((p) => p._id === activeTask.projectId) ?? null : null;
-  const activeProjectTask: ProjectTask | null = activeProject && activeTask ? activeProject.tasks.find((t) => t._id === activeTask.taskId) ?? null : null;
   return Object.fromEntries(QUICK.map((q) => [q.key, rows.filter((t) => q.test(t, today)).length])) as Record<QuickKey, number>;
 }
 
@@ -230,6 +228,8 @@ export default function AllTasksPanel({
   const [createProjectId, setCreateProjectId] = useState('');
   const { employees, nameFor } = useEmployees();
   const today = startOfToday();
+  const activeProject = activeTask ? projectRecords.find((p) => p._id === activeTask.projectId) ?? null : null;
+  const activeProjectTask: ProjectTask | null = activeProject && activeTask ? activeProject.tasks.find((t) => t._id === activeTask.taskId) ?? null : null;
 
   useEffect(() => {
     if (quickParam && (QUICK_KEYS as string[]).includes(quickParam)) {
