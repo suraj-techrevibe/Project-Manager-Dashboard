@@ -123,7 +123,7 @@ export default function QADesk() {
   }
 
   async function saveSite() {
-    if (!siteDraft.business || !siteDraft.name.trim() || !/^https?:\\/\\/.+/.test(siteDraft.url.trim())) { setError('Select a business and enter a website name and valid URL.'); return; }
+    if (!siteDraft.business || !siteDraft.name.trim() || !/^https?:\/\/.+/.test(siteDraft.url.trim())) { setError('Select a business and enter a website name and valid URL.'); return; }
     setSaving(true); setError('');
     try {
       await axios.post('/pm/api/qa/websites', { ...siteDraft, name: siteDraft.name.trim(), url: siteDraft.url.trim() });
