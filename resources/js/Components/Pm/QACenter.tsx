@@ -11,7 +11,7 @@ const blank: Draft = {business:'',site_app:'',project_name:'',task_title:'',subt
 const input='w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm';
 export default function QACenter(){
  const [items,setItems]=useState<QA[]>([]),[draft,setDraft]=useState<Draft>(blank),[loading,setLoading]=useState(true),[error,setError]=useState('');
- const [filterStatus,setFilterStatus]=useState('All'),[filterBusiness,setFilterBusiness]=useState('All'),[filterSeverity,setFilterSeverity]=useState('All'),[filterProject,setFilterProject]=useState('All'),[filterTask,setFilterTask]=useState('All'),[filterSubtask,setFilterSubtask]=useState('All'),[query,setQuery]=useState(''),[view,setView]=useState<'quickqa'|'websites'|'taskinbox'|'dashboard'|'tracking'|'retest'|'reports'>('taskinbox');
+ const [filterStatus,setFilterStatus]=useState('All'),[filterBusiness,setFilterBusiness]=useState('All'),[filterSeverity,setFilterSeverity]=useState('All'),[filterProject,setFilterProject]=useState('All'),[filterTask,setFilterTask]=useState('All'),[filterSubtask,setFilterSubtask]=useState('All'),[query,setQuery]=useState(''),[view,setView]=useState<'quickqa'|'websites'|'taskinbox'|'dashboard'|'tracking'|'retest'>('taskinbox');
  async function load(){setLoading(true);try{const r=await axios.get('/pm/api/qa');setItems(r.data.issues);}catch{setError('Unable to load QA items.');}finally{setLoading(false);}}
  useEffect(()=>{void load();},[]);
  const change=(k:keyof Draft,v:string)=>setDraft(d=>({...d,[k]:v}));
