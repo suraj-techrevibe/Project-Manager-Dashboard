@@ -5,6 +5,13 @@ import { button, errorMessage, input, heading, primary, type Project, type QAIte
 const SITE_TYPES = ['Business website', 'E-commerce', 'Event platform', 'Dashboard', 'Web application', 'Other'];
 const FREQUENCIES = ['Daily', 'Weekly', 'Manual'];
 
+const Field = ({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) =>
+  <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>{children}{hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}</label>;
+
+/** Pick an existing business or type a new one. */
+const BusinessInput = ({ id, value, options, onChange }: { id: string; value: string; options: string[]; onChange: (v: string) => void }) =>
+  <><input className={input} list={id} placeholder="Choose or type a business" value={value} onChange={e => onChange(e.target.value)}/><datalist id={id}>{options.map(b => <option key={b} value={b}/>)}</datalist></>;
+
 /** Register a website or app. Linking its Taskmandu project is what files that project's tasks under this site. */
 export function SitePanel({ businesses, projects, sites, onSaved, onClose }: {
   businesses: string[]; projects: Project[]; sites: Site[]; onSaved: () => Promise<void>; onClose: () => void;
@@ -16,12 +23,12 @@ export function SitePanel({ businesses, projects, sites, onSaved, onClose }: {
 
   async function save() {
     const url = /^https?:\/\//i.test(draft.url.trim()) ? draft.url.trim() : 'https://' + draft.url.trim();
-    if (!draft.business || !draft.name.trim() || draft.url.trim() === '') { setError('Choose a business and enter a name and address.'); return; }
+    if (!draft.business.trim() || !draft.name.trim() || draft.url.trim() === '') { setError('Enter a business, a name and an address.'); return; }
     setSaving(true);
     try {
       const project = projects.find(p => p.id === draft.project_id);
       await axios.post('/pm/api/qa/websites', {
-        business: draft.business, name: draft.name.trim(), url,
+        business: draft.business.trim(), name: draft.name.trim(), url,
         website_type: draft.website_type, frequency: draft.frequency,
         project_id: project?.id ?? null, project_name: project?.name ?? null,
       });
@@ -38,18 +45,20 @@ export function SitePanel({ businesses, projects, sites, onSaved, onClose }: {
   }
 
   return <section className="rounded-xl border bg-white p-4">
-    <div className="mb-3 flex items-center justify-between"><h3 className={heading}>Add a website or app</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
-    <div className="grid gap-2 md:grid-cols-2">
-      <select className={input} aria-label="Business" value={draft.business} onChange={e => set({ business: e.target.value })}><option value="">Choose business</option>{businesses.map(b => <option key={b}>{b}</option>)}</select>
-      <input className={input} placeholder="Name, e.g. Maison Éclat" value={draft.name} onChange={e => set({ name: e.target.value })}/>
-      <input className={input + ' md:col-span-2'} placeholder="Address, e.g. maisoneclat.com" value={draft.url} onChange={e => set({ url: e.target.value })}/>
-      <select className={input} aria-label="Type" value={draft.website_type} onChange={e => set({ website_type: e.target.value })}>{SITE_TYPES.map(v => <option key={v}>{v}</option>)}</select>
-      <select className={input} aria-label="How often" value={draft.frequency} onChange={e => set({ frequency: e.target.value })}>{FREQUENCIES.map(v => <option key={v}>{v}</option>)}</select>
-      <select className={input + ' md:col-span-2'} aria-label="Taskmandu project" value={draft.project_id} onChange={e => set({ project_id: e.target.value })}><option value="">Taskmandu project (optional): files that project's tasks under this site</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+    <div className="mb-3 flex items-center justify-between"><h3 className={heading}>Add website / app</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
+    <div className="space-y-3">
+      <Field label="Business"><BusinessInput id="qa-site-biz" value={draft.business} options={businesses} onChange={v => set({ business: v })}/></Field>
+      <Field label="Name"><input className={input} placeholder="e.g. Maison Éclat" value={draft.name} onChange={e => set({ name: e.target.value })}/></Field>
+      <Field label="Address"><input className={input} placeholder="e.g. maisoneclat.com" value={draft.url} onChange={e => set({ url: e.target.value })}/></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Type"><select className={input} value={draft.website_type} onChange={e => set({ website_type: e.target.value })}>{SITE_TYPES.map(v => <option key={v}>{v}</option>)}</select></Field>
+        <Field label="Check how often"><select className={input} value={draft.frequency} onChange={e => set({ frequency: e.target.value })}>{FREQUENCIES.map(v => <option key={v}>{v}</option>)}</select></Field>
+      </div>
+      <Field label="Taskmandu project (optional)" hint="Tasks from this project are filed under this site."><select className={input} value={draft.project_id} onChange={e => set({ project_id: e.target.value })}><option value="">None</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
     </div>
-    {error && <p role="alert" className="mt-2 text-sm text-rose-700">{error}</p>}
-    <div className="mt-3 flex gap-2"><button className={primary} disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Add site or app'}</button><button className={button} onClick={onClose}>Cancel</button></div>
-    {sites.length > 0 && <div className="mt-4 border-t pt-3">
+    {error && <p role="alert" className="mt-3 text-sm text-rose-700">{error}</p>}
+    <div className="mt-4 flex gap-2"><button className={primary} disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Add site or app'}</button><button className={button} onClick={onClose}>Cancel</button></div>
+    {sites.length > 0 && <div className="mt-5 border-t pt-3">
       <h4 className={heading}>Registered ({sites.length})</h4>
       <ul className="mt-2 divide-y text-sm">{sites.map(s => <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><div className="min-w-0"><div className="font-medium text-slate-800">{s.name} <span className="font-normal text-slate-500">· {s.business}</span></div><a className="break-all text-xs text-indigo-700" href={s.url} target="_blank" rel="noreferrer">{s.url}</a>{s.project_name && <div className="text-xs text-slate-500">Taskmandu: {s.project_name}</div>}</div><button className="text-xs text-rose-700 hover:underline" onClick={() => void remove(s)}>Remove</button></li>)}</ul>
     </div>}
@@ -79,18 +88,19 @@ export function ItemPanel({ businesses, sites, onCreated, onClose }: {
   }
 
   return <section className="rounded-xl border bg-white p-4">
-    <div className="mb-3 flex items-center justify-between"><h3 className={heading}>Add a QA item</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
-    <div className="grid gap-2 md:grid-cols-2">
-      <input className={input + ' md:col-span-2'} placeholder="What needs checking? *" value={draft.title} onChange={e => set({ title: e.target.value })}/>
-      <select className={input} aria-label="Business" value={draft.business} onChange={e => set({ business: e.target.value, site: '' })}><option value="">Business</option>{businesses.map(b => <option key={b}>{b}</option>)}</select>
-      <input className={input} list="qa-site-options" placeholder="Website or app" value={draft.site} onChange={e => set({ site: e.target.value })}/>
-      <datalist id="qa-site-options">{siteOptions.map(s => <option key={s.id} value={s.name}/>)}</datalist>
-      <input className={input + ' md:col-span-2'} placeholder="Page URL so the developer can open it (blank = the site's address)" value={draft.url} onChange={e => set({ url: e.target.value })}/>
-      <input className={input + ' md:col-span-2'} placeholder="Assignee (optional)" value={draft.assignee} onChange={e => set({ assignee: e.target.value })}/>
-      <textarea className={input + ' md:col-span-2'} rows={3} placeholder={'Checklist, one check per line. Blank adds "Works on desktop" and "Works on mobile".'} value={draft.checks} onChange={e => set({ checks: e.target.value })}/>
+    <div className="mb-3 flex items-center justify-between"><h3 className={heading}>Add QA item</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
+    <div className="space-y-3">
+      <Field label="What needs checking?"><input className={input} placeholder="e.g. Fix checkout total rounding" value={draft.title} onChange={e => set({ title: e.target.value })}/></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Business"><BusinessInput id="qa-item-biz" value={draft.business} options={businesses} onChange={v => set({ business: v, site: '' })}/></Field>
+        <Field label="Website / app"><input className={input} list="qa-site-options" placeholder="Choose a site" value={draft.site} onChange={e => set({ site: e.target.value })}/><datalist id="qa-site-options">{siteOptions.map(s => <option key={s.id} value={s.name}/>)}</datalist></Field>
+      </div>
+      <Field label="Page URL" hint="So the developer can open it directly. Blank uses the site's address."><input className={input} placeholder="https://…" value={draft.url} onChange={e => set({ url: e.target.value })}/></Field>
+      <Field label="Assignee (optional)"><input className={input} value={draft.assignee} onChange={e => set({ assignee: e.target.value })}/></Field>
+      <Field label="Checklist" hint={'One check per line. Blank adds "Works on desktop" and "Works on mobile".'}><textarea className={input} rows={3} value={draft.checks} onChange={e => set({ checks: e.target.value })}/></Field>
     </div>
-    <p className="mt-2 text-xs text-slate-500">Pick a registered site and this is a site check. Any other site is saved as a client report. Taskmandu tasks join the queue by themselves when they reach Completed or Review.</p>
-    {error && <p role="alert" className="mt-2 text-sm text-rose-700">{error}</p>}
-    <div className="mt-3 flex gap-2"><button className={primary} disabled={saving} onClick={() => void save()}>{saving ? 'Adding…' : 'Add to queue'}</button><button className={button} onClick={onClose}>Cancel</button></div>
+    <p className="mt-3 text-xs text-slate-500">A registered site makes this a site check; any other site is saved as a client report. Taskmandu tasks join the queue on their own.</p>
+    {error && <p role="alert" className="mt-3 text-sm text-rose-700">{error}</p>}
+    <div className="mt-4 flex gap-2"><button className={primary} disabled={saving} onClick={() => void save()}>{saving ? 'Adding…' : 'Add to queue'}</button><button className={button} onClick={onClose}>Cancel</button></div>
   </section>;
 }

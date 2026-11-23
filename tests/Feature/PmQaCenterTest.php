@@ -269,4 +269,33 @@ class PmQaCenterTest extends TestCase
         $this->withoutVite()->actingAs(User::factory()->create())->get('/pm/qa')
             ->assertOk()->assertInertia(fn ($page) => $page->component('Pm/App')->where('page', 'qa'));
     }
+
+    public function test_business_list_includes_businesses_used_by_sites_even_without_an_operations_record(): void
+    {
+        $user = User::factory()->create();
+        PmQaWebsite::create(['created_by' => $user->id, 'business' => 'Tec.com', 'name' => 'Tec', 'url' => 'https://tec.com', 'website_type' => 'Business website', 'frequency' => 'Manual']);
+
+        $this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk()->assertJsonPath('businesses', ['Tec.com']);
+    }
+
+    public function test_report_snapshot_is_built_from_qa_center_items_and_can_be_edited(): void
+    {
+        $user = User::factory()->create();
+        $this->site($user, 'RB Hair & Beauty', 'Salon');
+        $key = $this->newItem($user, 'Salon', ['url' => 'https://salon.example.com/checkout'])->json('item.key');
+
+        $res = $this->actingAs($user)->postJson('/pm/api/qa-center/reports', [
+            'business' => 'RB Hair & Beauty', 'report_date' => '2026-11-24', 'summary' => 'One item.', 'item_keys' => [$key],
+        ])->assertCreated()->assertJsonPath('report.findings.0.code', 'RHB-QA1')->assertJsonPath('report.findings.0.stage', 'Queue');
+        $id = $res->json('report.id');
+
+        $findings = $res->json('report.findings');
+        $findings[0]['fail_note'] = 'Edited in snapshot';
+        $this->actingAs($user)->patchJson('/pm/api/qa-center/reports/'.$id, ['summary' => 'Changed', 'findings' => $findings])
+            ->assertOk()->assertJsonPath('report.findings.0.fail_note', 'Edited in snapshot');
+
+        // The live item is not touched by snapshot edits.
+        $this->assertNull(PmQaIssue::first()->qa_fail_note);
+        $this->actingAs(User::factory()->create())->patchJson('/pm/api/qa-center/reports/'.$id, ['findings' => []])->assertNotFound();
+    }
 }

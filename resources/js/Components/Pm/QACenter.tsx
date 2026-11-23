@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import ReviewPanel from './QA/ReviewPanel';
-import ReportView from './QA/ReportView';
+import SummaryTable from './QA/SummaryTable';
 import { ItemPanel, SitePanel } from './QA/AddPanels';
 import { button, dateTime, errorMessage, input, primary, SOURCES, STAGES, stageClass, type Payload, type QAItem, type Source, type Stage } from './QA/types';
 
-type Panel = 'none' | 'site' | 'item' | 'report';
+type Panel = 'none' | 'site' | 'item' | 'summary';
 type Sort = 'newest' | 'oldest' | 'code';
 
+const tab = (active: boolean) => (active ? primary : button);
 const EMPTY: Payload = { items: [], sites: [], businesses: [], projects: [] };
 const stageTone: Record<Stage, string> = { Queue: 'text-blue-700', Testing: 'text-amber-700', Failed: 'text-rose-700', Passed: 'text-emerald-700' };
 
@@ -77,13 +78,20 @@ export default function QACenter() {
   function clear() { setSearch(''); setBusiness(''); setSite(''); setSource(''); setAssignee(''); setStage(''); }
   const toggle = (p: Panel) => setPanel(cur => (cur === p ? 'none' : p));
 
+  const form = panel === 'site'
+    ? <SitePanel businesses={data.businesses} projects={data.projects} sites={data.sites} onSaved={() => load(true)} onClose={() => setPanel('none')}/>
+    : panel === 'item'
+      ? <ItemPanel businesses={data.businesses} sites={data.sites} onClose={() => setPanel('none')}
+          onCreated={item => { setData(d => ({ ...d, items: [item, ...d.items] })); setSelectedKey(item.key); setPanel('none'); void load(true); }}/>
+      : null;
+
   return <div ref={rootRef} className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="text-lg font-semibold text-slate-900">QA Center</h2><p className="text-sm text-slate-500">Queue, test, then pass or send back.</p></div>
       <div className="flex flex-wrap gap-2">
-        <button className={button} onClick={() => toggle('site')}>Site or app</button>
-        <button className={primary} onClick={() => toggle('item')}>QA item</button>
-        <button className={button} onClick={() => toggle('report')}>Report</button>
+        <button className={tab(panel === 'site')} aria-pressed={panel === 'site'} onClick={() => toggle('site')}>+ Site or app</button>
+        <button className={tab(panel === 'item')} aria-pressed={panel === 'item'} onClick={() => toggle('item')}>+ QA item</button>
+        <button className={tab(panel === 'summary')} aria-pressed={panel === 'summary'} onClick={() => toggle('summary')}>Summary</button>
         <button className={button} onClick={() => void load()}>Refresh</button>
       </div>
     </div>
@@ -113,18 +121,15 @@ export default function QACenter() {
       </div>
     </div>
 
-    {panel === 'site' && <SitePanel businesses={data.businesses} projects={data.projects} sites={data.sites} onSaved={() => load(true)} onClose={() => setPanel('none')}/>}
-    {panel === 'item' && <ItemPanel businesses={data.businesses} sites={data.sites} onClose={() => setPanel('none')}
-      onCreated={item => { setData(d => ({ ...d, items: [item, ...d.items] })); setSelectedKey(item.key); setPanel('none'); void load(true); }}/>}
-    {panel === 'report' && <ReportView items={visible} scope={scope} onClose={() => setPanel('none')}/>}
-
-    <div className="grid gap-4 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+    {panel === 'summary'
+      ? <SummaryTable items={visible} scope={scope} onChange={replaceItem}/>
+      : <div className="grid gap-4 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <div className="space-y-2">
         {loading && <p className="text-sm text-slate-500">Loading…</p>}
         {!loading && visible.length === 0 && <div className="rounded-xl border border-dashed bg-white p-6 text-center text-sm text-slate-500">{data.items.length === 0 ? 'No QA items yet. Add a site or app, then a QA item. Taskmandu tasks arrive on their own.' : 'Nothing matches these filters.'}</div>}
         {visible.map(i => {
           const done = i.checks.filter(c => c.is_done).length;
-          return <button key={i.key} onClick={() => setSelectedKey(i.key)}
+          return <button key={i.key} onClick={() => { setSelectedKey(i.key); if (panel === 'site' || panel === 'item') setPanel('none'); }}
             className={`block w-full rounded-xl border bg-white p-3 text-left transition hover:border-indigo-300 ${selected?.key === i.key ? 'border-indigo-600 ring-1 ring-indigo-600' : ''}`}>
             <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-semibold text-slate-600">{i.code ?? '—'}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stageClass[i.stage]}`}>{i.stage}</span><span className="text-xs text-slate-400">{i.source}</span></div>
             <div className="mt-1 break-words text-sm font-medium text-slate-900">{i.title}</div>
@@ -136,14 +141,14 @@ export default function QACenter() {
 
       {/* Desktop: side panel. Mobile: full-screen overlay. */}
       <div className="hidden md:block">
-        {selected
+        {form ? <div className="sticky top-4">{form}</div> : selected
           ? <div className="sticky top-4"><ReviewPanel item={selected} onChange={replaceItem} onClose={() => setSelectedKey(null)} onDeleted={key => { setData(d => ({ ...d, items: d.items.filter(i => i.key !== key) })); setSelectedKey(null); }}/></div>
           : <div className="rounded-xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">Select an item to review it.</div>}
       </div>
-    </div>
+    </div>}
 
-    {selected && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-100 p-3 md:hidden">
-      <ReviewPanel item={selected} onChange={replaceItem} onClose={() => setSelectedKey(null)} onDeleted={key => { setData(d => ({ ...d, items: d.items.filter(i => i.key !== key) })); setSelectedKey(null); }}/>
+    {(form || selected) && panel !== 'summary' && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-100 p-3 md:hidden">
+      {form ?? (selected && <ReviewPanel item={selected} onChange={replaceItem} onClose={() => setSelectedKey(null)} onDeleted={key => { setData(d => ({ ...d, items: d.items.filter(i => i.key !== key) })); setSelectedKey(null); }}/>)}
     </div>}
   </div>;
 }

@@ -1,34 +1,169 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import { errorMessage, STAGES, stageClass, type QAItem, type Stage } from './QA/types';
 
-type Finding = { id:number; business:string|null; site_app:string|null; project_name?:string|null; task_title?:string|null; subtask_title?:string|null; page_url:string|null; title:string; description:string|null; expected_behaviour:string|null; developer_notes:string|null; severity:'Critical'|'High'|'Medium'|'Low'; status:string; assignee:string|null; evidence_url:string|null; retest_notes:string|null; pm_task_url:string|null; created_at:string };
-type Report = { id:number; report_code:string; business:string; site_app:string|null; report_date:string; areas_tested:string|null; environment:string|null; summary:string|null; fix_first:string|null; open_questions:string|null; findings:Finding[]; checklist:{label:string;result:string}[]|null; handed_over_at:string|null };
-const priority:Record<string,number>={Critical:0,High:1,Medium:2,Low:3};
-const fmt=(s:string|null|undefined)=>s||'Not recorded';
-const today=new Date().toISOString().slice(0,10);
-export default function QAReportsPanel(){
- const [issues,setIssues]=useState<Finding[]>([]),[reports,setReports]=useState<Report[]>([]);
- const [business,setBusiness]=useState(''),[site,setSite]=useState('All sites / apps'),[project,setProject]=useState('All projects');
- const [date,setDate]=useState(today),[active,setActive]=useState<Report|null>(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState('');
- const [editing,setEditing]=useState(false),[editDraft,setEditDraft]=useState<Report|null>(null);
- async function load(){setLoading(true);setError('');try{const [qa,saved]=await Promise.all([axios.get('/pm/api/qa'),axios.get('/pm/api/qa/reports')]);setIssues(qa.data.issues??[]);setReports(saved.data.reports??[]);}catch{setError('Unable to load QA Center records.');}finally{setLoading(false);}}
- useEffect(()=>{void load();},[]);
- const businesses=useMemo(()=>Array.from(new Set(issues.map(x=>x.business).filter(Boolean))) as string[],[issues]);
- const sites=useMemo(()=>Array.from(new Set(issues.filter(x=>!business||x.business===business).map(x=>x.site_app).filter(Boolean))) as string[],[issues,business]);
- const projects=useMemo(()=>Array.from(new Set(issues.filter(x=>(!business||x.business===business)&&(!site||site==='All sites / apps'||x.site_app===site)).map(x=>x.project_name).filter(Boolean))) as string[],[issues,business,site]);
- const scoped=useMemo(()=>issues.filter(x=>(!business||x.business===business)&&(!site||site==='All sites / apps'||x.site_app===site)&&(!project||project==='All projects'||x.project_name===project)),[issues,business,site,project]);
- const findings=useMemo(()=>[...scoped].sort((a,b)=>(priority[a.severity]??9)-(priority[b.severity]??9)||a.id-b.id),[scoped]);
- const unresolved=findings.filter(x=>!['Passed'].includes(x.status));
- const passed=findings.filter(x=>x.status==='Passed');
- const counts=(arr:Finding[])=>({critical:arr.filter(x=>x.severity==='Critical').length,high:arr.filter(x=>x.severity==='High').length,medium:arr.filter(x=>x.severity==='Medium').length,low:arr.filter(x=>x.severity==='Low').length});
- const summary=()=>{const c=counts(findings),u=counts(unresolved);if(!findings.length)return 'No QA findings were recorded for this selected scope.';return `QA review captured ${findings.length} finding(s) across the selected scope. ${u.critical} Critical and ${u.high} High unresolved finding(s) require priority attention; ${passed.length} finding(s) are marked Passed. ${c.medium} Medium and ${c.low} Low severity findings remain in the report for triage.`;};
- const fixes=()=>unresolved.slice(0,5).map(f=>`${f.severity}: ${f.title}`);
- async function generate(){if(!business){setError('Select a business first.');return;}if(!findings.length){setError('No findings exist for this scope.');return;}setSaving(true);setError('');try{const response=await axios.post('/pm/api/qa/reports',{business,site_app:site==='All sites / apps'?'':site,report_date:date,areas_tested:[project!=='All projects'?project:'',site!=='All sites / apps'?site:''].filter(Boolean).join(' · '),environment:'Generated from QA Center scope',summary:summary(),fix_first:fixes().join('\n'),open_questions:'',issue_ids:findings.map(x=>x.id),checklist:[{label:'Critical / High unresolved findings triaged',result:counts(unresolved).critical+counts(unresolved).high?'Retest required':'Pass'},{label:'QA findings in scope included',result:'Pass'},{label:'Resolved findings identified separately',result:passed.length?'Pass':'Not tested'}]});const r=response.data.report as Report;setReports(prev=>[r,...prev]);setActive(r);}catch(e:any){setError(e?.response?.data?.message||'Report generation failed.');}finally{setSaving(false);}}
- async function saveEdits(){if(!active||!editDraft)return;try{setSaving(true);const res=await axios.patch('/pm/api/qa/reports/'+active.id,editDraft);const updated=res.data.report as Report;setActive(updated);setReports(prev=>prev.map(x=>x.id===updated.id?updated:x));setEditing(false);setError('');}catch(e:any){setError(e?.response?.data?.message||'Save failed. Please review the report fields.');}finally{setSaving(false);}}
- async function handover(r:Report){try{const res=await axios.patch('/pm/api/qa/reports/'+r.id+'/handover');setActive(res.data.report);setReports(prev=>prev.map(x=>x.id===r.id?res.data.report:x));}catch{setError('Could not update handover status.');}}
- const print=()=>window.print();
- const Field=({f,i}:{f:Finding;i:number})=><div key={f.id} className="qa-finding border-b py-4"><div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">QA-{String(i+1).padStart(2,'0')} · {f.title}</h3><span className={'rounded-full px-2 py-1 text-xs font-semibold '+(f.severity==='Critical'?'bg-red-100 text-red-800':f.severity==='High'?'bg-orange-100 text-orange-800':f.severity==='Medium'?'bg-amber-100 text-amber-800':'bg-slate-100 text-slate-700')}>{f.severity}</span></div><p className="mt-1 text-xs text-slate-500">{f.status} · {f.project_name||'Project not linked'} · {f.task_title||'Task not linked'} {f.subtask_title?'· '+f.subtask_title:''}</p><p className="mt-2 text-sm"><strong>Location:</strong> {fmt(f.page_url)}</p><p className="mt-2 whitespace-pre-wrap text-sm"><strong>Actual:</strong> {fmt(f.description)}</p><p className="mt-2 whitespace-pre-wrap text-sm"><strong>Expected:</strong> {fmt(f.expected_behaviour)}</p>{f.developer_notes&&<p className="mt-2 whitespace-pre-wrap text-sm"><strong>Developer note:</strong> {f.developer_notes}</p>}{f.evidence_url&&<p className="mt-2 break-all text-sm"><strong>Evidence:</strong> {f.evidence_url}</p>}{f.pm_task_url&&<p className="mt-2 break-all text-sm"><strong>Task link:</strong> {f.pm_task_url}</p>}<p className="mt-2 text-sm"><strong>Assignee:</strong> {fmt(f.assignee)}</p>{f.retest_notes&&<p className="mt-2 whitespace-pre-wrap text-sm"><strong>Retest:</strong> {f.retest_notes}</p>}</div>;
- return <div className="space-y-5"><style>{'@media print { body * {visibility:hidden!important} #qa-print,#qa-print *{visibility:visible!important} #qa-print{position:absolute;inset:0;width:100%;padding:24px;background:white;color:#111827}.no-print{display:none!important}.qa-finding{break-inside:avoid-page} }'}</style>
- <div className="no-print flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">QA Report Generator</h2><p className="text-sm text-slate-500">Rule-generated developer handover reports from QA Center records.</p></div><button onClick={()=>void load()} className="rounded-lg border px-3 py-2 text-sm">Refresh QA data</button></div>
- {active?<div className="space-y-3"><div className="no-print flex flex-wrap justify-between gap-2"><button className="rounded-lg border px-3 py-2" onClick={()=>setActive(null)}>← Back</button><div className="flex gap-2"> {!editing&&<button className="rounded-lg border px-3 py-2" onClick={()=>{setEditDraft({...active,findings:active.findings.map(f=>({...f}))});setEditing(true);}}>Edit report</button>}{!active.handed_over_at&&<button className="rounded-lg border px-3 py-2" onClick={()=>void handover(active)}>Mark handed over</button>}<button className="rounded-lg bg-slate-900 px-4 py-2 text-white" onClick={print}>Print / Save PDF</button></div></div>{editing&&editDraft&&<section className="no-print rounded-xl border bg-white p-4 space-y-3"><h2 className="font-semibold">Edit report snapshot</h2><p className="text-xs text-slate-500">Changes apply only to this saved report, not the original QA Center findings.</p>{(['areas_tested','environment','summary','fix_first','open_questions'] as const).map(k=><label key={k} className="block text-sm font-medium">{k.replace(/_/g,' ').replace(/^./,c=>c.toUpperCase())}<textarea className="mt-1 w-full rounded-lg border p-2 text-sm" rows={k==='summary'||k==='fix_first'||k==='open_questions'?4:2} value={(editDraft[k]||'') as string} onChange={e=>setEditDraft({...editDraft,[k]:e.target.value})}/></label>)}<div className="space-y-3"><h3 className="text-sm font-semibold">Findings · {editDraft.findings.length}</h3>{editDraft.findings.map((finding,index)=><div key={finding.id ?? index} className="rounded-lg border p-3 space-y-2"><div className="flex items-center justify-between"><strong className="text-sm">Finding {index+1}</strong><span className="text-xs text-slate-500">Snapshot only</span></div><label className="block text-xs font-medium">Title<input className="mt-1 w-full rounded-lg border p-2 text-sm" value={finding.title||''} onChange={e=>setEditDraft({...editDraft,findings:editDraft.findings.map((f,i)=>i===index?{...f,title:e.target.value}:f)})}/></label><div className="grid gap-2 sm:grid-cols-2"><label className="block text-xs font-medium">Severity<select className="mt-1 w-full rounded-lg border p-2 text-sm" value={finding.severity} onChange={e=>setEditDraft({...editDraft,findings:editDraft.findings.map((f,i)=>i===index?{...f,severity:e.target.value as Finding['severity']}:f)})}>{['Critical','High','Medium','Low'].map(v=><option key={v}>{v}</option>)}</select></label><label className="block text-xs font-medium">Status<select className="mt-1 w-full rounded-lg border p-2 text-sm" value={finding.status} onChange={e=>setEditDraft({...editDraft,findings:editDraft.findings.map((f,i)=>i===index?{...f,status:e.target.value}:f)})}>{['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'].map(v=><option key={v}>{v}</option>)}</select></label></div>{([{key:'page_url',label:'Page / screen URL'},{key:'description',label:'Actual behaviour'},{key:'expected_behaviour',label:'Expected behaviour'},{key:'developer_notes',label:'Developer notes'},{key:'assignee',label:'Assignee'},{key:'evidence_url',label:'Evidence URL'},{key:'retest_notes',label:'Retest notes'},{key:'pm_task_url',label:'Task link'}] as const).map(field=><label key={field.key} className="block text-xs font-medium">{field.label}<textarea rows={field.key==='description'||field.key==='expected_behaviour'||field.key==='developer_notes'?3:1} className="mt-1 w-full rounded-lg border p-2 text-sm" value={(finding[field.key]||'') as string} onChange={e=>setEditDraft({...editDraft,findings:editDraft.findings.map((f,i)=>i===index?{...f,[field.key]:e.target.value}:f)})}/></label>)}</div>)}</div><div className="flex gap-2"><button disabled={saving} onClick={()=>void saveEdits()} className="rounded-lg bg-slate-900 px-4 py-2 text-white">{saving?'Saving…':'Save report edits'}</button><button onClick={()=>setEditing(false)} className="rounded-lg border px-4 py-2">Cancel</button></div></section>}<article id="qa-print" className="mx-auto max-w-4xl rounded-xl border bg-white p-6 text-slate-900"><header className="border-b-2 pb-4"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Quality assurance · Developer handover</p><h1 className="mt-2 text-2xl font-bold">QA Report — {active.site_app||active.business}</h1><p className="mt-2 text-sm">{active.report_code} · {active.report_date} · {active.business}</p>{active.areas_tested&&<p className="mt-2 text-sm">Scope: {active.areas_tested}</p>}{active.handed_over_at&&<p className="mt-2 text-sm font-semibold text-green-700">Handed over {new Date(active.handed_over_at).toLocaleString()}</p>}</header><div className="grid grid-cols-2 gap-3 py-4 sm:grid-cols-4">{Object.entries(counts(active.findings.filter(f=>f.status!=='Passed'))).map(([k,v])=><div className="rounded-lg border p-3" key={k}><p className="text-xs uppercase text-slate-500">{k}</p><p className="text-2xl font-bold">{v}</p></div>)}</div><section className="border-b py-3"><h2 className="font-bold">Executive summary</h2><p className="mt-2 text-sm leading-6">{active.summary||'No summary available.'}</p></section><section className="border-b py-3"><h2 className="font-bold">Recommended fix order</h2><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{(active.fix_first||'').split('\n').filter(Boolean).map((x,i)=><li key={i}>{x}</li>)}</ol></section><section className="py-3"><h2 className="font-bold">Unresolved findings · {active.findings.filter(f=>f.status!=='Passed').length}</h2>{active.findings.filter(f=>f.status!=='Passed').map((f,i)=><Field key={f.id} f={f} i={i}/>)}</section><section className="py-3"><h2 className="font-bold">Verified / passed findings · {active.findings.filter(f=>f.status==='Passed').length}</h2>{active.findings.filter(f=>f.status==='Passed').map((f,i)=><Field key={f.id} f={f} i={i}/>)}</section>{active.checklist?.length&&<section className="border-t py-3"><h2 className="font-bold">Automated rule checks</h2>{active.checklist.map((c,i)=><div key={i} className="flex justify-between border-b py-2 text-sm"><span>{c.label}</span><strong>{c.result}</strong></div>)}</section>}<footer className="mt-4 border-t pt-3 text-xs text-slate-500">Snapshot generated from QA Center. Later finding changes do not alter this report.</footer></article></div>:<><section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Report scope</h3><p className="mt-1 text-sm text-slate-500">Choose the business and optional filters. Findings are automatically included and sorted by severity; passed findings are separated.</p><div className="mt-3 grid gap-3 sm:grid-cols-3"><label className="text-sm">Business<select className="mt-1 w-full rounded-lg border p-2" value={business} onChange={e=>{setBusiness(e.target.value);setSite('All sites / apps');setProject('All projects');}}><option value="">Select business</option>{businesses.map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm">Website / App<select className="mt-1 w-full rounded-lg border p-2" value={site} onChange={e=>{setSite(e.target.value);setProject('All projects');}}><option>All sites / apps</option>{sites.map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm">Project<select className="mt-1 w-full rounded-lg border p-2" value={project} onChange={e=>setProject(e.target.value)}><option>All projects</option>{projects.map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm">Report date<input className="mt-1 w-full rounded-lg border p-2" type="date" value={date} onChange={e=>setDate(e.target.value)}/></label></div></section><section className="no-print grid grid-cols-2 gap-3 sm:grid-cols-4">{[{label:'Total',value:findings.length},{label:'Unresolved',value:unresolved.length},{label:'Critical',value:counts(unresolved).critical},{label:'High',value:counts(unresolved).high}].map(x=><div key={x.label} className="rounded-xl border bg-white p-4"><p className="text-xs text-slate-500">{x.label}</p><p className="text-2xl font-semibold">{x.value}</p></div>)}</section><section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Included findings</h3>{loading?<p className="py-4 text-sm">Loading…</p>:!business?<p className="py-3 text-sm text-slate-500">Select a business to preview report contents.</p>:findings.length===0?<p className="py-3 text-sm">No QA findings in this scope.</p>:<div className="mt-2 divide-y">{findings.map((f,i)=><div key={f.id} className="flex flex-wrap justify-between gap-2 py-3"><span className="text-sm font-medium">{i+1}. {f.title}<span className="block text-xs text-slate-500">{f.project_name||'Project'} · {f.task_title||'Task'} · {f.status}</span></span><span className="text-xs font-semibold">{f.severity}</span></div>)}</div>}<div className="mt-3 border-t pt-3"><p className="text-sm font-medium">Automatically applied rules</p><ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600"><li>All findings matching the chosen business/site/project are included (no manual checkbox selection).</li><li>Sort severity Critical → High → Medium → Low.</li><li>Passed findings separated from unresolved records.</li><li>Top unresolved findings become the fix-first list.</li><li>Summary and counts are derived from current QA records.</li><li>Report saved as immutable snapshot; changes in QA Center won't mutate generated reports.</li></ul></div>{error&&<p className="mt-3 text-sm text-rose-600">{error}</p>}<button disabled={saving||loading||!business||!findings.length} onClick={()=>void generate()} className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving?'Generating…':'Generate report from scope'}</button></section><section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Saved reports</h3>{reports.length===0?<p className="mt-2 text-sm text-slate-500">Generated reports will appear here.</p>:reports.map(r=><button key={r.id} onClick={()=>setActive(r)} className="flex w-full justify-between gap-3 border-b py-3 text-left"><span className="text-sm font-medium">{r.business} · {r.report_code}<span className="block text-xs text-slate-500">{r.report_date} · {r.findings?.length||0} findings</span></span><span className="text-xs">{r.handed_over_at?'Handed over':'Saved'} →</span></button>)}</section></>}</div>;
+/** One line in a saved report. Reports saved before the QA Center rebuild hold the old finding shape; those are converted on read. */
+type Row = { key?: string | null; code: string | null; title: string; stage: Stage; business?: string | null; site: string | null; source?: string | null; assignee: string | null; url: string | null; fail_note: string | null; remarks: string | null; checks: { label: string; is_done: boolean }[]; screenshots: string[]; updated_at?: string | null };
+type Report = { id: number; report_code: string; business: string; site_app: string | null; report_date: string; areas_tested: string | null; environment: string | null; summary: string | null; fix_first: string | null; open_questions: string | null; findings: Record<string, any>[]; checklist: { label: string; result: string }[] | null; handed_over_at: string | null };
+
+const today = new Date().toISOString().slice(0, 10);
+const fmt = (s: string | null | undefined) => s || 'Not recorded';
+const ALL_SITES = 'All sites / apps';
+const rank: Record<Stage, number> = { Failed: 0, Testing: 1, Queue: 2, Passed: 3 };
+
+function toRow(f: Record<string, any>): Row {
+  if (f.stage) return { ...f, checks: f.checks ?? [], screenshots: f.screenshots ?? [] } as Row;
+  const status = String(f.status ?? '');
+  return {
+    code: null, title: f.title ?? 'Untitled', site: f.site_app ?? null, assignee: f.assignee ?? null, url: f.page_url ?? null,
+    stage: status === 'Passed' ? 'Passed' : ['Reported', 'Fixing', 'Failed'].includes(status) ? 'Failed' : 'Queue',
+    fail_note: f.description ?? null, remarks: f.developer_notes ?? null, checks: [], screenshots: f.evidence_url ? [f.evidence_url] : [],
+  };
+}
+
+const counts = (rows: Row[]) => Object.fromEntries(STAGES.map(s => [s, rows.filter(r => r.stage === s).length])) as Record<Stage, number>;
+const open = (rows: Row[]) => rows.filter(r => r.stage !== 'Passed');
+const label = (r: Row) => `${r.code ? r.code + ': ' : ''}${r.title}`;
+
+export default function QAReportsPanel() {
+  const [items, setItems] = useState<QAItem[]>([]);
+  const [businessList, setBusinessList] = useState<string[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [business, setBusiness] = useState('');
+  const [site, setSite] = useState(ALL_SITES);
+  const [date, setDate] = useState(today);
+  const [active, setActive] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Report | null>(null);
+
+  async function load() {
+    setLoading(true); setError('');
+    try {
+      const [qa, saved] = await Promise.all([axios.get('/pm/api/qa-center'), axios.get('/pm/api/qa/reports')]);
+      setItems(qa.data.items ?? []); setBusinessList(qa.data.businesses ?? []); setReports(saved.data.reports ?? []);
+    } catch { setError('Unable to load QA Center records.'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  const businesses = useMemo(() => [...new Set([...businessList, ...items.map(i => i.business).filter(Boolean) as string[]])].sort(), [businessList, items]);
+  const sites = useMemo(() => [...new Set(items.filter(i => i.business === business).map(i => i.site).filter(Boolean) as string[])].sort(), [items, business]);
+  const scoped = useMemo(() => items.filter(i => i.business === business && (site === ALL_SITES || i.site === site))
+    .sort((a, b) => rank[a.stage] - rank[b.stage] || (a.code ?? '').localeCompare(b.code ?? '', undefined, { numeric: true })), [items, business, site]);
+  const c = counts(scoped as unknown as Row[]);
+
+  const summary = () => {
+    if (!scoped.length) return 'No QA items were recorded for this selected scope.';
+    const decided = c.Passed + c.Failed;
+    return `QA review covers ${scoped.length} item(s) for ${business}${site !== ALL_SITES ? ' (' + site + ')' : ''}. ${c.Failed} failed and need fixing, ${c.Testing} are in testing, ${c.Queue} are waiting in the queue, and ${c.Passed} passed${decided ? ` (pass rate ${Math.round((c.Passed / decided) * 100)}% of decided items)` : ''}.`;
+  };
+
+  async function generate() {
+    if (!business) { setError('Select a business first.'); return; }
+    if (!scoped.length) { setError('No QA items exist for this scope.'); return; }
+    setSaving(true); setError('');
+    try {
+      const unresolved = open(scoped as unknown as Row[]);
+      const res = await axios.post('/pm/api/qa-center/reports', {
+        business, site_app: site === ALL_SITES ? '' : site, report_date: date,
+        areas_tested: site === ALL_SITES ? '' : site, environment: 'Generated from QA Center scope',
+        summary: summary(), fix_first: unresolved.slice(0, 8).map(r => `${r.stage}: ${label(r as unknown as Row)}`).join('\n'), open_questions: '',
+        item_keys: scoped.map(i => i.key),
+        checklist: [
+          { label: 'Failed items triaged', result: c.Failed ? 'Retest required' : 'Pass' },
+          { label: 'Every item has been tested', result: c.Queue + c.Testing ? 'Not tested' : 'Pass' },
+          { label: 'Passed items identified separately', result: c.Passed ? 'Pass' : 'Not tested' },
+        ],
+      });
+      const r = res.data.report as Report;
+      setReports(prev => [r, ...prev]); setActive(r);
+    } catch (e) { setError(errorMessage(e, 'Report generation failed.')); }
+    finally { setSaving(false); }
+  }
+
+  async function saveEdits() {
+    if (!active || !draft) return;
+    setSaving(true);
+    try {
+      const res = await axios.patch('/pm/api/qa-center/reports/' + active.id, { ...draft, findings: draft.findings.map(f => toRow(f)) });
+      const updated = res.data.report as Report;
+      setActive(updated); setReports(prev => prev.map(x => (x.id === updated.id ? updated : x))); setEditing(false); setError('');
+    } catch (e) { setError(errorMessage(e, 'Save failed. Please review the report fields.')); }
+    finally { setSaving(false); }
+  }
+
+  async function handover(r: Report) {
+    try {
+      const res = await axios.patch('/pm/api/qa/reports/' + r.id + '/handover');
+      setActive(res.data.report); setReports(prev => prev.map(x => (x.id === r.id ? res.data.report : x)));
+    } catch { setError('Could not update handover status.'); }
+  }
+
+  const editRow = (index: number, patch: Partial<Row>) => setDraft(d => d && ({ ...d, findings: d.findings.map((f, i) => (i === index ? { ...toRow(f), ...patch } : f)) }));
+
+  const RowView = ({ r }: { r: Row }) => <div className="qa-finding border-b py-4">
+    <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">{r.code ? <span className="mr-2 font-mono text-sm text-slate-600">{r.code}</span> : null}{r.title}</h3><span className={'rounded-full px-2 py-1 text-xs font-semibold ' + stageClass[r.stage]}>{r.stage}</span></div>
+    <p className="mt-1 text-xs text-slate-500">{[r.source, r.site, r.assignee].filter(Boolean).join(' · ') || 'No site or assignee'}</p>
+    <p className="mt-2 break-all text-sm"><strong>Page URL:</strong> {fmt(r.url)}</p>
+    {r.fail_note && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Failure note:</strong> {r.fail_note}</p>}
+    {r.remarks && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Remarks:</strong> {r.remarks}</p>}
+    {r.checks.length > 0 && <ul className="mt-2 grid gap-0.5 text-sm sm:grid-cols-2">{r.checks.map((k, i) => <li key={i} className={k.is_done ? 'text-emerald-700' : 'text-slate-500'}>{k.is_done ? '☑ Done' : '☐ Not checked'}: {k.label}</li>)}</ul>}
+    {r.screenshots.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{r.screenshots.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="Screenshot" className="h-20 rounded border object-cover"/></a>)}</div>}
+  </div>;
+
+  const ta = 'mt-1 w-full rounded-lg border p-2 text-sm';
+
+  return <div className="space-y-5"><style>{'@media print { body * {visibility:hidden!important} #qa-print,#qa-print *{visibility:visible!important} #qa-print{position:absolute;inset:0;width:100%;padding:24px;background:white;color:#111827}.no-print{display:none!important}.qa-finding{break-inside:avoid-page} }'}</style>
+    <div className="no-print flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">QA Report Generator</h2><p className="text-sm text-slate-500">Developer handover reports built from QA Center items.</p></div><button onClick={() => void load()} className="rounded-lg border px-3 py-2 text-sm">Refresh QA data</button></div>
+
+    {active ? (() => {
+      const rows = active.findings.map(toRow);
+      const cc = counts(rows);
+      const unresolved = rows.filter(r => r.stage !== 'Passed');
+      const passed = rows.filter(r => r.stage === 'Passed');
+      return <div className="space-y-3">
+        <div className="no-print flex flex-wrap justify-between gap-2"><button className="rounded-lg border px-3 py-2" onClick={() => { setActive(null); setEditing(false); }}>← Back</button>
+          <div className="flex gap-2">{!editing && <button className="rounded-lg border px-3 py-2" onClick={() => { setDraft({ ...active, findings: rows as unknown as Record<string, any>[] }); setEditing(true); }}>Edit report</button>}{!active.handed_over_at && <button className="rounded-lg border px-3 py-2" onClick={() => void handover(active)}>Mark handed over</button>}<button className="rounded-lg bg-slate-900 px-4 py-2 text-white" onClick={() => window.print()}>Print / Save PDF</button></div></div>
+        {error && <p className="no-print text-sm text-rose-600">{error}</p>}
+        {editing && draft && <section className="no-print space-y-3 rounded-xl border bg-white p-4"><h2 className="font-semibold">Edit report snapshot</h2><p className="text-xs text-slate-500">Changes apply only to this saved report, not to the live QA Center items.</p>
+          {(['areas_tested', 'environment', 'summary', 'fix_first', 'open_questions'] as const).map(k => <label key={k} className="block text-sm font-medium">{k.replace(/_/g, ' ').replace(/^./, ch => ch.toUpperCase())}<textarea className={ta} rows={k === 'areas_tested' || k === 'environment' ? 2 : 4} value={(draft[k] || '') as string} onChange={e => setDraft({ ...draft, [k]: e.target.value })}/></label>)}
+          <div className="space-y-3"><h3 className="text-sm font-semibold">Items · {draft.findings.length}</h3>
+            {draft.findings.map((f, index) => { const r = toRow(f); return <div key={index} className="space-y-2 rounded-lg border p-3">
+              <strong className="text-sm">{r.code ?? `Item ${index + 1}`}</strong>
+              <label className="block text-xs font-medium">Title<input className={ta} value={r.title} onChange={e => editRow(index, { title: e.target.value })}/></label>
+              <label className="block text-xs font-medium">Stage<select className={ta} value={r.stage} onChange={e => editRow(index, { stage: e.target.value as Stage })}>{STAGES.map(s => <option key={s}>{s}</option>)}</select></label>
+              {(['url', 'assignee', 'fail_note', 'remarks'] as const).map(k => <label key={k} className="block text-xs font-medium">{{ url: 'Page URL', assignee: 'Assignee', fail_note: 'Failure note', remarks: 'Remarks' }[k]}<textarea rows={k === 'fail_note' || k === 'remarks' ? 3 : 1} className={ta} value={(r[k] ?? '') as string} onChange={e => editRow(index, { [k]: e.target.value })}/></label>)}
+            </div>; })}
+          </div>
+          <div className="flex gap-2"><button disabled={saving} onClick={() => void saveEdits()} className="rounded-lg bg-slate-900 px-4 py-2 text-white">{saving ? 'Saving…' : 'Save report edits'}</button><button onClick={() => setEditing(false)} className="rounded-lg border px-4 py-2">Cancel</button></div></section>}
+        <article id="qa-print" className="mx-auto max-w-4xl rounded-xl border bg-white p-6 text-slate-900">
+          <header className="border-b-2 pb-4"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Quality assurance · Developer handover</p><h1 className="mt-2 text-2xl font-bold">QA Report — {active.site_app || active.business}</h1><p className="mt-2 text-sm">{active.report_code} · {active.report_date} · {active.business}</p>{active.areas_tested && <p className="mt-2 text-sm">Scope: {active.areas_tested}</p>}{active.handed_over_at && <p className="mt-2 text-sm font-semibold text-green-700">Handed over {new Date(active.handed_over_at).toLocaleString()}</p>}</header>
+          <div className="grid grid-cols-2 gap-3 py-4 sm:grid-cols-4">{STAGES.map(s => <div className="rounded-lg border p-3" key={s}><p className="text-xs uppercase text-slate-500">{s}</p><p className="text-2xl font-bold">{cc[s]}</p></div>)}</div>
+          <section className="border-b py-3"><h2 className="font-bold">Executive summary</h2><p className="mt-2 text-sm leading-6">{active.summary || 'No summary available.'}</p></section>
+          <section className="border-b py-3"><h2 className="font-bold">Recommended fix order</h2><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{(active.fix_first || '').split('\n').filter(Boolean).map((x, i) => <li key={i}>{x}</li>)}</ol></section>
+          <section className="py-3"><h2 className="font-bold">Open items · {unresolved.length}</h2>{[...unresolved].sort((a, b) => rank[a.stage] - rank[b.stage]).map((r, i) => <RowView key={i} r={r}/>)}</section>
+          <section className="py-3"><h2 className="font-bold">Verified / passed · {passed.length}</h2>{passed.map((r, i) => <RowView key={i} r={r}/>)}</section>
+          {active.checklist && active.checklist.length > 0 && <section className="border-t py-3"><h2 className="font-bold">Automated rule checks</h2>{active.checklist.map((k, i) => <div key={i} className="flex justify-between border-b py-2 text-sm"><span>{k.label}</span><strong>{k.result}</strong></div>)}</section>}
+          <footer className="mt-4 border-t pt-3 text-xs text-slate-500">Snapshot generated from QA Center. Later item changes do not alter this report.</footer>
+        </article>
+      </div>;
+    })() : <>
+      <section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Report scope</h3><p className="mt-1 text-sm text-slate-500">Choose a business and optionally a site. Every QA item in scope is included, failed first; passed items are listed separately.</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <label className="text-sm">Business<select className="mt-1 w-full rounded-lg border p-2" value={business} onChange={e => { setBusiness(e.target.value); setSite(ALL_SITES); }}><option value="">Select business</option>{businesses.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label className="text-sm">Website / App<select className="mt-1 w-full rounded-lg border p-2" value={site} onChange={e => setSite(e.target.value)}><option>{ALL_SITES}</option>{sites.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label className="text-sm">Report date<input className="mt-1 w-full rounded-lg border p-2" type="date" value={date} onChange={e => setDate(e.target.value)}/></label>
+        </div></section>
+      <section className="no-print grid grid-cols-2 gap-3 sm:grid-cols-4">{STAGES.map(s => <div key={s} className="rounded-xl border bg-white p-4"><p className="text-xs text-slate-500">{s}</p><p className="text-2xl font-semibold">{business ? c[s] : '—'}</p></div>)}</section>
+      <section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Included items</h3>
+        {loading ? <p className="py-4 text-sm">Loading…</p> : !business ? <p className="py-3 text-sm text-slate-500">Select a business to preview report contents.</p> : scoped.length === 0 ? <p className="py-3 text-sm">No QA items in this scope.</p>
+          : <div className="mt-2 divide-y">{scoped.map(i => <div key={i.key} className="flex flex-wrap justify-between gap-2 py-3"><span className="text-sm font-medium"><span className="mr-2 font-mono text-xs text-slate-500">{i.code}</span>{i.title}<span className="block text-xs text-slate-500">{[i.site, i.source, i.assignee].filter(Boolean).join(' · ')}</span></span><span className={'h-fit rounded-full px-2 py-0.5 text-xs font-medium ' + stageClass[i.stage]}>{i.stage}</span></div>)}</div>}
+        {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+        <button disabled={saving || loading || !business || !scoped.length} onClick={() => void generate()} className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Generating…' : 'Generate report from scope'}</button></section>
+      <section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Saved reports</h3>{reports.length === 0 ? <p className="mt-2 text-sm text-slate-500">Generated reports will appear here.</p> : reports.map(r => <button key={r.id} onClick={() => setActive(r)} className="flex w-full justify-between gap-3 border-b py-3 text-left"><span className="text-sm font-medium">{r.business} · {r.report_code}<span className="block text-xs text-slate-500">{r.report_date} · {r.findings?.length || 0} items</span></span><span className="text-xs">{r.handed_over_at ? 'Handed over' : 'Saved'} →</span></button>)}</section>
+    </>}
+  </div>;
 }

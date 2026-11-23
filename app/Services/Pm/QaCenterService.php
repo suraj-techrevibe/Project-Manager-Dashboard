@@ -50,11 +50,47 @@ class QaCenterService
                 ->concat($reviews->map(fn (PmQaTaskReview $r) => $this->presentReview($r, $checks, $siteByProject)))
                 ->values(),
             'sites' => $websites->values(),
-            'businesses' => PmBusiness::query()->orderBy('name')->pluck('name'),
+            'businesses' => $this->businessNames($websites, $issues, $projectBusinesses),
             'projects' => PmCard::query()->whereNotNull('project_id')->select('project_id', 'project_name')->distinct()
                 ->orderBy('project_name')->get()
                 ->map(fn ($p) => ['id' => $p->project_id, 'name' => $p->project_name])->values(),
         ];
+    }
+
+    /** Every business name we know of: the Operations list plus any already used by sites, items or project links. */
+    private function businessNames(Collection $websites, Collection $issues, Collection $projectBusinesses): array
+    {
+        return PmBusiness::query()->pluck('name')
+            ->concat($websites->pluck('business'))
+            ->concat($issues->pluck('business'))
+            ->concat($projectBusinesses->values())
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique(fn ($n) => mb_strtolower($n))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+    }
+
+    /** Report snapshot rows for the given 'issue:ID' / 'task:ID' keys, in the unified item shape. */
+    public function snapshot(User $user, array $keys): array
+    {
+        $wanted = collect($keys)->unique()->values();
+        $payload = $this->payload($user);
+
+        return collect($payload['items'])
+            ->filter(fn ($i) => $wanted->contains($i['key']))
+            ->map(fn ($i) => [
+                'key' => $i['key'], 'code' => $i['code'], 'title' => $i['title'], 'stage' => $i['stage'],
+                'business' => $i['business'], 'site' => $i['site'], 'source' => $i['source'], 'assignee' => $i['assignee'],
+                'url' => $i['url'], 'fail_note' => $i['fail_note'], 'remarks' => $i['remarks'],
+                'checks' => collect($i['checks'])->map(fn ($c) => ['label' => $c['label'], 'is_done' => (bool) $c['is_done']])->values()->all(),
+                'screenshots' => collect($i['screenshots'])->pluck('url')->values()->all(),
+                'updated_at' => $i['updated_at'],
+            ])
+            ->sortBy('code', SORT_NATURAL)
+            ->values()
+            ->all();
     }
 
     /** One item in the same shape as payload()['items']. */
