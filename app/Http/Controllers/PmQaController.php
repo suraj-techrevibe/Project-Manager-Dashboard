@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class PmQaController extends Controller
 {
@@ -154,7 +155,7 @@ class PmQaController extends Controller
                 'last_result' => $result,
                 'last_checked_at' => now(),
             ]);
-        } catch (\\Throwable $exception) {
+        } catch (\Throwable $exception) {
             $website->update([
                 'last_check_status' => 'Failed',
                 'last_http_status' => null,
