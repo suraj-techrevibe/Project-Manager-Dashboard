@@ -70,7 +70,7 @@ export default function TasksPage({
               <button onClick={onRetry} className="font-medium underline">Try again</button>
             </p>
           )}
-          <AllTasksPanel rows={rows} loading={projectsLoading || loading} onOpenTask={onOpenTask} projects={projects} onProjectChanged={onProjectChanged} quickParam={quickParam} />
+          <AllTasksPanel rows={rows} loading={projectsLoading || loading} projects={projects} onProjectChanged={onProjectChanged} quickParam={quickParam} />
         </>
       )}
 
