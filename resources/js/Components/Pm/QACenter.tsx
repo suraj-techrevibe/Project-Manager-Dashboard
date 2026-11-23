@@ -1,41 +1,174 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import TaskQAInbox from '@/Components/Pm/TaskQAInbox';
-import QAQuickCapture from '@/Components/Pm/QAQuickCapture';
 
-type Status = 'Draft'|'Reported'|'Fixing'|'Ready for Retest'|'Passed'|'Failed';
-type Severity = 'Critical'|'High'|'Medium'|'Low';
-type QA = { id:number; business:string|null; site_app:string|null; project_name:string|null; task_title:string|null; subtask_title:string|null; page_url:string|null; title:string; description:string|null; expected_behaviour:string|null; developer_notes:string|null; severity:Severity; status:Status; assignee:string|null; evidence_url:string|null; retest_notes:string|null; pm_task_url:string|null; created_at:string };
-type Draft = Omit<QA,'id'|'created_at'> & {id?:number};
-const blank: Draft = {business:'',site_app:'',project_name:'',task_title:'',subtask_title:'',page_url:'',title:'',description:'',expected_behaviour:'',developer_notes:'',severity:'Medium',status:'Draft',assignee:'',evidence_url:'',retest_notes:'',pm_task_url:''};
-const input='w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm';
-const checklists:{name:string;items:string[]}[]=[
- {name:'Website smoke test',items:['Homepage loads without errors','Navigation links work','Images and content display','Forms submit successfully','Mobile layout is usable','No obvious console/runtime errors']},
- {name:'Mobile review',items:['Responsive layout on narrow screen','Buttons and links are touch-friendly','No horizontal overflow','Forms are usable on mobile','Header/menu works']},
- {name:'Form review',items:['Required fields validate','Error messages are clear','Successful submission confirmed','Confirmation/notification appears','Submitted data is correct']},
-];
-export default function QACenter(){
- const [items,setItems]=useState<QA[]>([]),[draft,setDraft]=useState<Draft>(blank),[loading,setLoading]=useState(true),[error,setError]=useState('');
- const [filterStatus,setFilterStatus]=useState('All'),[filterBusiness,setFilterBusiness]=useState('All'),[filterSeverity,setFilterSeverity]=useState('All'),[filterProject,setFilterProject]=useState('All'),[filterTask,setFilterTask]=useState('All'),[filterSubtask,setFilterSubtask]=useState('All'),[query,setQuery]=useState(''),[view,setView]=useState<'quickcapture'|'taskinbox'|'dashboard'|'tracking'|'retest'|'reports'|'checklists'>('taskinbox'),[checklist,setChecklist]=useState<string|null>(null),[checked,setChecked]=useState<Record<string,boolean>>({});
- async function load(){setLoading(true);try{const r=await axios.get('/pm/api/qa');setItems(r.data.issues);}catch{setError('Unable to load QA items.');}finally{setLoading(false);}}
- useEffect(()=>{void load();},[]);
- const change=(k:keyof Draft,v:string)=>setDraft(d=>({...d,[k]:v}));
- async function save(){if(!draft.title.trim()){setError('Enter an issue title.');return;}try{const payload={...draft};if(draft.id)await axios.patch('/pm/api/qa/'+draft.id,payload);else await axios.post('/pm/api/qa',payload);setDraft(blank);setError('');await load();}catch{setError('Could not save QA item.');}}
- async function remove(id:number){if(!window.confirm('Delete this QA record?'))return;try{await axios.delete('/pm/api/qa/'+id);await load();}catch{setError('Could not delete QA record.');}}
- const businesses=useMemo(()=>Array.from(new Set(items.map(x=>x.business).filter(Boolean))) as string[],[items]);
- const filtered=useMemo(()=>items.filter(x=>(filterStatus==='All'||x.status===filterStatus)&&(filterBusiness==='All'||x.business===filterBusiness)&&(filterSeverity==='All'||x.severity===filterSeverity)&&(filterProject==='All'||x.project_name===filterProject)&&(filterTask==='All'||x.task_title===filterTask)&&(filterSubtask==='All'||x.subtask_title===filterSubtask)&&(!query||[x.title,x.business,x.site_app,x.project_name,x.task_title,x.subtask_title,x.page_url,x.assignee,x.description].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()))),[items,filterStatus,filterBusiness,filterSeverity,filterProject,filterTask,filterSubtask,query]);
- const open=items.filter(x=>x.status!=='Passed'),ret=items.filter(x=>x.status==='Ready for Retest'),critical=open.filter(x=>x.severity==='Critical'),passed=items.filter(x=>x.status==='Passed');
- const byBusiness=businesses.map(b=>({name:b,count:items.filter(x=>x.business===b&&x.status!=='Passed').length}));
- const edit=(x:QA)=>{setDraft({...x});setView('tracking');window.scrollTo({top:0,behavior:'smooth'});};
- function startChecklist(name:string){const t=checklists.find(c=>c.name===name);if(!t)return;setChecklist(name);setChecked(Object.fromEntries(t.items.map(i=>[i,false])));}
- function convertChecklist(){if(!checklist)return;const c=checklists.find(x=>x.name===checklist);if(!c)return;const incomplete=c.items.filter(i=>!checked[i]);if(!incomplete.length){setError('All checklist items marked complete.');return;}setDraft({...blank,title:checklist+' audit – follow-up',description:'Checklist follow-up items:\n'+incomplete.map(i=>'• '+i).join('\n'),status:'Reported'});setView('tracking');setChecklist(null);}
- return <div className="space-y-4">
-  <div className="flex flex-wrap gap-2">{(['quickcapture','taskinbox','dashboard','tracking','retest','checklists','reports'] as const).map(v=><button key={v} onClick={()=>setView(v)} className={'rounded-lg px-3 py-2 text-sm '+(view===v?'bg-slate-900 text-white':'border bg-white')}>{v==='quickcapture'?'✦ Quick Capture':v==='taskinbox'?'Task QA Inbox':v==='dashboard'?'QA Overview':v==='tracking'?'Routine QA':v==='retest'?'Retesting':v==='checklists'?'Checklists':'Reports'}</button>)}</div>
-  {view==='quickcapture'&&<QAQuickCapture onSaved={()=>void load()}/>}
-  {view==='taskinbox'&&<TaskQAInbox/>}
-  {view==='dashboard'&&<><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[['Open',open.length],['Ready for retest',ret.length],['Critical open',critical.length],['Passed',passed.length]].map(([k,v])=><div key={String(k)} className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">{k}</div><div className="mt-1 text-2xl font-semibold">{v}</div></div>)}</div><section className="rounded-xl border bg-white p-4"><h2 className="font-semibold mb-3">Open issues by business</h2>{byBusiness.length?byBusiness.map(x=><div key={x.name} className="flex justify-between border-t py-2 text-sm"><span>{x.name}</span><span className="font-medium">{x.count}</span></div>):<p className="text-sm text-slate-500">Business labels will appear as QA issues are added.</p>}<button className="mt-3 text-sm text-indigo-700" onClick={()=>setView('tracking')}>View all QA issues →</button></section></>}
-  {view==='checklists'&&<section className="rounded-xl border bg-white p-4 space-y-4"><h2 className="font-semibold">Reusable QA checklists</h2><div className="flex flex-wrap gap-2">{checklists.map(c=><button key={c.name} className="rounded-lg border px-3 py-2 text-sm" onClick={()=>startChecklist(c.name)}>{c.name}</button>)}</div>{checklist&&<div className="space-y-3"><h3 className="font-medium">{checklist}</h3>{checklists.find(c=>c.name===checklist)?.items.map(i=><label key={i} className="flex items-start gap-2 text-sm"><input type="checkbox" checked={!!checked[i]} onChange={e=>setChecked(s=>({...s,[i]:e.target.checked}))}/><span>{i}</span></label>)}<button className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white" onClick={convertChecklist}>Create follow-up for unchecked items</button></div>}</section>}
-  {view==='reports'&&<section className="rounded-xl border bg-white p-4 space-y-3"><h2 className="font-semibold">QA Summary</h2><div className="grid grid-cols-2 gap-3 md:grid-cols-4"><div><span className="text-xs text-slate-500">Total</span><div className="text-xl font-semibold">{items.length}</div></div><div><span className="text-xs text-slate-500">Open</span><div className="text-xl font-semibold">{open.length}</div></div><div><span className="text-xs text-slate-500">Critical</span><div className="text-xl font-semibold">{critical.length}</div></div><div><span className="text-xs text-slate-500">Passed</span><div className="text-xl font-semibold">{passed.length}</div></div></div><h3 className="font-medium pt-2">By business</h3>{byBusiness.map(x=><div key={x.name} className="flex justify-between border-t py-2 text-sm"><span>{x.name}</span><span>{x.count} open</span></div>)}<h3 className="font-medium pt-2">By status</h3>{(['Draft','Reported','Fixing','Ready for Retest','Failed','Passed'] as Status[]).map(s=><div key={s} className="flex justify-between border-t py-2 text-sm"><span>{s}</span><span>{items.filter(x=>x.status===s).length}</span></div>)}</section>}
-  {(view==='tracking'||view==='retest')&&<><section className="rounded-xl border bg-white p-4 space-y-3"><h2 className="font-semibold">{draft.id?'Edit QA record':'Quick QA capture'}</h2><div className="grid gap-3 md:grid-cols-2"><input className={input} placeholder="Issue title *" value={draft.title} onChange={e=>change('title',e.target.value)}/><input className={input} placeholder="Business" value={draft.business||''} onChange={e=>change('business',e.target.value)}/><input className={input} placeholder="Website / app" value={draft.site_app||''} onChange={e=>change('site_app',e.target.value)}/><input className={input} placeholder="Project name (optional)" value={draft.project_name||''} onChange={e=>change('project_name',e.target.value)}/><input className={input} placeholder="Parent task (optional)" value={draft.task_title||''} onChange={e=>change('task_title',e.target.value)}/><input className={input} placeholder="Subtask (optional)" value={draft.subtask_title||''} onChange={e=>change('subtask_title',e.target.value)}/><input className={input} placeholder="Affected page URL" value={draft.page_url||''} onChange={e=>change('page_url',e.target.value)}/><select className={input} value={draft.severity} onChange={e=>change('severity',e.target.value as Severity)}>{(['Critical','High','Medium','Low'] as Severity[]).map(v=><option key={v}>{v}</option>)}</select><select className={input} value={draft.status} onChange={e=>change('status',e.target.value as Status)}>{(['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'] as Status[]).map(v=><option key={v}>{v}</option>)}</select><input className={input} placeholder="Assigned developer" value={draft.assignee||''} onChange={e=>change('assignee',e.target.value)}/><input className={input} placeholder="Evidence URL" value={draft.evidence_url||''} onChange={e=>change('evidence_url',e.target.value)}/><input className={input+' md:col-span-2'} placeholder="Link to existing PM task (URL)" value={draft.pm_task_url||''} onChange={e=>change('pm_task_url',e.target.value)}/><textarea className={input+' md:col-span-2'} rows={3} placeholder="Issue details" value={draft.description||''} onChange={e=>change('description',e.target.value)}/><textarea className={input+' md:col-span-2'} rows={2} placeholder="Expected behaviour" value={draft.expected_behaviour||''} onChange={e=>change('expected_behaviour',e.target.value)}/><textarea className={input+' md:col-span-2'} rows={2} placeholder="Developer notes / suggested fix" value={draft.developer_notes||''} onChange={e=>change('developer_notes',e.target.value)}/><textarea className={input+' md:col-span-2'} rows={2} placeholder="Retest result / notes" value={draft.retest_notes||''} onChange={e=>change('retest_notes',e.target.value)}/></div><div className="flex flex-wrap gap-2"><button onClick={()=>void save()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white">Save QA issue</button><button onClick={()=>setDraft(blank)} className="rounded-lg border px-4 py-2 text-sm">Clear form</button><button onClick={()=>void load()} className="rounded-lg border px-4 py-2 text-sm">Refresh</button></div>{error&&<p className="text-sm text-rose-600">{error}</p>}</section><section className="rounded-xl border bg-white p-4 space-y-3"><h2 className="font-semibold">{view==='retest'?'Retest queue':'QA issues'}</h2><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><input className={input} placeholder="Search" value={query} onChange={e=>setQuery(e.target.value)}/><select className={input} value={filterBusiness} onChange={e=>setFilterBusiness(e.target.value)}><option>All</option>{businesses.map(b=><option key={b}>{b}</option>)}</select><select className={input} value={filterSeverity} onChange={e=>setFilterSeverity(e.target.value)}><option>All</option>{(['Critical','High','Medium','Low'] as Severity[]).map(v=><option key={v}>{v}</option>)}</select><select className={input} value={filterProject} onChange={e=>setFilterProject(e.target.value)}><option>All projects</option>{Array.from(new Set(items.map(x=>x.project_name).filter(Boolean))).map(v=><option key={v as string}>{v}</option>)}</select><select className={input} value={filterTask} onChange={e=>setFilterTask(e.target.value)}><option>All tasks</option>{Array.from(new Set(items.map(x=>x.task_title).filter(Boolean))).map(v=><option key={v as string}>{v}</option>)}</select><select className={input} value={filterSubtask} onChange={e=>setFilterSubtask(e.target.value)}><option>All subtasks</option>{Array.from(new Set(items.map(x=>x.subtask_title).filter(Boolean))).map(v=><option key={v as string}>{v}</option>)}</select><select className={input} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option>All</option>{(['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'] as Status[]).map(v=><option key={v}>{v}</option>)}</select></div>{loading?<p className="text-sm text-slate-500">Loading…</p>:filtered.filter(x=>view!=='retest'||x.status==='Ready for Retest').length===0?<p className="text-sm text-slate-500">No QA issues found.</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left"><tr>{['Issue / context','Business / site','Severity','Status','Assignee','Actions'].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{filtered.filter(x=>view!=='retest'||x.status==='Ready for Retest').map(x=><tr key={x.id} className="border-t"><td className="min-w-48 p-3"><div className="font-medium">{x.title}</div><div className="text-xs text-slate-500">{x.page_url}</div>{x.pm_task_url&&<a href={x.pm_task_url} className="text-indigo-700 text-xs" target="_blank" rel="noreferrer">Linked PM task</a>}</td><td className="p-3">{x.business}<div className="text-xs text-slate-500">{x.site_app}</div><div className="mt-1 text-xs text-slate-500">{[x.project_name,x.task_title,x.subtask_title].filter(Boolean).join(' / ')}</div></td><td className="p-3">{x.severity}</td><td className="p-3">{x.status}</td><td className="p-3">{x.assignee}</td><td className="p-3"><div className="flex gap-2"><button onClick={()=>edit(x)} className="text-indigo-700">Edit</button><button onClick={()=>void remove(x.id)} className="text-rose-600">Delete</button></div></td></tr>)}</tbody></table></div>}</section></>}
- </div>;
+type RecordType = 'Website' | 'Ad-hoc';
+type Status = 'Draft' | 'Reported' | 'Fixing' | 'Ready for Retest' | 'Passed' | 'Failed';
+type Severity = 'Critical' | 'High' | 'Medium' | 'Low';
+type QARecord = {
+  id: number; record_type: RecordType; business: string | null; site_app: string | null;
+  project_id: string | null; project_name: string | null; task_id: string | null;
+  task_title: string | null; subtask_id: string | null; subtask_title: string | null;
+  page_url: string | null; title: string; description: string | null;
+  expected_behaviour: string | null; developer_notes: string | null; severity: Severity;
+  status: Status; assignee: string | null; evidence_url: string | null;
+  retest_notes: string | null; pm_task_url: string | null; created_at: string;
+};
+type Website = {
+  id: number; business: string; project_id: string | null; project_name: string | null;
+  name: string; url: string; website_type: string; frequency: string; is_active: boolean;
+};
+type Draft = Partial<QARecord> & { record_type: RecordType; title: string };
+type Filters = { businesses: string[]; projects: { id: string; name: string }[] };
+const input = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
+const blank: Draft = { record_type: 'Ad-hoc', business: '', site_app: '', project_id: '', project_name: '', task_id: '', task_title: '', subtask_id: '', subtask_title: '', page_url: '', title: '', description: '', expected_behaviour: '', developer_notes: '', severity: 'Medium', status: 'Draft', assignee: '', evidence_url: '', retest_notes: '', pm_task_url: '' };
+const tabs = [
+  ['overview', 'Overview'], ['websites', 'Website QA'], ['tasks', 'Task QA'],
+  ['adhoc', 'Quick QA'], ['records', 'All QA records'], ['retest', 'Needs retest'],
+] as const;
+type Tab = typeof tabs[number][0];
+
+export default function QACenter() {
+  const [items, setItems] = useState<QARecord[]>([]);
+  const [websites, setWebsites] = useState<Website[]>([]);
+  const [filters, setFilters] = useState<Filters>({ businesses: [], projects: [] });
+  const [draft, setDraft] = useState<Draft>(blank);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [businessFilter, setBusinessFilter] = useState('All');
+  const [query, setQuery] = useState('');
+  const [showWebsiteForm, setShowWebsiteForm] = useState(false);
+  const [websiteDraft, setWebsiteDraft] = useState({ business: '', project_id: '', project_name: '', name: '', url: '', website_type: 'Business website', frequency: 'Manual' });
+  const [websiteSaving, setWebsiteSaving] = useState(false);
+
+  async function load() {
+    setLoading(true); setError('');
+    try {
+      const { data } = await axios.get('/pm/api/qa');
+      setItems(data.issues ?? []);
+      setWebsites(data.websites ?? []);
+      setFilters({ businesses: data.filters?.businesses ?? [], projects: data.filters?.projects ?? [] });
+    } catch { setError('Unable to load QA records. Please refresh and try again.'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  const openItems = items.filter(x => !['Passed'].includes(x.status));
+  const failed = items.filter(x => ['Failed', 'Reported'].includes(x.status));
+  const retest = items.filter(x => x.status === 'Ready for Retest');
+  const passed = items.filter(x => x.status === 'Passed');
+  const filteredItems = useMemo(() => items.filter(x =>
+    (businessFilter === 'All' || x.business === businessFilter) &&
+    (tab === 'adhoc' ? x.record_type === 'Ad-hoc' : tab === 'retest' ? x.status === 'Ready for Retest' : tab === 'records' ? true : x.record_type === 'Website') &&
+    (!query || [x.title, x.business, x.site_app, x.project_name, x.task_title, x.description, x.assignee].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()))
+  ), [items, businessFilter, query, tab]);
+
+  function change<K extends keyof Draft>(key: K, value: Draft[K]) {
+    setDraft(current => ({ ...current, [key]: value }));
+  }
+  function startWebsiteQA(site: Website) {
+    setDraft({ ...blank, record_type: 'Website', business: site.business, site_app: site.name, project_id: site.project_id ?? '', project_name: site.project_name ?? '', page_url: site.url, title: 'Website QA - ' + site.name, status: 'Draft' });
+    setTab('records');
+    setError('');
+  }
+  function startAdhoc() {
+    setDraft({ ...blank, record_type: 'Ad-hoc', title: '', status: 'Draft' });
+    setTab('adhoc');
+    setError('');
+  }
+  function edit(item: QARecord) {
+    setDraft({ ...item });
+    setTab(item.record_type === 'Website' ? 'records' : 'adhoc');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  async function saveRecord() {
+    if (!draft.title?.trim()) { setError('Enter a clear QA record title.'); return; }
+    setSaving(true); setError('');
+    try {
+      const payload = { ...blank, ...draft, title: draft.title.trim() };
+      if (draft.id) await axios.patch('/pm/api/qa/' + draft.id, payload);
+      else await axios.post('/pm/api/qa', payload);
+      setDraft(blank);
+      await load();
+    } catch (e: any) { setError(e?.response?.data?.message || 'Could not save this QA record.'); }
+    finally { setSaving(false); }
+  }
+  async function deleteRecord(id: number) {
+    if (!window.confirm('Delete this QA record? This cannot be undone.')) return;
+    try { await axios.delete('/pm/api/qa/' + id); await load(); }
+    catch { setError('Could not delete QA record.'); }
+  }
+  async function saveWebsite() {
+    if (!websiteDraft.business || !websiteDraft.name.trim() || !/^https?:\/\/.+/.test(websiteDraft.url.trim())) {
+      setError('Select a business and enter a website name and valid URL.'); return;
+    }
+    setWebsiteSaving(true); setError('');
+    try {
+      await axios.post('/pm/api/qa/websites', { ...websiteDraft, name: websiteDraft.name.trim(), url: websiteDraft.url.trim() });
+      setWebsiteDraft({ business: '', project_id: '', project_name: '', name: '', url: '', website_type: 'Business website', frequency: 'Manual' });
+      setShowWebsiteForm(false);
+      await load();
+    } catch (e: any) { setError(e?.response?.data?.message || 'Could not register this website.'); }
+    finally { setWebsiteSaving(false); }
+  }
+  async function deleteWebsite(site: Website) {
+    if (!window.confirm('Remove ' + site.name + ' from the website registry? Existing QA records will remain.')) return;
+    try { await axios.delete('/pm/api/qa/websites/' + site.id); await load(); }
+    catch { setError('Could not remove website.'); }
+  }
+
+  const recordForm = (heading: string) => (
+    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h2 className="font-semibold text-slate-900">{draft.id ? 'Edit QA record' : heading}</h2><p className="text-xs text-slate-500">Record what you tested, what happened and what needs to happen next.</p></div>
+        {draft.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs text-indigo-700">Editing #{draft.id}</span>}
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="space-y-1 text-xs font-medium text-slate-600">Business<select className={input} value={draft.business ?? ''} onChange={e => change('business', e.target.value)}><option value="">Select business</option>{filters.businesses.map(b => <option key={b}>{b}</option>)}</select></label>
+        {draft.record_type === 'Website' ? <label className="space-y-1 text-xs font-medium text-slate-600">Website<select className={input} value={draft.site_app ?? ''} onChange={e => { const site = websites.find(w => w.name === e.target.value && w.business === draft.business); change('site_app', e.target.value); if (site) change('page_url', site.url); }}><option value="">Select website</option>{websites.filter(w => !draft.business || w.business === draft.business).map(w => <option key={w.id} value={w.name}>{w.name}</option>)}</select></label> : <label className="space-y-1 text-xs font-medium text-slate-600">Project (optional)<select className={input} value={draft.project_id ?? ''} onChange={e => { const p = filters.projects.find(x => x.id === e.target.value); change('project_id', e.target.value); change('project_name', p?.name ?? ''); }}><option value="">Select project</option>{filters.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+        <input className={input} placeholder="QA record title *" value={draft.title ?? ''} onChange={e => change('title', e.target.value)}/>
+        <input className={input} placeholder={draft.record_type === 'Website' ? 'Page URL being tested' : 'Website / app / item (optional)'} value={draft.page_url ?? ''} onChange={e => change('page_url', e.target.value)}/>
+        <select className={input} value={draft.severity ?? 'Medium'} onChange={e => change('severity', e.target.value as Severity)}>{(['Critical','High','Medium','Low'] as Severity[]).map(v => <option key={v}>{v}</option>)}</select>
+        <select className={input} value={draft.status ?? 'Draft'} onChange={e => change('status', e.target.value as Status)}>{(['Draft','Reported','Fixing','Ready for Retest','Passed','Failed'] as Status[]).map(v => <option key={v}>{v}</option>)}</select>
+        <input className={input} placeholder="Assigned developer / owner" value={draft.assignee ?? ''} onChange={e => change('assignee', e.target.value)}/>
+        <input className={input} placeholder="Evidence URL (screenshot / recording)" value={draft.evidence_url ?? ''} onChange={e => change('evidence_url', e.target.value)}/>
+        <textarea className={input + ' md:col-span-2'} rows={3} placeholder="What did you check and what actually happened?" value={draft.description ?? ''} onChange={e => change('description', e.target.value)}/>
+        <textarea className={input + ' md:col-span-2'} rows={2} placeholder="Expected result" value={draft.expected_behaviour ?? ''} onChange={e => change('expected_behaviour', e.target.value)}/>
+        <textarea className={input + ' md:col-span-2'} rows={2} placeholder="Developer feedback / suggested correction" value={draft.developer_notes ?? ''} onChange={e => change('developer_notes', e.target.value)}/>
+        <textarea className={input + ' md:col-span-2'} rows={2} placeholder="Retest notes (complete when retesting)" value={draft.retest_notes ?? ''} onChange={e => change('retest_notes', e.target.value)}/>
+        <input className={input + ' md:col-span-2'} placeholder="Link to related Taskmandu task (optional)" value={draft.pm_task_url ?? ''} onChange={e => change('pm_task_url', e.target.value)}/>
+      </div>
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveRecord()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Saving…' : draft.id ? 'Update QA record' : 'Save QA record'}</button><button type="button" onClick={() => setDraft(blank)} className="rounded-lg border px-3 py-2 text-sm">Clear</button></div>
+    </section>
+  );
+
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold text-slate-900">QA Centre</h1><p className="text-sm text-slate-500">Website checks, Taskmandu delivery verification and quick QA checks.</p></div><button type="button" onClick={startAdhoc} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">＋ Quick QA</button></div>
+    <div className="flex flex-wrap gap-2">{tabs.map(([key, label]) => <button key={key} type="button" onClick={() => { setTab(key); setDraft(blank); }} className={'rounded-lg px-3 py-2 text-sm font-medium ' + (tab === key ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700')}>{label}</button>)}</div>
+    {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+    {loading ? <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">Loading QA records…</p> : <>
+      {tab === 'overview' && <>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[['Open records', openItems.length], ['Awaiting retest', retest.length], ['Failed / reported', failed.length], ['Passed', passed.length]].map(([label, value]) => <div key={String(label)} className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold">{value}</div></div>)}</div>
+        <div className="grid gap-3 lg:grid-cols-3"><button onClick={() => setTab('websites')} className="rounded-xl border bg-white p-4 text-left hover:border-indigo-300"><div className="text-sm font-semibold">Website QA</div><p className="mt-1 text-xs text-slate-500">{websites.length} registered websites · create a check record</p></button><button onClick={() => setTab('tasks')} className="rounded-xl border bg-white p-4 text-left hover:border-indigo-300"><div className="text-sm font-semibold">Taskmandu Task QA</div><p className="mt-1 text-xs text-slate-500">Verify team work submitted as Completed or Review</p></button><button onClick={startAdhoc} className="rounded-xl border bg-white p-4 text-left hover:border-indigo-300"><div className="text-sm font-semibold">Quick QA</div><p className="mt-1 text-xs text-slate-500">Record an unexpected check or request</p></button></div>
+        <section className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Recent QA records</h2>{items.slice(0,6).map(x => <div key={x.id} className="flex flex-wrap items-center justify-between gap-2 border-t py-3 text-sm"><div><div className="font-medium">{x.title}</div><div className="text-xs text-slate-500">{x.business || 'Business not set'} · {x.record_type === 'Ad-hoc' ? 'Quick QA' : x.record_type} · {x.status}</div></div><button className="text-indigo-700" onClick={() => edit(x)}>Open</button></div>)}{!items.length && <p className="pt-3 text-sm text-slate-500">No QA records yet.</p>}</section>
+      </>}
+      {tab === 'websites' && <>
+        <section className="rounded-xl border bg-white p-4"><div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">Website registry</h2><p className="text-xs text-slate-500">Websites are grouped under your existing Taskmandu business names.</p></div><button onClick={() => setShowWebsiteForm(v => !v)} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white">＋ Add website</button></div>
+          {showWebsiteForm && <div className="mt-4 grid gap-2 rounded-lg border bg-slate-50 p-3 md:grid-cols-2"><select className={input} value={websiteDraft.business} onChange={e => setWebsiteDraft(v => ({ ...v, business: e.target.value }))}><option value="">Select business</option>{filters.businesses.map(b => <option key={b}>{b}</option>)}</select><input className={input} placeholder="Website name" value={websiteDraft.name} onChange={e => setWebsiteDraft(v => ({ ...v, name: e.target.value }))}/><input className={input + ' md:col-span-2'} placeholder="https://example.com" value={websiteDraft.url} onChange={e => setWebsiteDraft(v => ({ ...v, url: e.target.value }))}/><select className={input} value={websiteDraft.website_type} onChange={e => setWebsiteDraft(v => ({ ...v, website_type: e.target.value }))}>{['Business website','E-commerce','Event platform','Dashboard','Web application','Other'].map(v => <option key={v}>{v}</option>)}</select><select className={input} value={websiteDraft.frequency} onChange={e => setWebsiteDraft(v => ({ ...v, frequency: e.target.value }))}>{['Daily','Weekly','Manual'].map(v => <option key={v}>{v}</option>)}</select><select className={input} value={websiteDraft.project_id} onChange={e => { const p = filters.projects.find(x => x.id === e.target.value); setWebsiteDraft(v => ({ ...v, project_id: e.target.value, project_name: p?.name ?? '' })); }}><option value="">Link Taskmandu project (optional)</option>{filters.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><div className="flex gap-2"><button disabled={websiteSaving} onClick={() => void saveWebsite()} className="rounded-lg bg-indigo-700 px-3 py-2 text-sm text-white disabled:opacity-50">{websiteSaving ? 'Saving…' : 'Save website'}</button><button onClick={() => setShowWebsiteForm(false)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button></div></div>}
+        </section>
+        {filters.businesses.map(b => { const rows = websites.filter(w => w.business === b); if (!rows.length) return null; return <section key={b} className="rounded-xl border bg-white p-4"><h3 className="font-semibold">{b}</h3><div className="mt-2 divide-y">{rows.map(site => <div key={site.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><div className="font-medium text-sm">{site.name}</div><a className="break-all text-xs text-indigo-700" href={site.url} target="_blank" rel="noreferrer">{site.url}</a><div className="text-xs text-slate-500">{site.project_name || 'No project linked'} · {site.website_type} · {site.frequency} QA</div></div><div className="flex gap-2"><button onClick={() => startWebsiteQA(site)} className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-semibold text-white">Start QA</button><button onClick={() => void deleteWebsite(site)} className="rounded-lg border px-2 py-2 text-xs text-rose-700">Remove</button></div></div>)}</div></section>; })}
+        {websites.length === 0 && <div className="rounded-xl border bg-white p-5 text-sm text-slate-500">No websites registered. Add your first website to begin recording website QA.</div>}
+      </>}
+      {tab === 'tasks' && <TaskQAInbox/>}
+      {tab === 'adhoc' && <>{recordForm('Quick QA record')}<section className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Quick QA records</h2>{items.filter(x => x.record_type === 'Ad-hoc').map(x => <div key={x.id} className="flex flex-wrap items-center justify-between gap-2 border-t py-3 text-sm"><div><div className="font-medium">{x.title}</div><div className="text-xs text-slate-500">{x.business} · {x.status} · {new Date(x.created_at).toLocaleDateString()}</div></div><button onClick={() => edit(x)} className="text-indigo-700">Open</button></div>)}</section></>}
+      {(tab === 'records' || tab === 'retest') && <>
+        {draft.record_type === 'Website' && draft.title && recordForm('Record website QA')}
+        <section className="space-y-3 rounded-xl border bg-white p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">{tab === 'retest' ? 'Records ready for retest' : 'All QA records'}</h2><div className="flex gap-2"><select className="rounded-lg border px-2 py-2 text-sm" value={businessFilter} onChange={e => setBusinessFilter(e.target.value)}><option>All</option>{filters.businesses.map(b => <option key={b}>{b}</option>)}</select><input className="max-w-48 rounded-lg border px-2 py-2 text-sm" placeholder="Search records" value={query} onChange={e => setQuery(e.target.value)}/></div></div>
+          {filteredItems.length === 0 ? <p className="text-sm text-slate-500">No matching QA records.</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left"><tr>{['Record','Business / website','Priority','Status','Owner',''].map(x => <th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{filteredItems.map(x => <tr key={x.id} className="border-t"><td className="min-w-48 p-3"><div className="font-medium">{x.title}</div><div className="text-xs text-slate-500">{x.page_url}</div></td><td className="p-3">{x.business}<div className="text-xs text-slate-500">{x.site_app}</div></td><td className="p-3">{x.severity}</td><td className="p-3">{x.status}</td><td className="p-3">{x.assignee || '—'}</td><td className="p-3"><div className="flex gap-2"><button onClick={() => edit(x)} className="text-indigo-700">Edit</button><button onClick={() => void deleteRecord(x.id)} className="text-rose-700">Delete</button></div></td></tr>)}</tbody></table></div>}
+        </section>
+      </>}
+    </>}
+  </div>;
 }

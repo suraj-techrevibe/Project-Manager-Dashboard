@@ -82,6 +82,9 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::patch('action-items/{item}', [PmActionItemController::class, 'update'])->name('action-items.update');
     Route::delete('action-items/{item}', [PmActionItemController::class, 'destroy'])->name('action-items.destroy');
     Route::get('qa', [PmQaController::class, 'index'])->name('qa.index');
+    Route::post('qa/websites', [PmQaController::class, 'storeWebsite'])->name('qa.websites.store');
+    Route::patch('qa/websites/{website}', [PmQaController::class, 'updateWebsite'])->name('qa.websites.update');
+    Route::delete('qa/websites/{website}', [PmQaController::class, 'destroyWebsite'])->name('qa.websites.destroy');
     Route::post('qa/quick-capture/draft', [PmQaController::class, 'draftQuickCapture'])->middleware('throttle:10,1')->name('qa.quick-capture.draft');
     Route::post('qa/quick-capture/save', [PmQaController::class, 'saveQuickCapture'])->name('qa.quick-capture.save');
     Route::get('qa/reports', [PmQaController::class, 'reports'])->name('qa.reports.index');
