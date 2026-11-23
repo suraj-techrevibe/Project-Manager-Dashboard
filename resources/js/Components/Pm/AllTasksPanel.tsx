@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Employee, Project, ProjectTask, TaskFocus } from '../../types/pm';
+import type { Employee, Project, ProjectTask } from '../../types/pm';
 import TaskDetail from './Projects/TaskDetail';
 import { NewTaskModal } from './Projects/TasksTab';
 import { pmApi } from '../../lib/pmApi';
@@ -200,14 +200,12 @@ const field = 'rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm t
 export default function AllTasksPanel({
   rows,
   loading,
-  onOpenTask,
   projects: projectRecords = [],
   onProjectChanged,
   quickParam,
 }: {
   rows: TaskRow[];
   loading?: boolean;
-  onOpenTask: (focus: TaskFocus) => void;
   projects?: Project[];
   onProjectChanged?: (project: Project) => void;
   /** Quick filter requested from elsewhere (e.g. a Today KPI card) — applied whenever it changes. */
