@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import TaskQAInbox from '@/Components/Pm/TaskQAInbox';
+import QADesk from '@/Components/Pm/QADesk';
 
 type RecordType = 'Website' | 'Ad-hoc';
 type Status = 'Draft' | 'Reported' | 'Fixing' | 'Ready for Retest' | 'Passed' | 'Failed';
@@ -23,7 +24,7 @@ type Filters = { businesses: string[]; projects: { id: string; name: string }[] 
 const input = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
 const blank: Draft = { record_type: 'Ad-hoc', business: '', site_app: '', project_id: '', project_name: '', task_id: '', task_title: '', subtask_id: '', subtask_title: '', page_url: '', title: '', description: '', expected_behaviour: '', developer_notes: '', severity: 'Medium', status: 'Draft', assignee: '', evidence_url: '', retest_notes: '', pm_task_url: '' };
 const tabs = [
-  ['overview', 'Overview'], ['websites', 'Website QA'], ['tasks', 'Task QA'],
+  ['review', 'Review Desk'], ['overview', 'Overview'], ['websites', 'Website QA'], ['tasks', 'Task QA'],
   ['adhoc', 'All Quick QA Records'], ['records', 'All QA records'], ['retest', 'Needs retest'],
 ] as const;
 type Tab = typeof tabs[number][0];
@@ -187,10 +188,10 @@ export default function QACenter() {
   );
 
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold text-slate-900">QA Centre</h1><p className="text-sm text-slate-500">Website checks, Taskmandu delivery verification and quick QA checks.</p></div><button type="button" onClick={startAdhoc} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">＋ Quick QA</button></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold text-slate-900">QA Centre</h1><p className="text-sm text-slate-500">Website checks, Taskmandu delivery verification and quick QA checks.</p></div>{tab !== 'review' && <button type="button" onClick={startAdhoc} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">＋ Quick QA</button>}</div>
     <div className="flex flex-wrap gap-2">{tabs.map(([key, label]) => <button key={key} type="button" onClick={() => { setTab(key); setDraft(blank); }} className={'rounded-lg px-3 py-2 text-sm font-medium ' + (tab === key ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700')}>{label}</button>)}</div>
     {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-    {loading ? <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">Loading QA records…</p> : <>
+    {tab === 'review' ? <QADesk onManageWebsites={() => setTab('websites')} /> : loading ? <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">Loading QA records…</p> : <>
       {tab === 'overview' && <>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[['Open records', openItems.length], ['Awaiting retest', retest.length], ['Failed / reported', failed.length], ['Passed', passed.length]].map(([label, value]) => <div key={String(label)} className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold">{value}</div></div>)}</div>
         <div className="grid gap-3 lg:grid-cols-3"><button onClick={() => setTab('websites')} className="rounded-xl border bg-white p-4 text-left hover:border-indigo-300"><div className="text-sm font-semibold">Website QA</div><p className="mt-1 text-xs text-slate-500">{websites.length} registered websites · create a check record</p></button><button onClick={() => setTab('tasks')} className="rounded-xl border bg-white p-4 text-left hover:border-indigo-300"><div className="text-sm font-semibold">Taskmandu Task QA</div><p className="mt-1 text-xs text-slate-500">Verify team work submitted as Completed or Review</p></button><button onClick={startAdhoc} className="rounded-xl border bg-white p-4 text-left hover:border-indigo-300"><div className="text-sm font-semibold">Quick QA</div><p className="mt-1 text-xs text-slate-500">Record an unexpected check or request</p></button></div>
