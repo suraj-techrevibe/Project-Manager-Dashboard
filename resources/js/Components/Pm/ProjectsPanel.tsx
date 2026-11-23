@@ -54,6 +54,8 @@ export default function ProjectsPanel({
   const [error, setError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [workspaceView, setWorkspaceView] = useState<'projects' | 'tasks'>('projects');
+  const quickTaskParam = useUrlParam('tq');
+  useEffect(() => { if (quickTaskParam) setWorkspaceView('tasks'); }, [quickTaskParam]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
   // Quick filter driven by the overview tiles.
