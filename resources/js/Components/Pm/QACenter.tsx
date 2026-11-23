@@ -188,7 +188,7 @@ export default function QACenter() {
   );
 
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold text-slate-900">QA Centre</h1><p className="text-sm text-slate-500">Website checks, Taskmandu delivery verification and quick QA checks.</p></div><button type="button" onClick={startAdhoc} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">＋ Quick QA</button></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold text-slate-900">QA Centre</h1><p className="text-sm text-slate-500">Website checks, Taskmandu delivery verification and quick QA checks.</p></div>{tab !== 'review' && <button type="button" onClick={startAdhoc} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">＋ Quick QA</button>}</div>
     <div className="flex flex-wrap gap-2">{tabs.map(([key, label]) => <button key={key} type="button" onClick={() => { setTab(key); setDraft(blank); }} className={'rounded-lg px-3 py-2 text-sm font-medium ' + (tab === key ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700')}>{label}</button>)}</div>
     {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
     {tab === 'review' ? <QADesk onManageWebsites={() => setTab('websites')} /> : loading ? <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">Loading QA records…</p> : <>
