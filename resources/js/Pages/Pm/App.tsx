@@ -5,7 +5,6 @@ import QuickSearch from '@/Components/Pm/QuickSearch';
 import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import { countQuick, liveFlagCounts, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
-import TasksPage from '@/Components/Pm/TasksPage';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import GitPanel from '@/Components/Pm/GitPanel';
@@ -403,22 +402,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           </Pane>
         )}
 
-        {mounted('tasks') && (
-          <Pane show={page === 'tasks'}>
-            <TasksPage
-              tasks={today ? allTasks : null}
-              loading={todayLoading}
-              error={todayError}
-              onRetry={() => void loadToday()}
-              projects={projects}
-              projectsLoading={projectsLoading}
-              onOpenTask={openTask}
-            />
-          </Pane>
-        )}
-
         {mounted('operations') && <Pane show={page === 'operations'}><RequestsIdeasPanel key={gen.operations ?? 0} /></Pane>}
-        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} /></Pane>}
+        {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} tasks={today ? allTasks : null} tasksLoading={todayLoading} tasksError={todayError} onRetryTasks={() => void loadToday()} onOpenTask={openTask} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
