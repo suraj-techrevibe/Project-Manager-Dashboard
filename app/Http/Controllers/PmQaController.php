@@ -7,6 +7,7 @@ use App\Models\PmQaWebsite;
 use App\Models\PmQaReport;
 use Illuminate\Support\Str;
 use App\Models\PmBusiness;
+use App\Models\PmBusinessProjectLink;
 use App\Models\PmCard;
 use App\Models\PmQaTaskReview;
 use App\Models\PmSubtask;
@@ -28,7 +29,7 @@ class PmQaController extends Controller
         $subtasks = PmSubtask::query()->orderBy('title')->get(['project_id', 'task_id', 'subtask_id', 'title']);
 
         return response()->json([
-            'issues' => PmQaIssue::where('created_by', $request->user()->id)->latest()->limit(300)->get(),
+            'issues' => $this->issuesWithDetectedBusinesses($request->user()->id),
             'websites' => PmQaWebsite::where('created_by', $request->user()->id)->where('is_active', true)->orderBy('business')->orderBy('name')->get(),
             'filters' => [
                 'businesses' => PmBusiness::query()->orderBy('name')->pluck('name'),
@@ -37,6 +38,39 @@ class PmQaController extends Controller
                 'subtasks' => $subtasks->map(fn ($s) => ['project_id' => $s->project_id, 'task_id' => $s->task_id, 'id' => $s->subtask_id, 'title' => $s->title])->values(),
             ],
         ]);
+    }
+
+    /**
+     * Fill missing business labels from the existing Taskmandu project-to-business
+     * mapping or the user's registered website list. Never overwrite a manually set label.
+     */
+    private function issuesWithDetectedBusinesses(int $userId)
+    {
+        $projectBusinesses = PmBusinessProjectLink::query()
+            ->with('business:id,name')
+            ->get()
+            ->filter(fn ($link) => filled($link->taskmandu_project_id) && filled($link->business?->name))
+            ->mapWithKeys(fn ($link) => [(string) $link->taskmandu_project_id => $link->business->name]);
+
+        $websites = PmQaWebsite::where('created_by', $userId)->where('is_active', true)->get();
+
+        return PmQaIssue::where('created_by', $userId)->latest()->limit(300)->get()
+            ->map(function (PmQaIssue $issue) use ($projectBusinesses, $websites) {
+                if (filled($issue->business)) {
+                    return $issue;
+                }
+
+                $site = $websites->first(fn (PmQaWebsite $website) =>
+                    ($issue->project_id && $website->project_id === $issue->project_id)
+                    || ($issue->site_app && strcasecmp($website->name, $issue->site_app) === 0)
+                    || ($issue->page_url && rtrim($website->url, '/') === rtrim($issue->page_url, '/'))
+                );
+
+                $issue->business = $site?->business
+                    ?: ($issue->project_id ? ($projectBusinesses[(string) $issue->project_id] ?? null) : null);
+
+                return $issue;
+            });
     }
 
     public function taskInbox(): JsonResponse
