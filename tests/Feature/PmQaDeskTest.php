@@ -67,10 +67,18 @@ class PmQaDeskTest extends TestCase
         ]);
 
         $this->actingAs($user)->patchJson('/pm/api/qa/review-desk/'.$item->id, [
+            'status' => 'passed',
+        ])->assertUnprocessable();
+
+        $this->actingAs($user)->patchJson('/pm/api/qa/review-desk/'.$item->id, [
             'status' => 'testing',
             'checks' => [['id' => 'c1', 'text' => 'Checkout loads', 'done' => true]],
         ])->assertOk()->assertJsonPath('item.status', 'testing')
             ->assertJsonPath('item.checks.0.done', true);
+
+        $this->actingAs($user)->patchJson('/pm/api/qa/review-desk/'.$item->id, [
+            'status' => 'passed',
+        ])->assertOk()->assertJsonPath('item.status', 'passed');
     }
 
     public function test_user_can_upload_and_remove_a_screenshot(): void
