@@ -10,12 +10,11 @@ use Illuminate\Support\Facades\DB;
 
 class TaskQaInboxService
 {
-    public const TRIGGER_STATUSES = ['Completed', 'Review'];
-
     private ?array $businessByProject = null;
 
     /**
-     * Mirror a Taskmandu task into the QA inbox when it first reaches Completed/Review.
+     * Mirror a Taskmandu task into the QA inbox when it reaches the QA trigger status
+     * ("Awaiting review" by default, or a task carrying the trigger tag; see config/pm.php).
      * The external Taskmandu id is the deduplication key, so repeated syncs never create
      * duplicate inbox records. Leaving the trigger status and entering it again opens a
      * new QA cycle while preserving the previous cycle's event history.
@@ -28,7 +27,8 @@ class TaskQaInboxService
         }
 
         $status = trim((string) $card->status);
-        $isTrigger = $this->isTriggerStatus($status);
+        $triggerLabel = $this->triggerLabel($card);
+        $isTrigger = $triggerLabel !== null;
         $review = PmQaTaskReview::query()->where('external_id', $externalId)->first();
 
         if (! $review && ! $isTrigger) {
@@ -45,13 +45,14 @@ class TaskQaInboxService
             'assignee' => $card->assignee,
             'task_status' => $status,
             'taskmandu_url' => $card->url,
+            'qa_in_trigger' => $isTrigger,
         ];
 
         if (! $review) {
-            DB::transaction(function () use ($externalId, $attributes, $status) {
+            DB::transaction(function () use ($externalId, $attributes, $triggerLabel) {
                 $review = PmQaTaskReview::create($attributes + [
                     'external_id' => $externalId,
-                    'trigger_status' => $status,
+                    'trigger_status' => $triggerLabel,
                     'qa_status' => 'Awaiting QA',
                     'cycle' => 1,
                     'triggered_at' => now(),
@@ -60,14 +61,16 @@ class TaskQaInboxService
                 $review->events()->create([
                     'cycle' => 1,
                     'result' => 'Queued',
-                    'notes' => "Automatically added because the Taskmandu task entered {$status}.",
+                    'notes' => "Automatically added because the Taskmandu task entered {$triggerLabel}.",
                 ]);
             });
 
             return;
         }
 
-        $wasTrigger = $this->isTriggerStatus((string) $review->task_status);
+        // The flag is what the last sync saw. Reviews saved before it existed read as "not in trigger",
+        // so a task that is awaiting review again simply opens a fresh round.
+        $wasTrigger = (bool) $review->qa_in_trigger;
         $newCycle = ! $wasTrigger && $isTrigger;
 
         $review->fill($attributes);
@@ -77,10 +80,11 @@ class TaskQaInboxService
             $review->qa_status = 'Awaiting QA';
             $review->qa_stage = QaStage::QUEUE;
             $review->qa_fail_note = null;
+            $review->qa_keep = false;
             $history = $review->qa_history ?? [];
-            $history[] = ['at' => now()->toIso8601String(), 'message' => "Round {$review->cycle}: task re-entered {$status}, back in the QA queue"];
+            $history[] = ['at' => now()->toIso8601String(), 'message' => "Round {$review->cycle}: task re-entered {$triggerLabel}, back in the QA queue"];
             $review->qa_history = array_slice($history, -40);
-            $review->trigger_status = $status;
+            $review->trigger_status = $triggerLabel;
             $review->triggered_at = now();
             $review->tested_at = null;
             $review->tested_by = null;
@@ -89,8 +93,8 @@ class TaskQaInboxService
             $review->last_notes = null;
             $review->last_evidence_url = null;
         } elseif ($isTrigger) {
-            // Completed -> Review (or Review -> Completed) is still the same QA cycle.
-            $review->trigger_status = $status;
+            // Still awaiting review: the same QA cycle.
+            $review->trigger_status = $triggerLabel;
         }
 
         $review->save();
@@ -101,14 +105,34 @@ class TaskQaInboxService
             $review->events()->create([
                 'cycle' => $review->cycle,
                 'result' => 'Queued',
-                'notes' => "QA cycle {$review->cycle} opened automatically because the Taskmandu task re-entered {$status}.",
+                'notes' => "QA cycle {$review->cycle} opened automatically because the Taskmandu task re-entered {$triggerLabel}.",
             ]);
         }
     }
 
-    private function isTriggerStatus(string $status): bool
+    /** The status or tag that put this card into QA, or null when the card is not awaiting review. */
+    public function triggerLabel(PmCard $card): ?string
     {
-        return in_array(mb_strtolower(trim($status)), ['completed', 'review'], true);
+        $status = trim((string) $card->status);
+        $statuses = array_map([$this, 'normalise'], (array) config('pm.qa.trigger_statuses', []));
+        if ($status !== '' && in_array($this->normalise($status), $statuses, true)) {
+            return $status;
+        }
+
+        $wanted = array_map([$this, 'normalise'], (array) config('pm.qa.trigger_tags', []));
+        foreach ((array) ($card->tags ?? []) as $tag) {
+            if (is_string($tag) && in_array($this->normalise($tag), $wanted, true)) {
+                return trim($tag);
+            }
+        }
+
+        return null;
+    }
+
+    /** "Awaiting review", "awaiting_review" and "AWAITING-REVIEW" all compare equal. */
+    private function normalise(string $value): string
+    {
+        return (string) preg_replace('/[^a-z0-9]+/', '', mb_strtolower($value));
     }
 
     private function businessForProject(?string $projectId): ?string

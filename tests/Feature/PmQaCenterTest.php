@@ -39,7 +39,7 @@ class PmQaCenterTest extends TestCase
     {
         return PmQaTaskReview::create($extra + [
             'external_id' => 'task:'.uniqid(), 'task_id' => uniqid('t'), 'task_title' => 'Fix booking calendar',
-            'task_status' => 'Completed', 'trigger_status' => 'Completed', 'triggered_at' => now(),
+            'task_status' => 'Awaiting Review', 'trigger_status' => 'Awaiting Review', 'qa_in_trigger' => true, 'triggered_at' => now(),
         ]);
     }
 
@@ -154,6 +154,8 @@ class PmQaCenterTest extends TestCase
     public function test_taskmandu_review_gets_a_code_default_checks_and_keeps_the_legacy_result_in_sync(): void
     {
         $user = User::factory()->create();
+        // Passing a Taskmandu task also completes it in Taskmandu (set up before any request is made).
+        $this->mockTaskmandu()->shouldReceive('patch')->once()->with(\Mockery::any(), ['status' => 'Completed'])->andReturn([]);
         $this->site($user, 'RB Hair & Beauty', 'Salon', ['project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Salon Project']);
         $review = $this->review(['business' => 'RB Hair & Beauty', 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Salon Project', 'assignee' => 'Ravi']);
 
@@ -308,7 +310,7 @@ class PmQaCenterTest extends TestCase
     public function test_taskmandu_projects_import_as_businesses_and_subtasks_become_checks(): void
     {
         $user = User::factory()->create();
-        PmCard::create(['external_id' => 'p1', 'title' => 'Calendar', 'status' => 'Completed', 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1']);
+        PmCard::create(['external_id' => 'p1', 'title' => 'Calendar', 'status' => 'Awaiting Review', 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1']);
         $review = $this->review(['project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1', 'assignee' => 'Ravi, Mia']);
         foreach (['Header fix', 'Footer fix'] as $i => $t) {
             PmSubtask::create(['external_id' => 'x'.$i, 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1', 'subtask_id' => 's'.$i, 'parent_title' => 'Calendar', 'title' => $t]);
@@ -335,7 +337,7 @@ class PmQaCenterTest extends TestCase
     public function test_projects_and_subtasks_import_automatically_when_the_tab_loads(): void
     {
         $user = User::factory()->create();
-        PmCard::create(['external_id' => 'p9', 'title' => 'Cart', 'status' => 'Completed', 'project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9']);
+        PmCard::create(['external_id' => 'p9', 'title' => 'Cart', 'status' => 'Awaiting Review', 'project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9']);
         $review = $this->review(['project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9']);
         PmSubtask::create(['external_id' => 'y1', 'project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9', 'subtask_id' => 's1', 'parent_title' => 'Cart', 'title' => 'Coupon field']);
 
@@ -397,5 +399,239 @@ class PmQaCenterTest extends TestCase
         $res = $this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk();
         $this->assertSame(['Tec.com'], $res->json('businesses'));
         $this->assertSame(1, PmBusiness::where('name', 'Tec.com')->count());
+    }
+
+    // ------------------------------------------------------------ Awaiting review only
+
+    private function mockTaskmandu(bool $configured = false): \Mockery\MockInterface
+    {
+        $client = \Mockery::mock(\App\Services\Pm\TaskmanduClient::class);
+        $client->shouldReceive('configured')->andReturn($configured);
+        $this->app->instance(\App\Services\Pm\TaskmanduClient::class, $client);
+
+        return $client;
+    }
+
+    public function test_only_tasks_awaiting_review_join_the_queue(): void
+    {
+        $inbox = app(\App\Services\Pm\TaskQaInboxService::class);
+        $card = fn (string $id, string $status, array $extra = []) => PmCard::create($extra + ['external_id' => 'task:'.$id, 'title' => 'T '.$id, 'status' => $status, 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Salon', 'task_id' => $id]);
+
+        foreach (['Completed', 'In Progress', 'Assigned'] as $i => $status) {
+            $inbox->observe($card('n'.$i, $status));
+        }
+        $this->assertSame(0, PmQaTaskReview::count(), 'Completed and in-progress tasks are not QA work');
+
+        $inbox->observe($card('a1', 'Awaiting Review'));
+        $inbox->observe($card('a2', 'awaiting_review')); // spelling and case do not matter
+        $inbox->observe($card('a3', 'In Progress', ['tags' => ['urgent', 'Awaiting review']])); // trigger tag
+        $this->assertSame(3, PmQaTaskReview::count());
+        $this->assertSame(3, PmQaTaskReview::where('qa_in_trigger', true)->count());
+
+        // Moving back out of Awaiting review takes it off the queue (nothing has been tested yet).
+        $a1 = PmCard::where('external_id', 'task:a1')->first();
+        $a1->update(['status' => 'In Progress']);
+        $inbox->observe($a1->fresh());
+        $this->assertFalse(PmQaTaskReview::where('external_id', 'task:a1')->first()->qa_in_trigger);
+        $this->assertSame(2, PmQaTaskReview::query()->inQaCenter()->count());
+
+        // Coming back opens a new round.
+        $a1->update(['status' => 'Awaiting Review']);
+        $inbox->observe($a1->fresh());
+        $review = PmQaTaskReview::where('external_id', 'task:a1')->first();
+        $this->assertTrue($review->qa_in_trigger);
+        $this->assertSame(2, (int) $review->cycle);
+    }
+
+    public function test_queue_only_shows_tasks_that_are_awaiting_review_or_already_in_qa_hands(): void
+    {
+        $user = User::factory()->create();
+        $waiting = $this->review();
+        $idle = $this->review(['task_status' => 'Completed', 'qa_in_trigger' => false]);
+        $testing = $this->review(['task_status' => 'In Progress', 'qa_in_trigger' => false, 'qa_stage' => 'Testing', 'qa_status' => 'Awaiting QA']);
+        $kept = $this->review(['task_status' => 'Completed', 'qa_in_trigger' => false, 'qa_keep' => true]);
+
+        $keys = collect($this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk()->json('items'))->pluck('key')->all();
+        $this->assertEqualsCanonicalizing(['task:'.$waiting->id, 'task:'.$testing->id, 'task:'.$kept->id], $keys);
+        $this->assertNotContains('task:'.$idle->id, $keys);
+    }
+
+    // ------------------------------------------------------------ Pass completes the task in Taskmandu
+
+    private function readyToPass(array $extra = []): PmQaTaskReview
+    {
+        $review = $this->review($extra);
+        \App\Models\PmQaCheck::query()->where('item_type', 'task')->where('item_id', $review->id)->update(['is_done' => true]);
+
+        return $review;
+    }
+
+    public function test_passing_a_project_task_marks_it_completed_in_taskmandu(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->readyToPass(['project_id' => 'cccccccccccccccccccccccc', 'task_id' => 'dddddddddddddddddddddddd']);
+        $client = $this->mockTaskmandu();
+        $client->shouldReceive('get')->andReturn(['data' => ['tasks' => []]]);
+        $client->shouldReceive('patch')->once()->with('/projects/cccccccccccccccccccccccc/tasks/dddddddddddddddddddddddd', ['status' => 'Completed'])->andReturn([]);
+
+        $this->actingAs($user)->patchJson('/pm/api/qa-center/items/task/'.$review->id, ['stage' => 'Passed'])
+            ->assertOk()->assertJsonPath('item.stage', 'Passed');
+
+        $fresh = $review->fresh();
+        $this->assertSame('Passed', $fresh->qa_stage);
+        $this->assertSame('Completed', $fresh->task_status);
+        $this->assertFalse($fresh->qa_in_trigger);
+    }
+
+    public function test_passing_a_standalone_task_uses_the_task_status_endpoint(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->readyToPass(['project_id' => null, 'task_id' => 'eeeeeeeeeeeeeeeeeeeeeeee']);
+        $client = $this->mockTaskmandu();
+        $client->shouldReceive('patch')->once()->with('/tasks/eeeeeeeeeeeeeeeeeeeeeeee/status', ['status' => 'Completed'])->andReturn([]);
+
+        $this->actingAs($user)->patchJson('/pm/api/qa-center/items/task/'.$review->id, ['stage' => 'Passed'])->assertOk();
+        $this->assertSame('Passed', $review->fresh()->qa_stage);
+    }
+
+    public function test_pass_changes_nothing_when_taskmandu_refuses(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->readyToPass(['project_id' => 'cccccccccccccccccccccccc', 'task_id' => 'dddddddddddddddddddddddd']);
+        $client = $this->mockTaskmandu();
+        $client->shouldReceive('patch')->once()->andThrow(new \RuntimeException('Taskmandu said no (403).'));
+
+        $res = $this->actingAs($user)->patchJson('/pm/api/qa-center/items/task/'.$review->id, ['stage' => 'Passed'])->assertStatus(422);
+        $this->assertStringContainsString('nothing was changed', $res->json('message'));
+        $this->assertSame('Queue', $review->fresh()->qa_stage ?: 'Queue');
+        $this->assertSame('Awaiting Review', $review->fresh()->task_status);
+    }
+
+    public function test_failing_or_requeueing_never_touches_the_taskmandu_status(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->review(['project_id' => 'cccccccccccccccccccccccc', 'task_id' => 'dddddddddddddddddddddddd']);
+        $client = $this->mockTaskmandu();
+        $client->shouldNotReceive('patch');
+
+        $this->actingAs($user)->patchJson('/pm/api/qa-center/items/task/'.$review->id, ['stage' => 'Failed', 'fail_note' => 'Totals are wrong'])->assertOk();
+        $this->patchJson('/pm/api/qa-center/items/task/'.$review->id, ['stage' => 'Queue'])->assertOk();
+        $this->assertTrue($review->fresh()->qa_keep, 'a hand re-queue keeps the item on the screen');
+    }
+
+    // ------------------------------------------------------------ the "Taskmandu no longer has this task" bug
+
+    public function test_task_is_found_in_the_project_list_when_the_single_project_call_omits_its_tasks(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->review(['project_id' => 'cccccccccccccccccccccccc', 'task_id' => 'dddddddddddddddddddddddd']);
+        $client = $this->mockTaskmandu();
+        $client->shouldReceive('get')->with('/projects/cccccccccccccccccccccccc')->andReturn(['data' => ['_id' => 'cccccccccccccccccccccccc', 'tasks' => []]]);
+        $client->shouldReceive('paginate')->with('/projects')->andReturn([
+            ['_id' => 'ffffffffffffffffffffffff', 'tasks' => []],
+            ['_id' => 'cccccccccccccccccccccccc', 'tasks' => [['_id' => 'dddddddddddddddddddddddd', 'title' => 'Fix booking calendar', 'status' => 'Awaiting Review',
+                'comments' => [['_id' => 'c1', 'text' => 'Ready for QA', 'authorName' => 'Ravi', 'createdAt' => '2026-11-24T01:00:00Z']], 'subTasks' => []]]],
+        ]);
+
+        $this->actingAs($user)->getJson('/pm/api/qa-center/tasks/'.$review->id.'/taskmandu')
+            ->assertOk()->assertJsonPath('task.comments.0.text', 'Ready for QA');
+    }
+
+    public function test_a_task_that_is_really_gone_still_says_so(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->review(['project_id' => 'cccccccccccccccccccccccc', 'task_id' => 'dddddddddddddddddddddddd']);
+        $client = $this->mockTaskmandu();
+        $client->shouldReceive('get')->andReturn(['data' => ['tasks' => []]]);
+        $client->shouldReceive('paginate')->with('/projects')->andReturn([['_id' => 'cccccccccccccccccccccccc', 'tasks' => []]]);
+
+        $this->actingAs($user)->getJson('/pm/api/qa-center/tasks/'.$review->id.'/taskmandu')
+            ->assertStatus(422)->assertJsonPath('message', 'Taskmandu no longer has this task.');
+    }
+
+    public function test_a_standalone_task_loads_its_comments_without_subtasks(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->review(['project_id' => null, 'task_id' => 'eeeeeeeeeeeeeeeeeeeeeeee']);
+        $client = $this->mockTaskmandu();
+        $client->shouldReceive('get')->with('/tasks/eeeeeeeeeeeeeeeeeeeeeeee')->andReturn(['data' => ['_id' => 'eeeeeeeeeeeeeeeeeeeeeeee', 'title' => 'Solo', 'comments' => [['_id' => 'c1', 'text' => 'Hi', 'authorName' => 'Mia']]]]);
+
+        $this->actingAs($user)->getJson('/pm/api/qa-center/tasks/'.$review->id.'/taskmandu')
+            ->assertOk()->assertJsonPath('task.comments.0.text', 'Hi')->assertJsonCount(0, 'subtasks')->assertJsonPath('item.in_project', false);
+    }
+
+    // ------------------------------------------------------------ + Project and the pickers
+
+    public function test_every_taskmandu_project_and_staff_member_is_offered_even_with_no_synced_tasks(): void
+    {
+        $user = User::factory()->create();
+        $client = $this->mockTaskmandu(true);
+        $client->shouldReceive('paginate')->with('/projects')->andReturn([
+            ['_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'name' => 'Maison Eclat', 'tasks' => []],
+            ['_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'name' => 'RB Hair', 'tasks' => []],
+        ]);
+        $client->shouldReceive('paginate')->with('/employees')->andReturn([['employeeId' => 'E1', '_id' => 'u1', 'firstName' => 'Ravi', 'lastName' => 'K']]);
+        PmBusiness::firstOrCreate(['name' => 'Custom Co'], ['slug' => 'custom-co']);
+
+        $res = $this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk();
+        $this->assertEqualsCanonicalizing(['Maison Eclat', 'RB Hair'], collect($res->json('projects'))->pluck('name')->all());
+        $this->assertEqualsCanonicalizing(['Maison Eclat', 'RB Hair', 'Custom Co'], $res->json('businesses'));
+        $this->assertSame(['Ravi K'], $res->json('staff'));
+        $this->assertContains('Ravi K', $res->json('members'));
+        $this->assertSame([], $res->json('warnings'));
+    }
+
+    public function test_a_warning_appears_when_taskmandu_lists_cannot_be_loaded(): void
+    {
+        $user = User::factory()->create();
+        $client = $this->mockTaskmandu(true);
+        $client->shouldReceive('paginate')->andThrow(new \RuntimeException('down'));
+
+        $res = $this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk();
+        $this->assertCount(2, $res->json('warnings'));
+    }
+
+    public function test_add_project_links_an_existing_taskmandu_project_as_a_business(): void
+    {
+        $user = User::factory()->create();
+        $client = $this->mockTaskmandu(true);
+        $client->shouldReceive('paginate')->with('/projects')->andReturn([['_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'name' => 'Maison Eclat', 'tasks' => []]]);
+        $client->shouldNotReceive('post');
+
+        $this->actingAs($user)->postJson('/pm/api/qa-center/projects', ['project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa'])
+            ->assertCreated()->assertJsonPath('project.business', 'Maison Eclat')->assertJsonPath('project.created', false);
+        $this->assertSame(1, PmBusiness::where('name', 'Maison Eclat')->count());
+        $this->assertSame(1, \App\Models\PmBusinessProjectLink::where('taskmandu_project_id', 'aaaaaaaaaaaaaaaaaaaaaaaa')->count());
+
+        // Adding it again does not duplicate anything.
+        $this->postJson('/pm/api/qa-center/projects', ['project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa'])->assertCreated();
+        $this->assertSame(1, \App\Models\PmBusinessProjectLink::where('taskmandu_project_id', 'aaaaaaaaaaaaaaaaaaaaaaaa')->count());
+    }
+
+    public function test_add_project_creates_it_in_taskmandu_only_when_the_name_is_new(): void
+    {
+        $user = User::factory()->create();
+        $client = $this->mockTaskmandu(true);
+        $client->shouldReceive('paginate')->with('/projects')->andReturn([['_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'name' => 'Maison Eclat', 'tasks' => []]]);
+        $client->shouldReceive('post')->once()->with('/projects', ['name' => 'Brand New', 'status' => 'Planning'])
+            ->andReturn(['data' => ['_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'name' => 'Brand New']]);
+
+        // Same name as an existing Taskmandu project (any case): reused, nothing created.
+        $this->actingAs($user)->postJson('/pm/api/qa-center/projects', ['name' => 'maison eclat'])
+            ->assertCreated()->assertJsonPath('project.created', false)->assertJsonPath('project.id', 'aaaaaaaaaaaaaaaaaaaaaaaa');
+
+        $this->postJson('/pm/api/qa-center/projects', ['name' => 'Brand New'])
+            ->assertCreated()->assertJsonPath('project.created', true)->assertJsonPath('project.id', 'bbbbbbbbbbbbbbbbbbbbbbbb');
+        $this->assertTrue(PmBusiness::where('name', 'Brand New')->exists());
+    }
+
+    public function test_add_project_needs_a_choice_and_a_reachable_taskmandu(): void
+    {
+        $user = User::factory()->create();
+        $client = $this->mockTaskmandu(true);
+        $client->shouldReceive('paginate')->with('/projects')->andReturn([]);
+
+        $this->actingAs($user)->postJson('/pm/api/qa-center/projects', [])->assertStatus(422);
+        $this->postJson('/pm/api/qa-center/projects', ['project_id' => 'zzzzzzzzzzzzzzzzzzzzzzzz'])->assertStatus(422);
     }
 }

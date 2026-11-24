@@ -19,6 +19,8 @@ class PmQaTaskReview extends Model
         'triggered_at' => 'datetime',
         'tested_at' => 'datetime',
         'cycle' => 'integer',
+        'qa_in_trigger' => 'boolean',
+        'qa_keep' => 'boolean',
         'qa_screenshots' => 'array',
         'qa_history' => 'array',
     ];
@@ -33,7 +35,7 @@ class PmQaTaskReview extends Model
                 $review->qa_stage = QaStage::fromReviewStatus($review->qa_status ?: 'Awaiting QA');
             }
             if (blank($review->qa_history)) {
-                $review->qa_history = [['at' => now()->toIso8601String(), 'message' => 'Added to QA queue because the Taskmandu task reached '.($review->trigger_status ?: 'Review')]];
+                $review->qa_history = [['at' => now()->toIso8601String(), 'message' => 'Added to QA queue because the Taskmandu task reached '.($review->trigger_status ?: 'Awaiting review')]];
             }
         });
 
@@ -60,6 +62,19 @@ class PmQaTaskReview extends Model
         });
 
         static::deleting(fn (self $review) => PmQaCheck::where('item_type', 'task')->where('item_id', $review->id)->delete());
+    }
+
+    /**
+     * Reviews that belong on the QA Center screen: the task is awaiting review right now, someone
+     * re-queued it by hand, or QA has already started on it (Testing, Failed, Passed).
+     */
+    public function scopeInQaCenter($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('qa_in_trigger', true)
+                ->orWhere('qa_keep', true)
+                ->orWhere(fn ($x) => $x->whereNotNull('qa_stage')->where('qa_stage', '!=', QaStage::QUEUE));
+        });
     }
 
     public function events(): HasMany

@@ -5,7 +5,7 @@ import type { TodayData } from '@/types/pm';
 import RoutineCatchUp from './RoutineCatchUp';
 
 type Params = Record<string, string | null | undefined>;
-type QaReview = { qa_status: string; task_status: string };
+type QaReview = { qa_status: string; task_status: string; qa_in_trigger?: boolean };
 
 /** Live task counts (same numbers and rules as the Command Center tiles and All tasks). */
 export interface ChecklistTaskCounts {
@@ -132,7 +132,7 @@ export default function DailyChecklistPanel({
 
   const ops = today?.operations_summary?.counts;
   const decisions = ops ? ops.requests_for_decision + ops.overdue_requests + ops.ideas_for_review : 0;
-  const awaitingQa = qa ? qa.filter((r) => r.qa_status === 'Awaiting QA' && ['Completed', 'Review'].includes(r.task_status)).length : 0;
+  const awaitingQa = qa ? qa.filter((r) => r.qa_status === 'Awaiting QA' && r.qa_in_trigger).length : 0;
   const failedQa = qa ? qa.filter((r) => r.qa_status === 'Failed').length : 0;
   const fu = today?.meeting_followup?.counts;
   const followups = fu ? (['blocked', 'overdue', 'subtasks_incomplete', 'stuck', 'not_pushed', 'not_started'] as const).reduce((n, k) => n + (fu[k] ?? 0), 0) : 0;

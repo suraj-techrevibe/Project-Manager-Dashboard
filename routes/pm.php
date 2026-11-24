@@ -86,6 +86,7 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     // QA Center tab: Queue -> Testing -> Failed / Passed over site checks and Taskmandu task reviews.
     Route::prefix('qa-center')->name('qa-center.')->where(['kind' => 'issue|task', 'id' => '[0-9]+', 'check' => '[0-9]+'])->group(function () {
         Route::get('/', [PmQaCenterController::class, 'index'])->name('index');
+        Route::post('projects', [PmQaCenterController::class, 'storeProject'])->name('projects.store');
         Route::post('items', [PmQaCenterController::class, 'store'])->name('items.store');
         Route::patch('items/{kind}/{id}', [PmQaCenterController::class, 'update'])->name('items.update');
         Route::delete('items/{kind}/{id}', [PmQaCenterController::class, 'destroy'])->name('items.destroy');

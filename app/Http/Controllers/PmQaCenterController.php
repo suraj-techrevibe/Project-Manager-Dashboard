@@ -25,6 +25,17 @@ class PmQaCenterController extends Controller
         return response()->json($this->qa->payload($request->user()));
     }
 
+    /** Add a Taskmandu project to QA as a business: pick an existing one, or name a new one to create in Taskmandu. */
+    public function storeProject(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'project_id' => 'nullable|string|max:40',
+            'name' => 'nullable|string|max:200',
+        ]);
+
+        return response()->json(['project' => $this->qa->addProject($data['project_id'] ?? null, $data['name'] ?? null)], 201);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([

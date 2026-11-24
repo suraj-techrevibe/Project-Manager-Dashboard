@@ -24,6 +24,8 @@ export type QAItem = {
   assignee: string | null;
   /** Taskmandu tasks are edited in Taskmandu, not here. */
   editable: boolean;
+  /** Taskmandu tasks inside a project mirror that task's subtasks as checks; standalone tasks have none. */
+  in_project?: boolean;
   details: Detail[];
   checks: Check[];
   screenshots: Shot[];
@@ -45,8 +47,8 @@ export type Site = {
   project_name: string | null;
 };
 
-export type Project = { id: string; name: string };
-export type Payload = { items: QAItem[]; sites: Site[]; businesses: string[]; members: string[]; projects: Project[] };
+export type Project = { id: string; name: string; business?: string | null };
+export type Payload = { items: QAItem[]; sites: Site[]; businesses: string[]; members: string[]; staff: string[]; projects: Project[]; warnings: string[] };
 
 export const STAGES: Stage[] = ['Queue', 'Testing', 'Failed', 'Passed'];
 export const SOURCES: Source[] = ['Taskmandu', 'Site check', 'Client report'];

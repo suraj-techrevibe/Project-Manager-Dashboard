@@ -27,6 +27,14 @@ return [
         // Overdue / blocked / stuck board tasks added when carrying work into a new meeting.
         'carry_board_limit' => (int) env('PM_CARRY_BOARD_LIMIT', 12),
     ],
+    'qa' => [
+        // A Taskmandu task joins the QA queue while its status (or one of its tags) is in these lists.
+        // Matching ignores case, spaces and punctuation, so "Awaiting review" and "awaiting_review" are the same.
+        'trigger_statuses' => array_values(array_filter(array_map('trim', explode(',', (string) env('PM_QA_TRIGGER_STATUSES', 'Awaiting Review'))))),
+        'trigger_tags' => array_values(array_filter(array_map('trim', explode(',', (string) env('PM_QA_TRIGGER_TAGS', 'Awaiting Review'))))),
+        // The Taskmandu status a task gets when QA passes it.
+        'pass_status' => env('PM_QA_PASS_STATUS', 'Completed'),
+    ],
     'mail' => [
         'reply_to' => env('PM_REPLY_TO'),
     ],

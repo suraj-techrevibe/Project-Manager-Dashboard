@@ -104,7 +104,7 @@ class PmQaController extends Controller
                 })->values();
                 return $row;
             })->values(),
-            'trigger_statuses' => ['Completed', 'Review'],
+            'trigger_statuses' => (array) config('pm.qa.trigger_statuses', ['Awaiting Review']),
             'last_synced_at' => cache('pm.last_synced_at'),
         ]);
     }

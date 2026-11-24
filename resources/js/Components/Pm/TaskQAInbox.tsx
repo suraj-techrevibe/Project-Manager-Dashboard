@@ -25,6 +25,7 @@ type TaskReview = {
   business: string | null;
   assignee: string | null;
   task_status: string;
+  qa_in_trigger?: boolean;
   trigger_status: string;
   qa_status: QAStatus;
   cycle: number;
@@ -132,7 +133,7 @@ export default function TaskQAInbox() {
     });
   }, [reviews, business, project, task, subtask, developer, taskStatus, qaStatus, period, search]);
 
-  const awaiting = reviews.filter((r) => r.qa_status === 'Awaiting QA' && ['Completed', 'Review'].includes(r.task_status)).length;
+  const awaiting = reviews.filter((r) => r.qa_status === 'Awaiting QA' && r.qa_in_trigger).length;
   const failed = reviews.filter((r) => r.qa_status === 'Failed').length;
   const passed = reviews.filter((r) => r.qa_status === 'Passed').length;
   const resetFilters = () => {
@@ -257,7 +258,7 @@ export default function TaskQAInbox() {
           ) : (
             <div className="divide-y divide-slate-100">
               {filtered
-                .filter((r) => view === 'history' || (r.qa_status === 'Awaiting QA' && ['Completed', 'Review'].includes(r.task_status)))
+                .filter((r) => view === 'history' || (r.qa_status === 'Awaiting QA' && r.qa_in_trigger))
                 .map((r) => (
                   <article key={r.id} className="p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

@@ -34,7 +34,7 @@ class QaCenterService
     public const MAX_CHECKS = 40;
     public const DEFAULT_SITE_CHECKS = ['Works on desktop', 'Works on mobile'];
 
-    public function __construct(private QaCodeService $codes) {}
+    public function __construct(private QaCodeService $codes, private QaTaskmanduService $taskmandu) {}
 
     // ---------------------------------------------------------------- reading
 
@@ -52,9 +52,14 @@ class QaCenterService
         $websites = $this->websitesFor($user->id);
         $projectBusinesses = $this->projectBusinesses();
         $issues = PmQaIssue::query()->where('created_by', $user->id)->latest()->limit(300)->get();
-        $reviews = PmQaTaskReview::query()->orderByDesc('triggered_at')->orderByDesc('id')->limit(500)->get();
+        // Only tasks that are awaiting review (or already in QA's hands) show up here.
+        $reviews = PmQaTaskReview::query()->inQaCenter()->orderByDesc('triggered_at')->orderByDesc('id')->limit(500)->get();
         $checks = $this->checksFor($issues->pluck('id'), $reviews->pluck('id'));
         $siteByProject = $websites->filter(fn (PmQaWebsite $w) => filled($w->project_id))->unique('project_id')->keyBy('project_id');
+
+        $warnings = [];
+        $staff = $this->staffNames($warnings);
+        $projects = $this->projectList($warnings);
 
         return [
             'items' => $issues->map(fn (PmQaIssue $i) => $this->presentIssue($i, $checks, $websites, $projectBusinesses))
@@ -62,10 +67,10 @@ class QaCenterService
                 ->values(),
             'sites' => $websites->values(),
             'members' => $this->members($issues, $reviews),
+            'staff' => $staff,
             'businesses' => $this->businessNames($websites, $issues, $projectBusinesses),
-            'projects' => PmCard::query()->whereNotNull('project_id')->select('project_id', 'project_name')->distinct()
-                ->orderBy('project_name')->get()
-                ->map(fn ($p) => ['id' => $p->project_id, 'name' => $p->project_name])->values(),
+            'projects' => $projects,
+            'warnings' => $warnings,
         ];
     }
 
@@ -79,8 +84,7 @@ class QaCenterService
      */
     public function importProjects(): array
     {
-        $projects = PmCard::query()->whereNotNull('project_id')->whereNotNull('project_name')
-            ->select('project_id', 'project_name')->distinct()->get()->unique('project_id');
+        $projects = $this->projectList()->map(fn ($p) => (object) ['project_id' => $p['id'], 'project_name' => $p['name']]);
         $linked = PmBusinessProjectLink::query()->pluck('taskmandu_project_id')->map(fn ($id) => (string) $id)->all();
         $created = 0;
         $links = 0;
@@ -119,27 +123,126 @@ class QaCenterService
     /** Team member names for the assignee pickers: Taskmandu employees plus anyone already assigned in QA. */
     public function members(Collection $issues, Collection $reviews): array
     {
-        $names = collect();
-        if (app(\App\Services\Pm\TaskmanduSync::class)->configured()) {
-            $staff = Cache::get('pm.employees');
-            if ($staff === null) {
-                try {
-                    $staff = app(\App\Services\Pm\TaskmanduSync::class)->listEmployees();
-                    Cache::put('pm.employees', $staff, 600);
-                } catch (\Throwable $e) {
-                    report($e);
-                    $staff = [];
-                    Cache::put('pm.employees', $staff, 60);
-                }
-            }
-            $names = $names->concat(collect($staff)->pluck('name'));
-        }
-
-        return $names
+        return collect($this->staffNames())
             ->concat($issues->pluck('assignee'))
             ->concat($reviews->pluck('assignee')->flatMap(fn ($a) => preg_split('/\s*,\s*/', (string) $a)))
             ->map(fn ($n) => trim((string) $n))->filter()
             ->unique(fn ($n) => mb_strtolower($n))->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
+    }
+
+    /**
+     * Taskmandu staff names, A to Z. When Taskmandu can't be reached the list is empty and a warning is added,
+     * so the screen can say so instead of silently offering nobody.
+     *
+     * @param array<int,string> $warnings
+     * @return array<int,string>
+     */
+    public function staffNames(array &$warnings = []): array
+    {
+        $sync = app(TaskmanduSync::class);
+        if (! $sync->configured()) {
+            return [];
+        }
+        $staff = Cache::get('pm.employees');
+        if ($staff === null) {
+            try {
+                $staff = $sync->listEmployees();
+                Cache::put('pm.employees', $staff, 600);
+            } catch (\Throwable $e) {
+                report($e);
+                $staff = [];
+                Cache::put('pm.employees', $staff, 60);
+            }
+        }
+        $names = collect($staff)->pluck('name')->map(fn ($n) => trim((string) $n))->filter()
+            ->unique(fn ($n) => mb_strtolower($n))->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
+        if ($names === []) {
+            $warnings[] = "Taskmandu staff couldn't be loaded. You can still type a name.";
+        }
+
+        return $names;
+    }
+
+    /**
+     * Every Taskmandu project (live), each with the business it is filed under. If Taskmandu can't be
+     * reached, the projects already synced from it are used and a warning is added.
+     *
+     * @param array<int,string> $warnings
+     * @return Collection<int,array{id:string,name:string,business:?string}>
+     */
+    public function projectList(array &$warnings = []): Collection
+    {
+        $live = $this->taskmandu->projects();
+        if ($live === null && app(TaskmanduSync::class)->configured()) {
+            $warnings[] = "Taskmandu projects couldn't be loaded, so only projects seen in earlier syncs are listed.";
+        }
+        $rows = collect($live ?? [])->map(fn ($p) => ['id' => (string) $p['id'], 'name' => (string) $p['name']]);
+
+        $synced = PmCard::query()->whereNotNull('project_id')->whereNotNull('project_name')
+            ->select('project_id', 'project_name')->distinct()->get()
+            ->map(fn ($p) => ['id' => (string) $p->project_id, 'name' => trim((string) $p->project_name)]);
+        $rows = $rows->concat($synced)->filter(fn ($p) => $p['name'] !== '')->unique('id');
+
+        $businessByProject = PmBusinessProjectLink::query()->with('business:id,name')->get()
+            ->mapWithKeys(fn ($l) => [(string) $l->taskmandu_project_id => $l->business?->name]);
+
+        return $rows->map(fn ($p) => $p + ['business' => $businessByProject->get($p['id'])])
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+    }
+
+    /**
+     * Add a Taskmandu project to QA as a business. Pass the id of an existing Taskmandu project, or a name:
+     * a name that already exists in Taskmandu is reused, otherwise the project is created there first.
+     *
+     * @return array{id:string,name:string,business:string,created:bool}
+     */
+    public function addProject(?string $projectId, ?string $name): array
+    {
+        $projectId = trim((string) $projectId);
+        $name = trim((string) $name);
+        if ($projectId === '' && $name === '') {
+            throw ValidationException::withMessages(['project' => 'Choose a Taskmandu project or enter a name for a new one.']);
+        }
+
+        $live = $this->taskmandu->projects(fresh: true);
+        if ($live === null) {
+            throw ValidationException::withMessages(['project' => "Taskmandu can't be reached right now, so the project list can't be checked. Try again in a moment."]);
+        }
+        $live = collect($live);
+
+        $created = false;
+        if ($projectId !== '') {
+            $project = $live->firstWhere('id', $projectId);
+            if (! $project) {
+                throw ValidationException::withMessages(['project' => 'Taskmandu no longer has that project. Refresh the list and choose again.']);
+            }
+        } else {
+            $project = $live->first(fn ($p) => mb_strtolower($p['name']) === mb_strtolower($name));
+            if (! $project) {
+                $project = $this->taskmandu->createProject($name);
+                $created = true;
+            }
+        }
+
+        $business = DB::transaction(function () use ($project) {
+            $link = PmBusinessProjectLink::query()->where('taskmandu_project_id', $project['id'])->with('business')->first();
+            if ($link?->business) {
+                return $link->business;
+            }
+            $business = PmBusiness::query()->whereRaw('lower(name) = ?', [mb_strtolower($project['name'])])->first()
+                ?? $this->makeBusiness($project['name']);
+            PmBusinessProjectLink::create([
+                'business_id' => $business->id,
+                'taskmandu_project_id' => $project['id'],
+                'taskmandu_project_name' => mb_substr($project['name'], 0, 200),
+                'is_primary' => ! $business->projectLinks()->exists(),
+            ]);
+            PmQaTaskReview::query()->where('project_id', $project['id'])->whereNull('business')->update(['business' => $business->name]);
+
+            return $business;
+        });
+
+        return ['id' => $project['id'], 'name' => $project['name'], 'business' => $business->name, 'created' => $created];
     }
 
     /** Subtasks of the Taskmandu task become checks (matched by title, so running it again adds nothing twice). */
@@ -421,6 +524,12 @@ class QaCenterService
             }
         }
 
+        // Passing a Taskmandu task completes it in Taskmandu too. Do that first: if Taskmandu refuses, nothing
+        // changes here, so the two systems never disagree about whether the task is done.
+        if ($stage === QaStage::PASSED && $kind === self::TASK) {
+            $this->taskmandu->setStatus($item, (string) config('pm.qa.pass_status', 'Completed'));
+        }
+
         DB::transaction(function () use ($item, $kind, $stage, $from, $note, $user) {
             $item->qa_stage = $stage;
             $item->qa_fail_note = $stage === QaStage::FAILED ? $note : null;
@@ -467,7 +576,15 @@ class QaCenterService
             ]);
         }
 
+        if ($stage === QaStage::PASSED) {
+            // Taskmandu now has the task as Completed (see moveTo); the next sync confirms it.
+            $review->task_status = (string) config('pm.qa.pass_status', 'Completed');
+            $review->qa_in_trigger = false;
+        }
+
         if ($restart) {
+            // The task is no longer awaiting review in Taskmandu, so keep it in the queue on purpose.
+            $review->qa_keep = true;
             $review->cycle = (int) $review->cycle + 1;
             $review->triggered_at = now();
             $review->tested_at = null;
@@ -704,6 +821,8 @@ class QaCenterService
             'source' => 'Taskmandu',
             'assignee' => $review->qa_assignee ?: $review->assignee,
             'editable' => true,
+            // Checks mirror Taskmandu subtasks only for tasks that live in a project.
+            'in_project' => filled($review->project_id),
             'details' => $this->details([
                 ['Taskmandu status', $review->task_status],
                 ['Taskmandu project', $review->project_name],
