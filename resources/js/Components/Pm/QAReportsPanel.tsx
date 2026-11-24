@@ -62,7 +62,7 @@ export default function QAReportsPanel() {
   };
 
   async function generate() {
-    if (!business) { setError('Select a business first.'); return; }
+    if (!business) { setError('Select a project first.'); return; }
     if (!scoped.length) { setError('No QA items exist for this scope.'); return; }
     setSaving(true); setError('');
     try {
@@ -151,15 +151,15 @@ export default function QAReportsPanel() {
         </article>
       </div>;
     })() : <>
-      <section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Report scope</h3><p className="mt-1 text-sm text-slate-500">Choose a business and optionally a site. Every QA item in scope is included, failed first; passed items are listed separately.</p>
+      <section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Report scope</h3><p className="mt-1 text-sm text-slate-500">Choose a project and optionally a site. Every QA item in scope is included, failed first; passed items are listed separately.</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <label className="text-sm">Business<select className="mt-1 w-full rounded-lg border p-2" value={business} onChange={e => { setBusiness(e.target.value); setSite(ALL_SITES); }}><option value="">Select business</option>{businesses.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label className="text-sm">Project<select className="mt-1 w-full rounded-lg border p-2" value={business} onChange={e => { setBusiness(e.target.value); setSite(ALL_SITES); }}><option value="">Select project</option>{businesses.map(x => <option key={x}>{x}</option>)}</select></label>
           <label className="text-sm">Website / App<select className="mt-1 w-full rounded-lg border p-2" value={site} onChange={e => setSite(e.target.value)}><option>{ALL_SITES}</option>{sites.map(x => <option key={x}>{x}</option>)}</select></label>
           <label className="text-sm">Report date<input className="mt-1 w-full rounded-lg border p-2" type="date" value={date} onChange={e => setDate(e.target.value)}/></label>
         </div></section>
       <section className="no-print grid grid-cols-2 gap-3 sm:grid-cols-4">{STAGES.map(s => <div key={s} className="rounded-xl border bg-white p-4"><p className="text-xs text-slate-500">{s}</p><p className="text-2xl font-semibold">{business ? c[s] : '—'}</p></div>)}</section>
       <section className="no-print rounded-xl border bg-white p-4"><h3 className="font-semibold">Included items</h3>
-        {loading ? <p className="py-4 text-sm">Loading…</p> : !business ? <p className="py-3 text-sm text-slate-500">Select a business to preview report contents.</p> : scoped.length === 0 ? <p className="py-3 text-sm">No QA items in this scope.</p>
+        {loading ? <p className="py-4 text-sm">Loading…</p> : !business ? <p className="py-3 text-sm text-slate-500">Select a project to preview report contents.</p> : scoped.length === 0 ? <p className="py-3 text-sm">No QA items in this scope.</p>
           : <div className="mt-2 divide-y">{scoped.map(i => <div key={i.key} className="flex flex-wrap justify-between gap-2 py-3"><span className="text-sm font-medium"><span className="mr-2 font-mono text-xs text-slate-500">{i.code}</span>{i.title}<span className="block text-xs text-slate-500">{[i.site, i.source, i.assignee].filter(Boolean).join(' · ')}</span></span><span className={'h-fit rounded-full px-2 py-0.5 text-xs font-medium ' + stageClass[i.stage]}>{i.stage}</span></div>)}</div>}
         {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
         <button disabled={saving || loading || !business || !scoped.length} onClick={() => void generate()} className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Generating…' : 'Generate report from scope'}</button></section>

@@ -73,7 +73,7 @@ export default function QACenter() {
   const selected = data.items.find(i => i.key === selectedKey) ?? null;
   const counts = (s: Stage) => scoped.filter(i => i.stage === s).length;
   const filtered = !!(search || business || site || source || assignee || stage);
-  const scope = [business || 'All businesses', site || null, source || null, assignee || null, stage || null].filter(Boolean).join(' · ');
+  const scope = [business || 'All projects', site || null, source || null, assignee || null, stage || null].filter(Boolean).join(' · ');
 
   function clear() { setSearch(''); setBusiness(''); setSite(''); setSource(''); setAssignee(''); setStage(''); }
   const toggle = (p: Panel) => setPanel(cur => (cur === p ? 'none' : p));
@@ -91,7 +91,7 @@ export default function QACenter() {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="text-lg font-semibold text-slate-900">QA Center</h2><p className="text-sm text-slate-500">Queue, test, then pass or send back.</p></div>
       <div className="flex flex-wrap gap-2">
-        <button className={tab(panel === 'business')} aria-pressed={panel === 'business'} onClick={() => toggle('business')}>+ Business</button>
+        <button className={tab(panel === 'business')} aria-pressed={panel === 'business'} onClick={() => toggle('business')}>+ Project</button>
         <button className={tab(panel === 'site')} aria-pressed={panel === 'site'} onClick={() => toggle('site')}>+ Site or app</button>
         <button className={tab(panel === 'item')} aria-pressed={panel === 'item'} onClick={() => toggle('item')}>+ QA item</button>
         <button className={tab(panel === 'summary')} aria-pressed={panel === 'summary'} onClick={() => toggle('summary')}>Summary</button>
@@ -111,7 +111,7 @@ export default function QACenter() {
 
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
       <input className={input + ' lg:col-span-2'} type="search" placeholder="Search code, title, URL" value={search} onChange={e => setSearch(e.target.value)}/>
-      <select className={input} aria-label="Business" value={business} onChange={e => { setBusiness(e.target.value); setSite(''); }}><option value="">All businesses</option>{data.businesses.map(b => <option key={b}>{b}</option>)}</select>
+      <select className={input} aria-label="Project" value={business} onChange={e => { setBusiness(e.target.value); setSite(''); }}><option value="">All projects</option>{data.businesses.map(b => <option key={b}>{b}</option>)}</select>
       <select className={input} aria-label="Site or app" value={site} onChange={e => setSite(e.target.value)}><option value="">All sites / apps</option>{siteNames.map(s => <option key={s}>{s}</option>)}</select>
       <select className={input} aria-label="Source" value={source} onChange={e => setSource(e.target.value as '' | Source)}><option value="">All sources</option>{SOURCES.map(s => <option key={s}>{s}</option>)}</select>
       <select className={input} aria-label="Assignee" value={assignee} onChange={e => setAssignee(e.target.value)}><option value="">Everyone</option>{assignees.map(a => <option key={a}>{a}</option>)}</select>

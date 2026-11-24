@@ -354,4 +354,24 @@ class PmQaCenterTest extends TestCase
         $this->patchJson($url.'/checks/'.$check, ['label' => 'Renamed check'])->assertOk();
         $this->assertSame('Renamed check', \App\Models\PmQaCheck::find($check)->label);
     }
+
+    public function test_projects_and_subtasks_import_automatically_when_the_tab_loads(): void
+    {
+        $user = User::factory()->create();
+        PmCard::create(['external_id' => 'p9', 'title' => 'Cart', 'status' => 'Completed', 'project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9']);
+        $review = $this->review(['project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9']);
+        PmSubtask::create(['external_id' => 'y1', 'project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9', 'subtask_id' => 's1', 'parent_title' => 'Cart', 'title' => 'Coupon field']);
+
+        $res = $this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk();
+        $this->assertContains('Tec.com', $res->json('businesses'));
+        $item = collect($res->json('items'))->firstWhere('key', 'task:'.$review->id);
+        $this->assertSame('Tec.com', $item['business']);
+        $this->assertContains('Coupon field', collect($item['checks'])->pluck('label')->all());
+
+        // A check removed afterwards stays removed on the next load.
+        $id = collect($item['checks'])->firstWhere('label', 'Coupon field')['id'];
+        $this->deleteJson('/pm/api/qa-center/items/task/'.$review->id.'/checks/'.$id)->assertOk();
+        $again = collect($this->getJson('/pm/api/qa-center')->json('items'))->firstWhere('key', 'task:'.$review->id);
+        $this->assertNotContains('Coupon field', collect($again['checks'])->pluck('label')->all());
+    }
 }

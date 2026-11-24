@@ -47,7 +47,7 @@ export type Payload = { items: QAItem[]; sites: Site[]; businesses: string[]; me
 
 export const STAGES: Stage[] = ['Queue', 'Testing', 'Failed', 'Passed'];
 export const SOURCES: Source[] = ['Taskmandu', 'Site check', 'Client report'];
-export const NO_BUSINESS = 'Business not detected';
+export const NO_BUSINESS = 'No project';
 
 export const itemUrl = (item: Pick<QAItem, 'kind' | 'id'>) => `/pm/api/qa-center/items/${item.kind}/${item.id}`;
 

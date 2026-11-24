@@ -102,7 +102,7 @@ export default function ReviewPanel({ item, businesses, members, sites, onChange
     {editing && <div className="mt-3 space-y-3 rounded-lg border bg-slate-50 p-3">
       <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Title</span><input className={input} value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })}/></label>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Business</span><input className={input} list="qa-edit-biz" value={edit.business} onChange={e => setEdit({ ...edit, business: e.target.value })}/><datalist id="qa-edit-biz">{businesses.map(b => <option key={b} value={b}/>)}</datalist></label>
+        <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Project</span><input className={input} list="qa-edit-biz" value={edit.business} onChange={e => setEdit({ ...edit, business: e.target.value })}/><datalist id="qa-edit-biz">{businesses.map(b => <option key={b} value={b}/>)}</datalist></label>
         <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Website / app</span><input className={input} list="qa-edit-site" value={edit.site} onChange={e => setEdit({ ...edit, site: e.target.value })}/><datalist id="qa-edit-site">{sites.filter(x => !edit.business || x.business === edit.business).map(x => <option key={x.id} value={x.name}/>)}</datalist></label>
       </div>
       <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Page URL</span><input className={input} value={edit.url} onChange={e => setEdit({ ...edit, url: e.target.value })}/></label>

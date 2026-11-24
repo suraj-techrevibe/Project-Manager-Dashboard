@@ -40,6 +40,10 @@ class QaCenterService
 
     public function payload(User $user): array
     {
+        // Projects and subtasks follow Taskmandu on their own; both are no-ops once everything is imported.
+        $this->importProjects();
+        $this->importPendingSubtasks();
+
         $websites = $this->websitesFor($user->id);
         $projectBusinesses = $this->projectBusinesses();
         $issues = PmQaIssue::query()->where('created_by', $user->id)->latest()->limit(300)->get();
@@ -141,6 +145,9 @@ class QaCenterService
         }
         $titles = PmSubtask::query()->where('project_id', $review->project_id)->where('task_id', $review->task_id)
             ->orderBy('id')->pluck('title')->map(fn ($t) => trim((string) $t))->filter()->all();
+        if ($titles === []) {
+            return 0; // nothing synced yet; try again later rather than marking it done
+        }
         $have = PmQaCheck::query()->where('item_type', self::TASK)->where('item_id', $review->id)->pluck('label')
             ->map(fn ($l) => mb_strtolower(trim($l)))->all();
         $sort = (int) (PmQaCheck::query()->where('item_type', self::TASK)->where('item_id', $review->id)->max('sort') ?? -1);
@@ -153,8 +160,21 @@ class QaCenterService
             $have[] = mb_strtolower($title);
             $added++;
         }
+        $review->forceFill(['qa_subtasks_imported_at' => now()])->saveQuietly();
 
         return $added;
+    }
+
+    /** Reviews that have not had their subtasks pulled in yet (older ones, or subtasks that synced after the review). */
+    public function importPendingSubtasks(): void
+    {
+        PmQaTaskReview::query()->whereNull('qa_subtasks_imported_at')->whereNotNull('project_id')->whereNotNull('task_id')
+            ->whereNotIn('qa_stage', [QaStage::PASSED])->limit(200)->get()
+            ->each(function (PmQaTaskReview $review) {
+                if (PmSubtask::query()->where('project_id', $review->project_id)->where('task_id', $review->task_id)->exists()) {
+                    $this->importSubtasks($review);
+                }
+            });
     }
 
     public function renameCheck(Model $item, PmQaCheck $check, string $label): void
@@ -173,7 +193,7 @@ class QaCenterService
     {
         $name = trim($name);
         if ($this->businessExists($name)) {
-            throw ValidationException::withMessages(['name' => 'That business already exists.']);
+            throw ValidationException::withMessages(['name' => 'That project already exists.']);
         }
         $slug = $base = Str::slug($name) ?: 'business';
         for ($n = 2; PmBusiness::query()->where('slug', $slug)->exists(); $n++) {
@@ -189,10 +209,10 @@ class QaCenterService
         $from = trim($from);
         $to = trim($to);
         if ($from === '' || $to === '') {
-            throw ValidationException::withMessages(['name' => 'Enter a business name.']);
+            throw ValidationException::withMessages(['name' => 'Enter a project name.']);
         }
         if (strcasecmp($from, $to) !== 0 && $this->businessExists($to)) {
-            throw ValidationException::withMessages(['name' => 'That business already exists.']);
+            throw ValidationException::withMessages(['name' => 'That project already exists.']);
         }
         DB::transaction(function () use ($from, $to) {
             PmBusiness::query()->where('name', $from)->update(['name' => $to]);
@@ -217,11 +237,11 @@ class QaCenterService
         ])->filter();
         $business = PmBusiness::query()->where('name', $name)->first();
         if ($business && $business->projectLinks()->exists()) {
-            $uses->put('Taskmandu project link', $business->projectLinks()->count());
+            $uses->put('Taskmandu link', $business->projectLinks()->count());
         }
         if ($uses->isNotEmpty()) {
             $what = $uses->map(fn ($n, $k) => $n.' '.$k.($n > 1 ? 's' : ''))->implode(', ');
-            throw ValidationException::withMessages(['name' => "{$name} is still used by {$what}. Move or remove those first."]);
+            throw ValidationException::withMessages(['name' => "{$name} is still used by {$what}. Move or remove those first. Projects that come from Taskmandu can't be deleted here."]);
         }
         $business?->delete();
     }
