@@ -16,6 +16,7 @@ import {
   ghostBtn,
   inputCls,
   isOverdue,
+  today,
   primaryBtn,
   priorityColors,
   taskProgress,
@@ -379,7 +380,7 @@ function SubTaskEditor({
   newSubs,
   setNewSubs,
 }: {
-  task: ProjectTask;
+  task: Pick<ProjectTask, 'subTasks'>;
   employees: Employee[];
   subD: Record<string, SubDraft>;
   setSubD: React.Dispatch<React.SetStateAction<Record<string, SubDraft>>>;
@@ -619,6 +620,154 @@ function SubTasks({
           onClose={() => setDeleting(null)}
         />
       )}
+    </div>
+  );
+}
+
+
+/**
+ * "New task" form with exactly the same layout as the edit form above: title, description,
+ * sub-tasks on the left; status, priority, due date, hours, tags and assignees on the right.
+ * Nothing exists in Taskmandu until Create is pressed; sub-tasks are added right after the task.
+ */
+export function NewTaskDetail({
+  projects,
+  employees,
+  defaultStatus = 'Assigned',
+  onProjectChanged,
+  onCreated,
+  onCancel,
+}: {
+  projects: Project[];
+  employees: Employee[];
+  defaultStatus?: TaskStatus;
+  /** Called with every project Taskmandu returns (a freshly created project, then the project with the new task). */
+  onProjectChanged: (p: Project) => void;
+  onCreated: (p: Project) => void;
+  onCancel: () => void;
+}) {
+  const [projectName, setProjectName] = useState('');
+  const typed = projectName.trim();
+  const project = projects.find((p) => p.name.trim().toLowerCase() === typed.toLowerCase()) ?? null;
+  const [d, setD] = useState({ title: '', description: '', status: defaultStatus, priority: 'Medium' as TaskPriority, dueDate: today(), hours: '4', tags: '', assignees: [] as string[] });
+  const [subD, setSubD] = useState<Record<string, SubDraft>>({});
+  const [newSubs, setNewSubs] = useState<NewSub[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function create() {
+    const title = d.title.trim();
+    if (!typed) { setError('Choose an existing business / project or type a new name.'); return; }
+    if (!title) { setError('Give the task a title.'); return; }
+    if (!d.dueDate) { setError('Pick a due date.'); return; }
+    setSaving(true);
+    setError(null);
+    let latest: Project | null = null;
+    try {
+      let target = project;
+      if (!target) {
+        const res = await pmApi.createProject({ name: typed, status: 'Active', color: 'bg-teal-500' });
+        target = res.data.project;
+        onProjectChanged(target);
+      }
+      const before = new Set(target.tasks.map((t) => t._id));
+      const { data } = await pmApi.addProjectTask(target._id, {
+        title,
+        description: d.description.trim() || undefined,
+        assignedToId: d.assignees,
+        priority: d.priority,
+        dueDate: d.dueDate,
+        estimatedHours: Math.max(0, Number(d.hours) || 0),
+        status: d.status,
+        tags: parseTags(d.tags),
+      });
+      latest = data.project;
+      const subs = newSubs.filter((n) => n.title.trim());
+      if (subs.length) {
+        const created = data.project.tasks.find((t) => !before.has(t._id));
+        if (!created) throw new Error('The task was created, but its sub-tasks could not be added.');
+        for (const n of subs) {
+          const res = await pmApi.addSubTask(target._id, created._id, { title: n.title.trim(), assignedToId: n.assignees });
+          latest = res.data.project;
+        }
+      }
+      onProjectChanged(latest);
+      onCreated(latest);
+    } catch (e: any) {
+      // The task itself may already exist; show it in the list either way.
+      if (latest) onProjectChanged(latest);
+      setError(e?.response?.data?.message ?? e?.message ?? "Couldn't create that task.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-slate-500">{project ? project.name : typed ? `${typed} (new project)` : 'Choose a business / project'}</span>
+        <div className="flex gap-2">
+          <button onClick={onCancel} disabled={saving} className={ghostBtn}>Cancel</button>
+          <button onClick={create} disabled={saving || !d.title.trim() || !typed} className={primaryBtn}>{saving ? 'Creating…' : 'Create task'}</button>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-500">New</span>
+          <Badge className={priorityColors[d.priority]}>{d.priority}</Badge>
+          <Badge className={taskStatusColors[d.status]}>{d.status}</Badge>
+        </div>
+        <input value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} maxLength={200} placeholder="Task title" className={`${inputCls} mt-2 text-base font-medium`} autoFocus />
+        <div className="mt-3">
+          <Field label="Business / project">
+            <input value={projectName} onChange={(e) => setProjectName(e.target.value)} list="pm-new-task-projects" placeholder="Select an existing project or type a new name" maxLength={200} className={inputCls} />
+            <datalist id="pm-new-task-projects">{projects.map((p) => <option key={p._id} value={p.name} />)}</datalist>
+            <p className="mt-1 text-xs text-slate-500">An existing name links the task to that project. A new name creates the project automatically before adding the task.</p>
+          </Field>
+        </div>
+      </div>
+
+      <ErrorNote message={error} />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <Section title="Description">
+            <textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} rows={6} maxLength={5000} placeholder="Describe the task…" className={inputCls} />
+          </Section>
+          <Section title="Sub-tasks">
+            <SubTaskEditor task={{ subTasks: [] }} employees={employees} subD={subD} setSubD={setSubD} newSubs={newSubs} setNewSubs={setNewSubs} />
+          </Section>
+          <Section title="Comments (0)">
+            <p className="text-sm text-slate-400">Comments can be added once the task is created.</p>
+          </Section>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 self-start">
+          <Field label="Status">
+            <select value={d.status} onChange={(e) => setD({ ...d, status: e.target.value as TaskStatus })} className={inputCls}>
+              {TASK_STATUSES.map((v) => (<option key={v} value={v}>{v}</option>))}
+            </select>
+          </Field>
+          <Field label="Priority">
+            <select value={d.priority} onChange={(e) => setD({ ...d, priority: e.target.value as TaskPriority })} className={inputCls}>
+              {TASK_PRIORITIES.map((v) => (<option key={v} value={v}>{v}</option>))}
+            </select>
+          </Field>
+          <Field label="Due date">
+            <input type="date" value={d.dueDate} onChange={(e) => setD({ ...d, dueDate: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Estimated hours">
+            <input type="number" min={0} max={1000} value={d.hours} onChange={(e) => setD({ ...d, hours: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Tags (comma separated)">
+            <input value={d.tags} onChange={(e) => setD({ ...d, tags: e.target.value })} placeholder="Feature, Code" className={inputCls} />
+          </Field>
+          <Field label={`Assignees (${d.assignees.length})`}>
+            <AssigneePicker employees={employees} value={d.assignees} onChange={(ids) => setD({ ...d, assignees: ids })} />
+          </Field>
+        </div>
+      </div>
     </div>
   );
 }

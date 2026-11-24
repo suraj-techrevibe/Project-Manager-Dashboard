@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Employee, Project, ProjectTask } from '../../types/pm';
-import TaskDetail from './Projects/TaskDetail';
-import { NewTaskModal } from './Projects/TasksTab';
-import { pmApi } from '../../lib/pmApi';
+import TaskDetail, { NewTaskDetail } from './Projects/TaskDetail';
 import { TASK_STATUSES } from '../../types/pm';
 import { EmptyState, Pill, btnChip, btnSecondary, type Tone } from './ui/kit';
 import { resolveEmployeeName, useEmployees } from './Projects/ui';
@@ -461,25 +459,26 @@ export default function AllTasksPanel({
       )}
 
       {createOpen && (
-        <NewTaskModal
-          employees={employees}
-          projects={projectRecords}
-          defaultStatus="Assigned"
-          onClose={() => setCreateOpen(false)}
-          onSubmit={async (input, projectName) => {
-            const requestedName = (projectName ?? '').trim();
-            if (!requestedName) throw new Error('Choose an existing project or enter a new project name.');
-            let target = projectRecords.find((p) => p.name.trim().toLowerCase() === requestedName.toLowerCase());
-            if (!target) {
-              const { data } = await pmApi.createProject({ name: requestedName, status: 'Active', color: 'bg-teal-500' });
-              target = data.project;
-              onProjectChanged?.(target);
-            }
-            const { data } = await pmApi.addProjectTask(target._id, input);
-            onProjectChanged?.(data.project);
-            setCreateOpen(false);
-          }}
-        />
+        (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5" role="dialog" aria-modal="true" aria-label="New task" onMouseDown={(e) => { if (e.target === e.currentTarget) setCreateOpen(false); }}>
+            <div className="flex max-h-[94dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl">
+              <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+                <div className="min-w-0"><p className="text-xs text-slate-500">Taskmandu</p><h2 className="truncate text-sm font-semibold text-slate-900">New task</h2></div>
+                <button type="button" onClick={() => setCreateOpen(false)} aria-label="Close new task" className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">✕</button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+                <NewTaskDetail
+                  projects={projectRecords}
+                  employees={employees as Employee[]}
+                  defaultStatus="Assigned"
+                  onCancel={() => setCreateOpen(false)}
+                  onProjectChanged={(updated) => onProjectChanged?.(updated)}
+                  onCreated={() => setCreateOpen(false)}
+                />
+              </div>
+            </div>
+          </div>
+        )
       )}
       {activeProject && activeProjectTask && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5" role="dialog" aria-modal="true" aria-label={`Task details: ${activeProjectTask.title}`} onMouseDown={(e) => { if (e.target === e.currentTarget) setActiveTask(null); }}>
