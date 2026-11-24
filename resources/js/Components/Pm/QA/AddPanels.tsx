@@ -104,3 +104,54 @@ export function ItemPanel({ businesses, sites, onCreated, onClose }: {
     <div className="mt-4 flex gap-2"><button className={primary} disabled={saving} onClick={() => void save()}>{saving ? 'Adding…' : 'Add to queue'}</button><button className={button} onClick={onClose}>Cancel</button></div>
   </section>;
 }
+
+/** Add, rename and delete businesses. A rename updates every site, item and report; QA codes keep their old prefix. */
+export function BusinessPanel({ businesses, sites, items, onChanged, onClose }: {
+  businesses: string[]; sites: Site[]; items: QAItem[]; onChanged: () => Promise<void>; onClose: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [rename, setRename] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function run(fn: () => Promise<unknown>, fallback: string) {
+    setBusy(true); setError('');
+    try { await fn(); await onChanged(); return true; }
+    catch (e) { setError(errorMessage(e, fallback)); return false; }
+    finally { setBusy(false); }
+  }
+
+  async function add() {
+    if (!name.trim()) { setError('Enter a business name.'); return; }
+    if (await run(() => axios.post('/pm/api/qa-center/businesses', { name: name.trim() }), 'Could not add the business.')) setName('');
+  }
+  async function save(from: string) {
+    if (!rename.trim()) { setError('Enter a business name.'); return; }
+    if (await run(() => axios.patch('/pm/api/qa-center/businesses', { from, name: rename.trim() }), 'Could not rename the business.')) setEditing(null);
+  }
+  async function remove(b: string) {
+    if (!window.confirm(`Delete ${b}?`)) return;
+    await run(() => axios.delete('/pm/api/qa-center/businesses', { data: { name: b } }), 'Could not delete the business.');
+  }
+
+  return <section className="rounded-xl border bg-white p-4">
+    <div className="mb-3 flex items-center justify-between"><h3 className={heading}>Businesses</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
+    <Field label="Add business"><div className="flex gap-2"><input className={input} placeholder="e.g. Tec.com" value={name} onChange={e => { setName(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') void add(); }}/><button className={primary} disabled={busy} onClick={() => void add()}>Add</button></div></Field>
+    {error && <p role="alert" className="mt-2 text-sm text-rose-700">{error}</p>}
+    <ul className="mt-4 divide-y text-sm">
+      {businesses.length === 0 && <li className="py-3 text-slate-500">No businesses yet.</li>}
+      {businesses.map(b => {
+        const nSites = sites.filter(x => x.business === b).length;
+        const nItems = items.filter(x => x.business === b).length;
+        return <li key={b} className="py-2">
+          {editing === b
+            ? <div className="flex flex-wrap gap-2"><input className={input + ' flex-1'} aria-label="Business name" value={rename} onChange={e => { setRename(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') void save(b); }}/><button className={primary} disabled={busy} onClick={() => void save(b)}>Save</button><button className={button} onClick={() => setEditing(null)}>Cancel</button></div>
+            : <div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-medium text-slate-800">{b}</div><div className="text-xs text-slate-500">{nSites} site{nSites === 1 ? '' : 's'} · {nItems} item{nItems === 1 ? '' : 's'}</div></div>
+                <div className="flex gap-2"><button className={button} onClick={() => { setEditing(b); setRename(b); setError(''); }}>Edit</button><button className={button + ' text-rose-700'} disabled={busy} onClick={() => void remove(b)}>Delete</button></div></div>}
+        </li>;
+      })}
+    </ul>
+    <p className="mt-3 text-xs text-slate-500">Renaming updates every site, item and report. Existing QA codes keep their prefix. A business that still has sites or items can't be deleted.</p>
+  </section>;
+}

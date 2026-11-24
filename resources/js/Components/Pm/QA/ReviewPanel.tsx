@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { button, dateTime, errorMessage, heading, input, itemUrl, primary, stageClass, type QAItem, type Stage } from './types';
+import { button, dateTime, errorMessage, heading, input, itemUrl, primary, stageClass, type QAItem, type Site, type Stage } from './types';
 
 const STANDARD_CHECKS = ['Works on desktop', 'Works on mobile'];
 
@@ -11,8 +11,8 @@ const MOVES: Record<Stage, { to: Stage; label: string; tone: 'primary' | 'danger
   Passed: [{ to: 'Queue', label: 'Re-open', tone: 'plain' }],
 };
 
-export default function ReviewPanel({ item, onChange, onDeleted, onClose }: {
-  item: QAItem; onChange: (item: QAItem) => void; onDeleted: (key: string) => void; onClose: () => void;
+export default function ReviewPanel({ item, businesses, sites, onChange, onDeleted, onClose }: {
+  item: QAItem; businesses: string[]; sites: Site[]; onChange: (item: QAItem) => void; onDeleted: (key: string) => void; onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -94,16 +94,18 @@ export default function ReviewPanel({ item, onChange, onDeleted, onClose }: {
       ? <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 block break-all text-sm text-indigo-700 hover:underline">{item.url}</a>
       : <p className="mt-2 text-sm text-amber-700">No page URL yet. Add one so the developer can open it.</p>}
 
-    {item.editable && (editing
-      ? <div className="mt-3 grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-2">
-          <input className={input + ' md:col-span-2'} aria-label="Title" value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })}/>
-          <input className={input} aria-label="Business" placeholder="Business" value={edit.business} onChange={e => setEdit({ ...edit, business: e.target.value })}/>
-          <input className={input} aria-label="Site" placeholder="Website or app" value={edit.site} onChange={e => setEdit({ ...edit, site: e.target.value })}/>
-          <input className={input + ' md:col-span-2'} aria-label="Page URL" placeholder="Page URL" value={edit.url} onChange={e => setEdit({ ...edit, url: e.target.value })}/>
-          <input className={input + ' md:col-span-2'} aria-label="Assignee" placeholder="Assignee" value={edit.assignee} onChange={e => setEdit({ ...edit, assignee: e.target.value })}/>
-          <div className="flex gap-2 md:col-span-2"><button className={primary} disabled={busy} onClick={async () => { await patch(edit); setEditing(false); }}>Save details</button><button className={button} onClick={() => setEditing(false)}>Cancel</button></div>
-        </div>
-      : <button className="mt-2 text-xs font-medium text-indigo-700 hover:underline" onClick={() => setEditing(true)}>Edit details</button>)}
+    {!editing && <button className={button + ' mt-3'} onClick={() => setEditing(true)}>Edit</button>}
+    {editing && <div className="mt-3 space-y-3 rounded-lg border bg-slate-50 p-3">
+      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Title</span><input className={input} value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })}/></label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Business</span><input className={input} list="qa-edit-biz" value={edit.business} onChange={e => setEdit({ ...edit, business: e.target.value })}/><datalist id="qa-edit-biz">{businesses.map(b => <option key={b} value={b}/>)}</datalist></label>
+        <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Website / app</span><input className={input} list="qa-edit-site" value={edit.site} onChange={e => setEdit({ ...edit, site: e.target.value })}/><datalist id="qa-edit-site">{sites.filter(x => !edit.business || x.business === edit.business).map(x => <option key={x.id} value={x.name}/>)}</datalist></label>
+      </div>
+      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Page URL</span><input className={input} value={edit.url} onChange={e => setEdit({ ...edit, url: e.target.value })}/></label>
+      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Assignee</span><input className={input} value={edit.assignee} onChange={e => setEdit({ ...edit, assignee: e.target.value })}/></label>
+      {item.kind === 'task' && <p className="text-xs text-slate-500">Edits apply here only. Clear a field to go back to the Taskmandu value. The QA code stays the same.</p>}
+      <div className="flex gap-2"><button className={primary} disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const res = await axios.patch(base, edit); onChange(res.data.item); setEditing(false); } catch (e) { setError(errorMessage(e, 'Could not save.')); } finally { setBusy(false); } }}>Save</button><button className={button} onClick={() => setEditing(false)}>Cancel</button></div>
+    </div>}
 
     {item.details.length > 0 && <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
       {item.details.map(d => <div key={d.label} className="min-w-0"><dt className="inline text-slate-500">{d.label}: </dt><dd className="inline break-words text-slate-800">{d.value}</dd></div>)}
@@ -151,7 +153,7 @@ export default function ReviewPanel({ item, onChange, onDeleted, onClose }: {
     <div className="mt-4 border-t pt-3">
       <button className="text-sm font-medium text-slate-600" onClick={() => setShowHistory(v => !v)}>{showHistory ? 'Hide' : 'Show'} history ({item.history.length})</button>
       {showHistory && <ul className="mt-2 space-y-1 text-xs text-slate-600">{[...item.history].reverse().map((h, i) => <li key={i}><span className="text-slate-400">{dateTime(h.at)}</span> · {h.message}{h.by ? ` · ${h.by}` : ''}</li>)}</ul>}
-      {item.editable && <div className="mt-3"><button className="text-xs text-rose-700 hover:underline" disabled={busy} onClick={() => void destroy()}>Delete this item</button></div>}
+      {item.kind === 'issue' && <div className="mt-3"><button className="text-xs text-rose-700 hover:underline" disabled={busy} onClick={() => void destroy()}>Delete this item</button></div>}
     </div>
   </section>;
 }

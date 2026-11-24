@@ -159,11 +159,15 @@ class PmQaCenterTest extends TestCase
         $this->assertSame('RHB-QA1', $item['code']);
         $this->assertSame('Taskmandu', $item['source']);
         $this->assertSame('Salon', $item['site']); // the Taskmandu project maps to the registered site
-        $this->assertFalse($item['editable']);
+        $this->assertTrue($item['editable']);
         $this->assertCount(3, $item['checks']);
 
         $url = '/pm/api/qa-center/items/task/'.$review->id;
-        $this->patchJson($url, ['title' => 'Renamed'])->assertStatus(422); // task details belong to Taskmandu
+        $this->patchJson($url, ['title' => 'Renamed', 'assignee' => 'Ravi', 'url' => 'shop.example.com/cart'])
+            ->assertOk()->assertJsonPath('item.title', 'Renamed')->assertJsonPath('item.assignee', 'Ravi')->assertJsonPath('item.url', 'https://shop.example.com/cart');
+        // The edit lives beside the synced Taskmandu fields, which stay as they were; clearing the assignee restores Ravi.
+        $this->assertSame('Fix booking calendar', $review->fresh()->task_title);
+        $this->patchJson($url, ['assignee' => ''])->assertOk()->assertJsonPath('item.assignee', 'Ravi');
         foreach ($item['checks'] as $check) {
             $this->patchJson($url.'/checks/'.$check['id'], ['is_done' => true])->assertOk();
         }
@@ -297,5 +301,29 @@ class PmQaCenterTest extends TestCase
         // The live item is not touched by snapshot edits.
         $this->assertNull(PmQaIssue::first()->qa_fail_note);
         $this->actingAs(User::factory()->create())->patchJson('/pm/api/qa-center/reports/'.$id, ['findings' => []])->assertNotFound();
+    }
+
+    public function test_businesses_can_be_added_renamed_and_deleted(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->postJson('/pm/api/qa-center/businesses', ['name' => 'Tec.com'])->assertCreated();
+        $this->postJson('/pm/api/qa-center/businesses', ['name' => 'tec.com'])->assertStatus(422);
+
+        $this->site($user, 'Tec.com', 'Tec');
+        $code = $this->newItem($user, 'Tec')->json('item.code');
+
+        // In use: can't be deleted.
+        $this->deleteJson('/pm/api/qa-center/businesses', ['name' => 'Tec.com'])->assertStatus(422);
+
+        // Rename follows the sites and items; the code never changes.
+        $this->patchJson('/pm/api/qa-center/businesses', ['from' => 'Tec.com', 'name' => 'Tec Group'])->assertOk();
+        $this->assertSame('Tec Group', PmQaWebsite::first()->business);
+        $item = $this->getJson('/pm/api/qa-center')->json('items.0');
+        $this->assertSame('Tec Group', $item['business']);
+        $this->assertSame($code, $item['code']);
+
+        $this->postJson('/pm/api/qa-center/businesses', ['name' => 'Spare'])->assertCreated();
+        $this->deleteJson('/pm/api/qa-center/businesses', ['name' => 'Spare'])->assertOk();
+        $this->assertNotContains('Spare', $this->getJson('/pm/api/qa-center')->json('businesses'));
     }
 }

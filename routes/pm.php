@@ -93,6 +93,9 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
         Route::patch('items/{kind}/{id}/checks/{check}', [PmQaCenterController::class, 'updateCheck'])->name('items.checks.update');
         Route::delete('items/{kind}/{id}/checks/{check}', [PmQaCenterController::class, 'destroyCheck'])->name('items.checks.destroy');
         Route::post('items/{kind}/{id}/screenshots', [PmQaCenterController::class, 'storeScreenshot'])->name('items.screenshots.store');
+        Route::post('businesses', [PmQaCenterController::class, 'storeBusiness'])->name('businesses.store');
+        Route::patch('businesses', [PmQaCenterController::class, 'updateBusiness'])->name('businesses.update');
+        Route::delete('businesses', [PmQaCenterController::class, 'destroyBusiness'])->name('businesses.destroy');
         Route::post('reports', [PmQaCenterController::class, 'storeReport'])->name('reports.store');
         Route::patch('reports/{report}', [PmQaCenterController::class, 'updateReport'])->name('reports.update');
         Route::delete('items/{kind}/{id}/screenshots/{screenshot}', [PmQaCenterController::class, 'destroyScreenshot'])->name('items.screenshots.destroy');

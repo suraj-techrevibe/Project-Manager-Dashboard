@@ -57,6 +57,72 @@ class QaCenterService
         ];
     }
 
+    // ------------------------------------------------------------ businesses
+
+    public function createBusiness(string $name): PmBusiness
+    {
+        $name = trim($name);
+        if ($this->businessExists($name)) {
+            throw ValidationException::withMessages(['name' => 'That business already exists.']);
+        }
+        $slug = $base = Str::slug($name) ?: 'business';
+        for ($n = 2; PmBusiness::query()->where('slug', $slug)->exists(); $n++) {
+            $slug = $base.'-'.$n;
+        }
+
+        return PmBusiness::create(['name' => $name, 'slug' => $slug, 'status' => 'active']);
+    }
+
+    /** Rename everywhere the name is stored. QA codes keep their old prefix: a code never changes. */
+    public function renameBusiness(string $from, string $to): void
+    {
+        $from = trim($from);
+        $to = trim($to);
+        if ($from === '' || $to === '') {
+            throw ValidationException::withMessages(['name' => 'Enter a business name.']);
+        }
+        if (strcasecmp($from, $to) !== 0 && $this->businessExists($to)) {
+            throw ValidationException::withMessages(['name' => 'That business already exists.']);
+        }
+        DB::transaction(function () use ($from, $to) {
+            PmBusiness::query()->where('name', $from)->update(['name' => $to]);
+            foreach (['pm_qa_websites', 'pm_qa_issues', 'pm_qa_reports'] as $table) {
+                DB::table($table)->where('business', $from)->update(['business' => $to]);
+            }
+            DB::table('pm_qa_task_reviews')->where('business', $from)->update(['business' => $to]);
+            DB::table('pm_qa_task_reviews')->where('qa_business', $from)->update(['qa_business' => $to]);
+            DB::table('pm_qa_business_codes')->where('business', $from)->update(['business' => $to]);
+        });
+    }
+
+    /** Only a business nothing refers to can be deleted. */
+    public function deleteBusiness(string $name): void
+    {
+        $name = trim($name);
+        $uses = collect([
+            'site' => DB::table('pm_qa_websites')->where('business', $name)->count(),
+            'QA item' => DB::table('pm_qa_issues')->where('business', $name)->count()
+                + DB::table('pm_qa_task_reviews')->where(fn ($q) => $q->where('business', $name)->orWhere('qa_business', $name))->count(),
+            'saved report' => DB::table('pm_qa_reports')->where('business', $name)->count(),
+        ])->filter();
+        $business = PmBusiness::query()->where('name', $name)->first();
+        if ($business && $business->projectLinks()->exists()) {
+            $uses->put('Taskmandu project link', $business->projectLinks()->count());
+        }
+        if ($uses->isNotEmpty()) {
+            $what = $uses->map(fn ($n, $k) => $n.' '.$k.($n > 1 ? 's' : ''))->implode(', ');
+            throw ValidationException::withMessages(['name' => "{$name} is still used by {$what}. Move or remove those first."]);
+        }
+        $business?->delete();
+    }
+
+    private function businessExists(string $name): bool
+    {
+        return PmBusiness::query()->whereRaw('lower(name) = ?', [mb_strtolower($name)])->exists()
+            || DB::table('pm_qa_websites')->whereRaw('lower(business) = ?', [mb_strtolower($name)])->exists()
+            || DB::table('pm_qa_issues')->whereRaw('lower(business) = ?', [mb_strtolower($name)])->exists();
+    }
+
     /** Every business name we know of: the Operations list plus any already used by sites, items or project links. */
     private function businessNames(Collection $websites, Collection $issues, Collection $projectBusinesses): array
     {
@@ -167,17 +233,13 @@ class QaCenterService
     }
 
     /**
-     * Change an item. Taskmandu task details (title, assignee, link) belong to Taskmandu and can't be edited here.
+     * Change an item. Every item is editable. For Taskmandu tasks the edit is stored beside the synced
+     * values (qa_* override columns), so a sync never wipes it and clearing a field restores the Taskmandu value.
      *
      * @param array<string,mixed> $data
      */
     public function update(Model $item, string $kind, array $data, User $user): void
     {
-        $ownFields = ['title', 'assignee', 'url', 'business', 'site'];
-        if ($kind === self::TASK && array_intersect_key($data, array_flip($ownFields))) {
-            throw ValidationException::withMessages(['title' => 'Task details come from Taskmandu and can only be changed there.']);
-        }
-
         DB::transaction(function () use ($item, $kind, $data, $user) {
             if ($kind === self::ISSUE) {
                 if (array_key_exists('title', $data)) $item->title = trim((string) $data['title']);
@@ -190,6 +252,16 @@ class QaCenterService
                         throw ValidationException::withMessages(['url' => 'Enter the page URL so the developer can open it.']);
                     }
                     $item->page_url = mb_substr($url, 0, 500);
+                }
+            }
+            if ($kind === self::TASK) {
+                $clean = fn ($v) => filled($v) ? trim((string) $v) : null;
+                if (array_key_exists('title', $data)) $item->qa_title = $clean($data['title']);
+                if (array_key_exists('assignee', $data)) $item->qa_assignee = $clean($data['assignee']);
+                if (array_key_exists('business', $data)) $item->qa_business = $clean($data['business']);
+                if (array_key_exists('site', $data)) $item->qa_site = $clean($data['site']);
+                if (array_key_exists('url', $data)) {
+                    $item->qa_url = filled($data['url']) ? mb_substr((string) $this->normalizeUrl($data['url']), 0, 1000) : null;
                 }
             }
             if (array_key_exists('remarks', $data)) {
@@ -519,13 +591,13 @@ class QaCenterService
     private function presentReview(PmQaTaskReview $review, Collection $checks, Collection $siteByProject): array
     {
         return $this->shape($review, self::TASK, $checks, [
-            'title' => $review->task_title,
-            'business' => $review->business,
-            'site' => ($review->project_id ? $siteByProject->get($review->project_id)?->name : null) ?: $review->project_name,
-            'url' => $review->taskmandu_url,
+            'title' => $review->qa_title ?: $review->task_title,
+            'business' => $review->qa_business ?: $review->business,
+            'site' => $review->qa_site ?: (($review->project_id ? $siteByProject->get($review->project_id)?->name : null) ?: $review->project_name),
+            'url' => $review->qa_url ?: $review->taskmandu_url,
             'source' => 'Taskmandu',
-            'assignee' => $review->assignee,
-            'editable' => false,
+            'assignee' => $review->qa_assignee ?: $review->assignee,
+            'editable' => true,
             'details' => $this->details([
                 ['Taskmandu status', $review->task_status],
                 ['Taskmandu project', $review->project_name],

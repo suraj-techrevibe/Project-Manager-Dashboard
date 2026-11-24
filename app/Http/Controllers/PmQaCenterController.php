@@ -124,6 +124,30 @@ class PmQaCenterController extends Controller
         return $this->respond($item, $kind, $request);
     }
 
+    public function storeBusiness(Request $request): JsonResponse
+    {
+        $data = $request->validate(['name' => 'required|string|max:160']);
+        $business = $this->qa->createBusiness($data['name']);
+
+        return response()->json(['name' => $business->name], 201);
+    }
+
+    public function updateBusiness(Request $request): JsonResponse
+    {
+        $data = $request->validate(['from' => 'required|string|max:160', 'name' => 'required|string|max:160']);
+        $this->qa->renameBusiness($data['from'], $data['name']);
+
+        return response()->json(['name' => trim($data['name'])]);
+    }
+
+    public function destroyBusiness(Request $request): JsonResponse
+    {
+        $data = $request->validate(['name' => 'required|string|max:160']);
+        $this->qa->deleteBusiness($data['name']);
+
+        return response()->json(['deleted' => true]);
+    }
+
     /** Save a report snapshot built from QA Center items. Later changes to the items never alter it. */
     public function storeReport(Request $request): JsonResponse
     {
