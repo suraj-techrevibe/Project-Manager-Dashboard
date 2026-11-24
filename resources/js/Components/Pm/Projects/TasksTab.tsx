@@ -303,13 +303,17 @@ export function NewTaskModal({
   defaultStatus,
   onClose,
   onSubmit,
+  projects,
 }: {
   employees: Employee[];
   defaultStatus: TaskStatus;
   onClose: () => void;
-  onSubmit: (input: NewTaskInput) => Promise<void>;
+  onSubmit: (input: NewTaskInput, projectName?: string) => Promise<void>;
+  /** When supplied, show the project picker used by All Tasks. */
+  projects?: Project[];
 }) {
   const [title, setTitle] = useState('');
+  const [projectName, setProjectName] = useState('');
   const [description, setDescription] = useState('');
   const [assignedToId, setAssignedToId] = useState<string[]>([]);
   const [priority, setPriority] = useState<TaskPriority>('Medium');
@@ -334,7 +338,7 @@ export function NewTaskModal({
         estimatedHours: estimatedHours || 0,
         status,
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-      });
+      }, projects ? projectName.trim() : undefined);
     } catch (e) {
       setError(err(e, "Couldn't create that task."));
     } finally {
@@ -348,6 +352,23 @@ export function NewTaskModal({
         <Field label="Title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={inputCls} autoFocus />
         </Field>
+        {projects && (
+          <Field label="Business / project">
+            <input
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              list="pm-all-task-project-options"
+              placeholder="Select an existing project or type a new name"
+              maxLength={200}
+              className={inputCls}
+              required
+            />
+            <datalist id="pm-all-task-project-options">
+              {projects.map((project) => <option key={project._id} value={project.name} />)}
+            </datalist>
+            <p className="mt-1 text-xs text-slate-500">An existing name links the task to that project. A new name creates the project automatically before adding the task.</p>
+          </Field>
+        )}
         <Field label="Description">
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={5000} className={inputCls} />
         </Field>
@@ -382,7 +403,7 @@ export function NewTaskModal({
         <ErrorNote message={error} />
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className={ghostBtn}>Cancel</button>
-          <button onClick={submit} disabled={saving || !title.trim() || !dueDate} className={primaryBtn}>{saving ? 'Saving…' : 'Create task'}</button>
+          <button onClick={submit} disabled={saving || !title.trim() || !dueDate || (Boolean(projects) && !projectName.trim())} className={primaryBtn}>{saving ? 'Saving…' : 'Create task'}</button>
         </div>
       </div>
     </Modal>
