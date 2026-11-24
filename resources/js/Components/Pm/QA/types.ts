@@ -43,7 +43,7 @@ export type Site = {
 };
 
 export type Project = { id: string; name: string };
-export type Payload = { items: QAItem[]; sites: Site[]; businesses: string[]; projects: Project[] };
+export type Payload = { items: QAItem[]; sites: Site[]; businesses: string[]; members: string[]; projects: Project[] };
 
 export const STAGES: Stage[] = ['Queue', 'Testing', 'Failed', 'Passed'];
 export const SOURCES: Source[] = ['Taskmandu', 'Site check', 'Client report'];

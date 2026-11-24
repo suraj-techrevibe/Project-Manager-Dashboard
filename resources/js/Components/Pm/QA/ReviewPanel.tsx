@@ -11,8 +11,8 @@ const MOVES: Record<Stage, { to: Stage; label: string; tone: 'primary' | 'danger
   Passed: [{ to: 'Queue', label: 'Re-open', tone: 'plain' }],
 };
 
-export default function ReviewPanel({ item, businesses, sites, onChange, onDeleted, onClose }: {
-  item: QAItem; businesses: string[]; sites: Site[]; onChange: (item: QAItem) => void; onDeleted: (key: string) => void; onClose: () => void;
+export default function ReviewPanel({ item, businesses, members, sites, onChange, onDeleted, onClose }: {
+  item: QAItem; businesses: string[]; members: string[]; sites: Site[]; onChange: (item: QAItem) => void; onDeleted: (key: string) => void; onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -20,6 +20,8 @@ export default function ReviewPanel({ item, businesses, sites, onChange, onDelet
   const [note, setNote] = useState(item.fail_note ?? '');
   const [newCheck, setNewCheck] = useState('');
   const [editing, setEditing] = useState(false);
+  const [renaming, setRenaming] = useState<number | null>(null);
+  const [renameText, setRenameText] = useState('');
   const [edit, setEdit] = useState({ title: item.title, business: item.business ?? '', site: item.site ?? '', url: item.url ?? '', assignee: item.assignee ?? '' });
   const [showHistory, setShowHistory] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -42,6 +44,8 @@ export default function ReviewPanel({ item, businesses, sites, onChange, onDelet
   const patch = (body: Record<string, unknown>, fallback = 'Could not save.') => run(() => axios.patch(base, body), fallback);
   const move = (to: Stage) => patch({ stage: to, fail_note: note, remarks }, 'Could not move this item.');
   const toggle = (id: number, is_done: boolean) => run(() => axios.patch(`${base}/checks/${id}`, { is_done }), 'Could not update the check.');
+  const renameCheck = async (id: number) => { const label = renameText.trim(); if (!label) { setError('A check needs some text.'); return; } setRenaming(null); await run(() => axios.patch(`${base}/checks/${id}`, { label }), 'Could not rename the check.'); };
+  const importSubtasks = () => run(() => axios.post(`${base}/subtasks`), 'Could not import subtasks.');
   const removeCheck = (id: number) => run(() => axios.delete(`${base}/checks/${id}`), 'Could not remove the check.');
   const addChecks = (labels: string[]) => run(() => axios.post(`${base}/checks`, { labels }), 'Could not add the check.');
 
@@ -102,7 +106,7 @@ export default function ReviewPanel({ item, businesses, sites, onChange, onDelet
         <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Website / app</span><input className={input} list="qa-edit-site" value={edit.site} onChange={e => setEdit({ ...edit, site: e.target.value })}/><datalist id="qa-edit-site">{sites.filter(x => !edit.business || x.business === edit.business).map(x => <option key={x.id} value={x.name}/>)}</datalist></label>
       </div>
       <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Page URL</span><input className={input} value={edit.url} onChange={e => setEdit({ ...edit, url: e.target.value })}/></label>
-      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Assignee</span><input className={input} value={edit.assignee} onChange={e => setEdit({ ...edit, assignee: e.target.value })}/></label>
+      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Assignee</span><input className={input} list="qa-edit-members" value={edit.assignee} onChange={e => setEdit({ ...edit, assignee: e.target.value })}/><datalist id="qa-edit-members">{members.map(m => <option key={m} value={m}/>)}</datalist></label>
       {item.kind === 'task' && <p className="text-xs text-slate-500">Edits apply here only. Clear a field to go back to the Taskmandu value. The QA code stays the same.</p>}
       <div className="flex gap-2"><button className={primary} disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const res = await axios.patch(base, edit); onChange(res.data.item); setEditing(false); } catch (e) { setError(errorMessage(e, 'Could not save.')); } finally { setBusy(false); } }}>Save</button><button className={button} onClick={() => setEditing(false)}>Cancel</button></div>
     </div>}
@@ -119,10 +123,16 @@ export default function ReviewPanel({ item, businesses, sites, onChange, onDelet
       {item.checks.length === 0 && <div className="mt-2 rounded-lg border border-dashed p-3 text-sm text-slate-600">No checks yet. <button className="font-medium text-indigo-700 hover:underline" disabled={busy} onClick={() => void addChecks(STANDARD_CHECKS)}>Add standard checks</button></div>}
       <ul className="mt-2 space-y-1">
         {item.checks.map(c => <li key={c.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-slate-50">
-          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm text-slate-800"><input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={c.is_done} disabled={busy} onChange={e => void toggle(c.id, e.target.checked)}/><span className={`break-words ${c.is_done ? 'text-slate-500 line-through' : ''}`}>{c.label}</span></label>
-          <button className="px-1 text-xs text-slate-400 hover:text-rose-700" aria-label={`Remove ${c.label}`} disabled={busy} onClick={() => void removeCheck(c.id)}>✕</button>
+          {renaming === c.id
+            ? <><input autoFocus className={input} value={renameText} onChange={e => setRenameText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void renameCheck(c.id); if (e.key === 'Escape') setRenaming(null); }}/><button className="text-xs font-medium text-indigo-700" onClick={() => void renameCheck(c.id)}>Save</button><button className="text-xs text-slate-500" onClick={() => setRenaming(null)}>Cancel</button></>
+            : <>
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm text-slate-800"><input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={c.is_done} disabled={busy} onChange={e => void toggle(c.id, e.target.checked)}/><span className={`break-words ${c.is_done ? 'text-slate-500 line-through' : ''}`}>{c.label}</span></label>
+              <button className="px-1 text-xs text-slate-500 hover:text-indigo-700" aria-label={`Edit ${c.label}`} disabled={busy} onClick={() => { setRenaming(c.id); setRenameText(c.label); }}>Edit</button>
+              <button className="px-1 text-xs text-slate-400 hover:text-rose-700" aria-label={`Remove ${c.label}`} disabled={busy} onClick={() => void removeCheck(c.id)}>✕</button>
+            </>}
         </li>)}
       </ul>
+      {item.kind === 'task' && <button className="mt-2 text-xs font-medium text-indigo-700 hover:underline" disabled={busy} onClick={() => void importSubtasks()}>Import Taskmandu subtasks as checks</button>}
       <div className="mt-2 flex gap-2"><input className={input} placeholder="Add check" value={newCheck} onChange={e => setNewCheck(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void submitCheck(); }}/><button className={button} disabled={busy || !newCheck.trim()} onClick={() => void submitCheck()}>Add</button></div>
     </div>
 

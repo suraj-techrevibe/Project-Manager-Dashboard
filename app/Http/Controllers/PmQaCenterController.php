@@ -89,9 +89,14 @@ class PmQaCenterController extends Controller
     {
         $item = $this->find($request, $kind, $id);
         abort_unless($check->item_type === $kind && (int) $check->item_id === $id, 404);
-        $data = $request->validate(['is_done' => 'required|boolean']);
+        $data = $request->validate(['is_done' => 'sometimes|boolean', 'label' => 'sometimes|string|max:300']);
 
-        $this->qa->setCheckDone($item, $kind, $check, (bool) $data['is_done'], $request->user());
+        if (array_key_exists('label', $data)) {
+            $this->qa->renameCheck($item, $check, $data['label']);
+        }
+        if (array_key_exists('is_done', $data)) {
+            $this->qa->setCheckDone($item, $kind, $check, (bool) $data['is_done'], $request->user());
+        }
 
         return $this->respond($item, $kind, $request);
     }
@@ -120,6 +125,20 @@ class PmQaCenterController extends Controller
     {
         $item = $this->find($request, $kind, $id);
         abort_unless($this->qa->removeScreenshot($item, $screenshot, $request->user()), 404);
+
+        return $this->respond($item, $kind, $request);
+    }
+
+    public function importProjects(): JsonResponse
+    {
+        return response()->json($this->qa->importProjects());
+    }
+
+    public function importSubtasks(Request $request, string $kind, int $id): JsonResponse
+    {
+        abort_unless($kind === QaCenterService::TASK, 404);
+        $item = $this->find($request, $kind, $id);
+        $this->qa->importSubtasks($item);
 
         return $this->respond($item, $kind, $request);
     }

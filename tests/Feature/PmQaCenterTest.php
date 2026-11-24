@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\PmBusiness;
+use App\Models\PmCard;
+use App\Models\PmSubtask;
 use App\Models\PmQaIssue;
 use App\Models\PmQaTaskReview;
 use App\Models\PmQaWebsite;
@@ -325,5 +327,31 @@ class PmQaCenterTest extends TestCase
         $this->postJson('/pm/api/qa-center/businesses', ['name' => 'Spare'])->assertCreated();
         $this->deleteJson('/pm/api/qa-center/businesses', ['name' => 'Spare'])->assertOk();
         $this->assertNotContains('Spare', $this->getJson('/pm/api/qa-center')->json('businesses'));
+    }
+
+    public function test_taskmandu_projects_import_as_businesses_and_subtasks_become_checks(): void
+    {
+        $user = User::factory()->create();
+        PmCard::create(['external_id' => 'p1', 'title' => 'Calendar', 'status' => 'Completed', 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1']);
+        $review = $this->review(['project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1', 'assignee' => 'Ravi, Mia']);
+        foreach (['Header fix', 'Footer fix'] as $i => $t) {
+            PmSubtask::create(['external_id' => 'x'.$i, 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1', 'subtask_id' => 's'.$i, 'parent_title' => 'Calendar', 'title' => $t]);
+        }
+
+        $this->actingAs($user)->postJson('/pm/api/qa-center/businesses/import')->assertOk()->assertJsonPath('created', 1)->assertJsonPath('linked', 1);
+        $this->postJson('/pm/api/qa-center/businesses/import')->assertOk()->assertJsonPath('created', 0)->assertJsonPath('linked', 0);
+        $this->assertSame('Maison Eclat', $review->fresh()->business);
+
+        $url = '/pm/api/qa-center/items/task/'.$review->id;
+        $this->postJson($url.'/subtasks')->assertOk()->assertJsonCount(5, 'item.checks');
+        $this->postJson($url.'/subtasks')->assertOk()->assertJsonCount(5, 'item.checks'); // no duplicates
+
+        $payload = $this->getJson('/pm/api/qa-center')->assertOk();
+        $this->assertContains('Maison Eclat', $payload->json('businesses'));
+        $this->assertEqualsCanonicalizing(['Ravi', 'Mia'], $payload->json('members'));
+
+        $check = $this->getJson('/pm/api/qa-center')->json('items.0.checks.0.id');
+        $this->patchJson($url.'/checks/'.$check, ['label' => 'Renamed check'])->assertOk();
+        $this->assertSame('Renamed check', \App\Models\PmQaCheck::find($check)->label);
     }
 }

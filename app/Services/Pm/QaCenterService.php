@@ -6,6 +6,7 @@ use App\Models\PmBusiness;
 use App\Models\PmBusinessProjectLink;
 use App\Models\PmCard;
 use App\Models\PmQaCheck;
+use App\Models\PmSubtask;
 use App\Models\PmQaIssue;
 use App\Models\PmQaTaskReview;
 use App\Models\PmQaWebsite;
@@ -13,6 +14,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -50,11 +52,119 @@ class QaCenterService
                 ->concat($reviews->map(fn (PmQaTaskReview $r) => $this->presentReview($r, $checks, $siteByProject)))
                 ->values(),
             'sites' => $websites->values(),
+            'members' => $this->members($issues, $reviews),
             'businesses' => $this->businessNames($websites, $issues, $projectBusinesses),
             'projects' => PmCard::query()->whereNotNull('project_id')->select('project_id', 'project_name')->distinct()
                 ->orderBy('project_name')->get()
                 ->map(fn ($p) => ['id' => $p->project_id, 'name' => $p->project_name])->values(),
         ];
+    }
+
+    // ------------------------------------------------------------ taskmandu imports
+
+    /**
+     * Every Taskmandu project becomes a business (project = business). A project already linked to a
+     * business is left alone; otherwise it joins the business with the same name, or a new one.
+     *
+     * @return array{created:int,linked:int,total:int}
+     */
+    public function importProjects(): array
+    {
+        $projects = PmCard::query()->whereNotNull('project_id')->whereNotNull('project_name')
+            ->select('project_id', 'project_name')->distinct()->get()->unique('project_id');
+        $linked = PmBusinessProjectLink::query()->pluck('taskmandu_project_id')->map(fn ($id) => (string) $id)->all();
+        $created = 0;
+        $links = 0;
+
+        DB::transaction(function () use ($projects, $linked, &$created, &$links) {
+            foreach ($projects as $project) {
+                if (in_array((string) $project->project_id, $linked, true)) {
+                    continue;
+                }
+                $name = trim((string) $project->project_name);
+                $business = PmBusiness::query()->whereRaw('lower(name) = ?', [mb_strtolower($name)])->first();
+                if (! $business) {
+                    $business = $this->createBusiness($name);
+                    $created++;
+                }
+                PmBusinessProjectLink::create([
+                    'business_id' => $business->id,
+                    'taskmandu_project_id' => (string) $project->project_id,
+                    'taskmandu_project_name' => mb_substr($name, 0, 200),
+                    'is_primary' => ! $business->projectLinks()->exists(),
+                ]);
+                $links++;
+            }
+
+            // Reviews that arrived before their project had a business pick it up now.
+            $byProject = PmBusinessProjectLink::query()->with('business:id,name')->get()
+                ->mapWithKeys(fn ($l) => [(string) $l->taskmandu_project_id => $l->business?->name])->filter();
+            foreach ($byProject as $projectId => $businessName) {
+                PmQaTaskReview::query()->where('project_id', $projectId)->whereNull('business')->update(['business' => $businessName]);
+            }
+        });
+
+        return ['created' => $created, 'linked' => $links, 'total' => $projects->count()];
+    }
+
+    /** Team member names for the assignee pickers: Taskmandu employees plus anyone already assigned in QA. */
+    public function members(Collection $issues, Collection $reviews): array
+    {
+        $names = collect();
+        if (app(\App\Services\Pm\TaskmanduSync::class)->configured()) {
+            $staff = Cache::get('pm.employees');
+            if ($staff === null) {
+                try {
+                    $staff = app(\App\Services\Pm\TaskmanduSync::class)->listEmployees();
+                    Cache::put('pm.employees', $staff, 600);
+                } catch (\Throwable $e) {
+                    report($e);
+                    $staff = [];
+                    Cache::put('pm.employees', $staff, 60);
+                }
+            }
+            $names = $names->concat(collect($staff)->pluck('name'));
+        }
+
+        return $names
+            ->concat($issues->pluck('assignee'))
+            ->concat($reviews->pluck('assignee')->flatMap(fn ($a) => preg_split('/\s*,\s*/', (string) $a)))
+            ->map(fn ($n) => trim((string) $n))->filter()
+            ->unique(fn ($n) => mb_strtolower($n))->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
+    }
+
+    /** Subtasks of the Taskmandu task become checks (matched by title, so running it again adds nothing twice). */
+    public function importSubtasks(Model $review): int
+    {
+        if (! $review instanceof PmQaTaskReview || blank($review->project_id) || blank($review->task_id)) {
+            return 0;
+        }
+        $titles = PmSubtask::query()->where('project_id', $review->project_id)->where('task_id', $review->task_id)
+            ->orderBy('id')->pluck('title')->map(fn ($t) => trim((string) $t))->filter()->all();
+        $have = PmQaCheck::query()->where('item_type', self::TASK)->where('item_id', $review->id)->pluck('label')
+            ->map(fn ($l) => mb_strtolower(trim($l)))->all();
+        $sort = (int) (PmQaCheck::query()->where('item_type', self::TASK)->where('item_id', $review->id)->max('sort') ?? -1);
+        $added = 0;
+        foreach ($titles as $title) {
+            if (in_array(mb_strtolower($title), $have, true) || $sort + 1 >= self::MAX_CHECKS) {
+                continue;
+            }
+            PmQaCheck::create(['item_type' => self::TASK, 'item_id' => $review->id, 'label' => mb_substr($title, 0, 300), 'sort' => ++$sort]);
+            $have[] = mb_strtolower($title);
+            $added++;
+        }
+
+        return $added;
+    }
+
+    public function renameCheck(Model $item, PmQaCheck $check, string $label): void
+    {
+        $this->assertChecklistOpen($item);
+        $label = trim($label);
+        if ($label === '') {
+            throw ValidationException::withMessages(['label' => 'A check needs some text.']);
+        }
+        $check->update(['label' => mb_substr($label, 0, 300)]);
     }
 
     // ------------------------------------------------------------ businesses
