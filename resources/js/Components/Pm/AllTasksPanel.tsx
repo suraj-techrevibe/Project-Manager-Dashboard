@@ -223,7 +223,6 @@ export default function AllTasksPanel({
   const [expandAll, setExpandAll] = useState<boolean | null>(null);
   const [activeTask, setActiveTask] = useState<{ projectId: string; taskId: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createProjectId, setCreateProjectId] = useState('');
   const { employees, nameFor } = useEmployees();
   const today = startOfToday();
   const activeProject = activeTask ? projectRecords.find((p) => p._id === activeTask.projectId) ?? null : null;
@@ -287,11 +286,7 @@ export default function AllTasksPanel({
           <p className="text-xs text-slate-500">Every task from your Taskmandu projects with its sub-tasks, plus standalone tasks.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select aria-label="Business / project for new task" value={createProjectId} onChange={(e) => setCreateProjectId(e.target.value)} className={field}>
-            <option value="">Choose business / project</option>
-            {projectRecords.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
-          </select>
-          <button type="button" disabled={!createProjectId} onClick={() => setCreateOpen(true)} className={btnSecondary}>+ New task</button>
+          <button type="button" onClick={() => setCreateOpen(true)} className={btnSecondary}>+ New task</button>
           <button type="button" onClick={() => { setOpenMap({}); setExpandAll(true); }} className={btnSecondary}>
             Expand all
           </button>
@@ -465,13 +460,22 @@ export default function AllTasksPanel({
         </>
       )}
 
-      {createOpen && createProjectId && projectRecords.some((p) => p._id === createProjectId) && (
+      {createOpen && (
         <NewTaskModal
           employees={employees}
+          projects={projectRecords}
           defaultStatus="Assigned"
           onClose={() => setCreateOpen(false)}
-          onSubmit={async (input) => {
-            const { data } = await pmApi.addProjectTask(createProjectId, input);
+          onSubmit={async (input, projectName) => {
+            const requestedName = (projectName ?? '').trim();
+            if (!requestedName) throw new Error('Choose an existing project or enter a new project name.');
+            let target = projectRecords.find((p) => p.name.trim().toLowerCase() === requestedName.toLowerCase());
+            if (!target) {
+              const { data } = await pmApi.createProject({ name: requestedName, status: 'Active', color: 'bg-teal-500' });
+              target = data.project;
+              onProjectChanged?.(target);
+            }
+            const { data } = await pmApi.addProjectTask(target._id, input);
             onProjectChanged?.(data.project);
             setCreateOpen(false);
           }}
