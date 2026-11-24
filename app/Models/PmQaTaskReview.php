@@ -41,12 +41,6 @@ class PmQaTaskReview extends Model
             foreach (self::DEFAULT_CHECKS as $i => $label) {
                 PmQaCheck::create(['item_type' => 'task', 'item_id' => $review->id, 'label' => $label, 'sort' => $i]);
             }
-            // The task's Taskmandu subtasks are part of what QA has to verify.
-            try {
-                app(\App\Services\Pm\QaCenterService::class)->importSubtasks($review);
-            } catch (\Throwable $e) {
-                report($e);
-            }
         });
 
         // The older task-inbox screen changes `qa_status`; keep the pipeline stage in step with it.

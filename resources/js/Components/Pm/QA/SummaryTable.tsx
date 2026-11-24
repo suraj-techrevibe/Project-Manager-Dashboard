@@ -27,7 +27,7 @@ ${g.items.map(i => `<tr><td>${esc(i.code)}</td><td>${esc(i.title)}${i.url ? `<br
 const cell = 'w-full min-w-[8rem] rounded border border-transparent bg-transparent px-1.5 py-1 text-sm hover:border-slate-300 focus:border-indigo-500 focus:bg-white focus:outline-none disabled:text-slate-700';
 
 /** Detailed table of the items currently shown. Text cells edit inline and save when you leave them. */
-export default function SummaryTable({ items, members, scope, onChange }: { items: QAItem[]; members: string[]; scope: string; onChange: (item: QAItem) => void }) {
+export default function SummaryTable({ items, scope, onChange }: { items: QAItem[]; scope: string; onChange: (item: QAItem) => void }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const grouped = useMemo(() => groups(items), [items]);
 
@@ -52,7 +52,7 @@ export default function SummaryTable({ items, members, scope, onChange }: { item
   // Keyed on updated_at so a server refresh resets the cell; a plain function (not a component) so typing never remounts it.
   const cellFor = (item: QAItem, field: Field, multi = false) => {
     const locked = !item.editable && (field === 'title' || field === 'url' || field === 'assignee');
-    const common = { list: field === 'assignee' ? 'qa-sum-members' : undefined, className: cell, defaultValue: item[field] ?? '', disabled: locked, 'aria-label': field, onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void save(item, field, e.target.value) };
+    const common = { className: cell, defaultValue: item[field] ?? '', disabled: locked, 'aria-label': field, onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void save(item, field, e.target.value) };
     return multi ? <textarea key={item.updated_at} rows={2} {...common}/> : <input key={item.updated_at} {...common}/>;
   };
 
@@ -62,7 +62,6 @@ export default function SummaryTable({ items, members, scope, onChange }: { item
       <div><h3 className="text-base font-semibold text-slate-900">Summary</h3><p className="text-xs text-slate-500">{scope} · {items.length} items · click a cell to edit; it saves when you leave it.</p></div>
       <div className="qa-no-print flex gap-2"><button className={primary} disabled={!items.length} onClick={download}>Export to doc</button><button className={button} disabled={!items.length} onClick={() => window.print()}>Print</button></div>
     </div>
-    <datalist id="qa-sum-members">{members.map(m => <option key={m} value={m}/>)}</datalist>
     {items.length === 0 && <p className="mt-4 text-sm text-slate-500">Nothing matches the current filters.</p>}
     {grouped.map(g => {
       const n = (s: string) => g.items.filter(i => i.stage === s).length;

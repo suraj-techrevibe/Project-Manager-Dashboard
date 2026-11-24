@@ -3,8 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\PmBusiness;
-use App\Models\PmCard;
-use App\Models\PmSubtask;
 use App\Models\PmQaIssue;
 use App\Models\PmQaTaskReview;
 use App\Models\PmQaWebsite;
@@ -161,15 +159,11 @@ class PmQaCenterTest extends TestCase
         $this->assertSame('RHB-QA1', $item['code']);
         $this->assertSame('Taskmandu', $item['source']);
         $this->assertSame('Salon', $item['site']); // the Taskmandu project maps to the registered site
-        $this->assertTrue($item['editable']);
+        $this->assertFalse($item['editable']);
         $this->assertCount(3, $item['checks']);
 
         $url = '/pm/api/qa-center/items/task/'.$review->id;
-        $this->patchJson($url, ['title' => 'Renamed', 'assignee' => 'Ravi', 'url' => 'shop.example.com/cart'])
-            ->assertOk()->assertJsonPath('item.title', 'Renamed')->assertJsonPath('item.assignee', 'Ravi')->assertJsonPath('item.url', 'https://shop.example.com/cart');
-        // The edit lives beside the synced Taskmandu fields, which stay as they were; clearing the assignee restores Ravi.
-        $this->assertSame('Fix booking calendar', $review->fresh()->task_title);
-        $this->patchJson($url, ['assignee' => ''])->assertOk()->assertJsonPath('item.assignee', 'Ravi');
+        $this->patchJson($url, ['title' => 'Renamed'])->assertStatus(422); // task details belong to Taskmandu
         foreach ($item['checks'] as $check) {
             $this->patchJson($url.'/checks/'.$check['id'], ['is_done' => true])->assertOk();
         }
@@ -303,111 +297,5 @@ class PmQaCenterTest extends TestCase
         // The live item is not touched by snapshot edits.
         $this->assertNull(PmQaIssue::first()->qa_fail_note);
         $this->actingAs(User::factory()->create())->patchJson('/pm/api/qa-center/reports/'.$id, ['findings' => []])->assertNotFound();
-    }
-
-    public function test_businesses_can_be_added_renamed_and_deleted(): void
-    {
-        $user = User::factory()->create();
-        $this->actingAs($user)->postJson('/pm/api/qa-center/businesses', ['name' => 'Tec.com'])->assertCreated();
-        $this->postJson('/pm/api/qa-center/businesses', ['name' => 'tec.com'])->assertStatus(422);
-
-        $this->site($user, 'Tec.com', 'Tec');
-        $code = $this->newItem($user, 'Tec')->json('item.code');
-
-        // In use: can't be deleted.
-        $this->deleteJson('/pm/api/qa-center/businesses', ['name' => 'Tec.com'])->assertStatus(422);
-
-        // Rename follows the sites and items; the code never changes.
-        $this->patchJson('/pm/api/qa-center/businesses', ['from' => 'Tec.com', 'name' => 'Tec Group'])->assertOk();
-        $this->assertSame('Tec Group', PmQaWebsite::first()->business);
-        $item = $this->getJson('/pm/api/qa-center')->json('items.0');
-        $this->assertSame('Tec Group', $item['business']);
-        $this->assertSame($code, $item['code']);
-
-        $this->postJson('/pm/api/qa-center/businesses', ['name' => 'Spare'])->assertCreated();
-        $this->deleteJson('/pm/api/qa-center/businesses', ['name' => 'Spare'])->assertOk();
-        $this->assertNotContains('Spare', $this->getJson('/pm/api/qa-center')->json('businesses'));
-    }
-
-    public function test_taskmandu_projects_import_as_businesses_and_subtasks_become_checks(): void
-    {
-        $user = User::factory()->create();
-        PmCard::create(['external_id' => 'p1', 'title' => 'Calendar', 'status' => 'Completed', 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1']);
-        $review = $this->review(['project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1', 'assignee' => 'Ravi, Mia']);
-        foreach (['Header fix', 'Footer fix'] as $i => $t) {
-            PmSubtask::create(['external_id' => 'x'.$i, 'project_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'project_name' => 'Maison Eclat', 'task_id' => 't1', 'subtask_id' => 's'.$i, 'parent_title' => 'Calendar', 'title' => $t]);
-        }
-
-        $this->actingAs($user)->postJson('/pm/api/qa-center/businesses/import')->assertOk()->assertJsonPath('created', 1)->assertJsonPath('linked', 1);
-        $this->postJson('/pm/api/qa-center/businesses/import')->assertOk()->assertJsonPath('created', 0)->assertJsonPath('linked', 0);
-        $this->assertSame('Maison Eclat', $review->fresh()->business);
-
-        $url = '/pm/api/qa-center/items/task/'.$review->id;
-        $this->postJson($url.'/subtasks')->assertOk()->assertJsonCount(5, 'item.checks');
-        $this->postJson($url.'/subtasks')->assertOk()->assertJsonCount(5, 'item.checks'); // no duplicates
-
-        $payload = $this->getJson('/pm/api/qa-center')->assertOk();
-        $this->assertContains('Maison Eclat', $payload->json('businesses'));
-        $this->assertEqualsCanonicalizing(['Ravi', 'Mia'], $payload->json('members'));
-
-        $check = $this->getJson('/pm/api/qa-center')->json('items.0.checks.0.id');
-        $this->patchJson($url.'/checks/'.$check, ['label' => 'Renamed check'])->assertOk();
-        $this->assertSame('Renamed check', \App\Models\PmQaCheck::find($check)->label);
-    }
-
-    public function test_projects_and_subtasks_import_automatically_when_the_tab_loads(): void
-    {
-        $user = User::factory()->create();
-        PmCard::create(['external_id' => 'p9', 'title' => 'Cart', 'status' => 'Completed', 'project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9']);
-        $review = $this->review(['project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9']);
-        PmSubtask::create(['external_id' => 'y1', 'project_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb', 'project_name' => 'Tec.com', 'task_id' => 't9', 'subtask_id' => 's1', 'parent_title' => 'Cart', 'title' => 'Coupon field']);
-
-        $res = $this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk();
-        $this->assertContains('Tec.com', $res->json('businesses'));
-        $item = collect($res->json('items'))->firstWhere('key', 'task:'.$review->id);
-        $this->assertSame('Tec.com', $item['business']);
-        $this->assertContains('Coupon field', collect($item['checks'])->pluck('label')->all());
-
-        // A check removed afterwards stays removed on the next load.
-        $id = collect($item['checks'])->firstWhere('label', 'Coupon field')['id'];
-        $this->deleteJson('/pm/api/qa-center/items/task/'.$review->id.'/checks/'.$id)->assertOk();
-        $again = collect($this->getJson('/pm/api/qa-center')->json('items'))->firstWhere('key', 'task:'.$review->id);
-        $this->assertNotContains('Coupon field', collect($again['checks'])->pluck('label')->all());
-    }
-
-    public function test_task_checklist_follows_taskmandu_subtasks_and_writes_back_through_the_api(): void
-    {
-        $user = User::factory()->create();
-        $review = $this->review(['project_id' => 'cccccccccccccccccccccccc', 'task_id' => 'dddddddddddddddddddddddd', 'project_name' => 'Tec.com']);
-        $project = ['data' => ['tasks' => [['_id' => 'dddddddddddddddddddddddd', 'title' => 'Fix booking calendar', 'status' => 'Completed',
-            'comments' => [['_id' => 'c1', 'text' => 'Please retest', 'authorName' => 'Ravi', 'createdAt' => '2026-11-24T01:00:00Z']],
-            'subTasks' => [['_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'title' => 'Header fix', 'status' => 'Completed', 'comments' => [['_id' => 'c2', 'text' => 'Done on staging', 'authorName' => 'Mia', 'createdAt' => '2026-11-24T02:00:00Z']]]]]]]];
-
-        $client = \Mockery::mock(\App\Services\Pm\TaskmanduClient::class);
-        $client->shouldReceive('configured')->andReturn(false);
-        $renamed = $project;
-        $renamed['data']['tasks'][0]['subTasks'][0]['title'] = 'Header and nav fix';
-        $gone = ['data' => ['tasks' => [['_id' => 'dddddddddddddddddddddddd', 'title' => 'Fix booking calendar', 'subTasks' => []]]]];
-        // Taskmandu is read after each action: first as loaded, then after the rename, then after the delete.
-        $client->shouldReceive('get')->with('/projects/cccccccccccccccccccccccc')->andReturn($project, $project, $renamed, $gone);
-        $client->shouldReceive('post')->once()->with('/projects/cccccccccccccccccccccccc/tasks/dddddddddddddddddddddddd/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa/comments', ['text' => 'Retested OK'])->andReturn([]);
-        $client->shouldReceive('patch')->once()->with('/projects/cccccccccccccccccccccccc/tasks/dddddddddddddddddddddddd/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa', ['title' => 'Header and nav fix'])->andReturn([]);
-        $client->shouldReceive('delete')->once()->with('/projects/cccccccccccccccccccccccc/tasks/dddddddddddddddddddddddd/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa')->andReturn([]);
-        $this->app->instance(\App\Services\Pm\TaskmanduClient::class, $client);
-        $base = '/pm/api/qa-center/tasks/'.$review->id.'/taskmandu';
-
-        $res = $this->actingAs($user)->getJson($base)->assertOk();
-        $res->assertJsonPath('subtasks.0.comments.0.text', 'Done on staging')->assertJsonPath('task.comments.0.author', 'Ravi');
-        $labels = collect($res->json('item.checks'))->pluck('label')->all();
-        $this->assertContains('Header fix', $labels);
-        $this->assertNotNull(collect($res->json('item.checks'))->firstWhere('label', 'Header fix')['subtask_id']);
-
-        $this->postJson($base.'/comments', ['text' => 'Retested OK', 'subtask_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa'])->assertOk();
-        $this->patchJson($base.'/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa', ['title' => 'Header and nav fix'])->assertOk();
-        $this->assertSame('Header and nav fix', \App\Models\PmQaCheck::where('subtask_id', 'aaaaaaaaaaaaaaaaaaaaaaaa')->value('label'));
-
-        // Deleting the check's subtask removes it in Taskmandu and here.
-        $this->deleteJson($base.'/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa')->assertOk();
-        $this->assertSame(0, \App\Models\PmQaCheck::where('subtask_id', 'aaaaaaaaaaaaaaaaaaaaaaaa')->count());
     }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { button, dateTime, errorMessage, heading, input, itemUrl, primary, stageClass, type Live, type QAItem, type Site, type Stage, type TComment } from './types';
+import { button, dateTime, errorMessage, heading, input, itemUrl, primary, stageClass, type QAItem, type Stage } from './types';
 
 const STANDARD_CHECKS = ['Works on desktop', 'Works on mobile'];
 
@@ -11,8 +11,8 @@ const MOVES: Record<Stage, { to: Stage; label: string; tone: 'primary' | 'danger
   Passed: [{ to: 'Queue', label: 'Re-open', tone: 'plain' }],
 };
 
-export default function ReviewPanel({ item, businesses, members, sites, onChange, onDeleted, onClose }: {
-  item: QAItem; businesses: string[]; members: string[]; sites: Site[]; onChange: (item: QAItem) => void; onDeleted: (key: string) => void; onClose: () => void;
+export default function ReviewPanel({ item, onChange, onDeleted, onClose }: {
+  item: QAItem; onChange: (item: QAItem) => void; onDeleted: (key: string) => void; onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -20,49 +20,17 @@ export default function ReviewPanel({ item, businesses, members, sites, onChange
   const [note, setNote] = useState(item.fail_note ?? '');
   const [newCheck, setNewCheck] = useState('');
   const [editing, setEditing] = useState(false);
-  const [renaming, setRenaming] = useState<number | null>(null);
-  const [renameText, setRenameText] = useState('');
   const [edit, setEdit] = useState({ title: item.title, business: item.business ?? '', site: item.site ?? '', url: item.url ?? '', assignee: item.assignee ?? '' });
   const [showHistory, setShowHistory] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const base = itemUrl(item);
-  const isTask = item.kind === 'task';
-  const tm = `/pm/api/qa-center/tasks/${item.id}/taskmandu`;
-  const [live, setLive] = useState<Live | null>(null);
-  const [liveError, setLiveError] = useState('');
-  const [openThreads, setOpenThreads] = useState<Record<string, boolean>>({});
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   // A different item (or a server refresh of this one) resets the local drafts.
   useEffect(() => {
     setRemarks(item.remarks ?? ''); setNote(item.fail_note ?? ''); setError('');
     setEdit({ title: item.title, business: item.business ?? '', site: item.site ?? '', url: item.url ?? '', assignee: item.assignee ?? '' });
   }, [item.key, item.updated_at]);
-  useEffect(() => { setEditing(false); setNewCheck(''); setShowHistory(false); setLive(null); setLiveError(''); setOpenThreads({}); setDrafts({}); }, [item.key]);
-
-  // A Taskmandu task item reads its subtasks and comments live from Taskmandu whenever it is opened.
-  async function loadLive() {
-    if (!isTask) return;
-    setLiveError('');
-    try { const { data } = await axios.get<Live & { item: QAItem }>(tm); setLive({ task: data.task, subtasks: data.subtasks }); onChange(data.item); }
-    catch (e) { setLiveError(errorMessage(e, 'Could not load from Taskmandu.')); }
-  }
-  useEffect(() => { void loadLive(); }, [item.key]);
-
-  /** A write to Taskmandu: returns the fresh live data and item. */
-  const tmRun = (fn: () => Promise<{ data: Live & { item: QAItem } }>, fallback: string) => {
-    setBusy(true); setError('');
-    return fn().then(({ data }) => { setLive({ task: data.task, subtasks: data.subtasks }); onChange(data.item); return true; })
-      .catch(e => { setError(errorMessage(e, fallback)); return false; })
-      .finally(() => setBusy(false));
-  };
-  const addComment = async (subtaskId: string | null) => {
-    const key = subtaskId ?? 'task';
-    const text = (drafts[key] ?? '').trim();
-    if (!text) return;
-    if (await tmRun(() => axios.post(`${tm}/comments`, { text, subtask_id: subtaskId }), 'Could not post the comment.')) setDrafts(d => ({ ...d, [key]: '' }));
-  };
-  const commentsFor = (c: { subtask_id?: string | null }): TComment[] => live?.subtasks.find(x => x.id === c.subtask_id)?.comments ?? [];
+  useEffect(() => { setEditing(false); setNewCheck(''); setShowHistory(false); }, [item.key]);
 
   async function run(fn: () => Promise<{ data: { item: QAItem } } | void>, fallback: string) {
     setBusy(true); setError('');
@@ -74,29 +42,14 @@ export default function ReviewPanel({ item, businesses, members, sites, onChange
   const patch = (body: Record<string, unknown>, fallback = 'Could not save.') => run(() => axios.patch(base, body), fallback);
   const move = (to: Stage) => patch({ stage: to, fail_note: note, remarks }, 'Could not move this item.');
   const toggle = (id: number, is_done: boolean) => run(() => axios.patch(`${base}/checks/${id}`, { is_done }), 'Could not update the check.');
-  const renameCheck = async (id: number) => {
-    const label = renameText.trim();
-    if (!label) { setError('A check needs some text.'); return; }
-    setRenaming(null);
-    const check = item.checks.find(c => c.id === id);
-    if (isTask && check?.subtask_id) await tmRun(() => axios.patch(`${tm}/subtasks/${check.subtask_id}`, { title: label }), 'Could not rename the subtask in Taskmandu.');
-    else await run(() => axios.patch(`${base}/checks/${id}`, { label }), 'Could not rename the check.');
-  };
-  const removeCheck = async (id: number) => {
-    const check = item.checks.find(c => c.id === id);
-    if (isTask && check?.subtask_id) {
-      if (!window.confirm(`Delete "${check.label}"? This also deletes the subtask in Taskmandu.`)) return;
-      await tmRun(() => axios.delete(`${tm}/subtasks/${check.subtask_id}`), 'Could not delete the subtask in Taskmandu.');
-    } else await run(() => axios.delete(`${base}/checks/${id}`), 'Could not remove the check.');
-  };
+  const removeCheck = (id: number) => run(() => axios.delete(`${base}/checks/${id}`), 'Could not remove the check.');
   const addChecks = (labels: string[]) => run(() => axios.post(`${base}/checks`, { labels }), 'Could not add the check.');
 
   async function submitCheck() {
     const label = newCheck.trim();
     if (!label) return;
     setNewCheck('');
-    if (isTask) await tmRun(() => axios.post(`${tm}/subtasks`, { title: label }), 'Could not create the subtask in Taskmandu.');
-    else await addChecks([label]);
+    await addChecks([label]);
   }
 
   function upload(files: FileList | null) {
@@ -120,12 +73,6 @@ export default function ReviewPanel({ item, businesses, members, sites, onChange
     void patch({ remarks, fail_note: note });
   };
 
-  const thread = (comments: TComment[], key: string) => <div className="mb-1 space-y-1 rounded-lg bg-slate-50 p-2">
-    {comments.length === 0 && <p className="text-xs text-slate-500">No comments yet.</p>}
-    {comments.map((c, i) => <p key={c.id || i} className="text-xs text-slate-700"><span className="font-medium">{c.author ?? 'Someone'}</span> <span className="text-slate-400">{c.at ? dateTime(c.at) : ''}</span><br/><span className="whitespace-pre-wrap break-words">{c.text}</span></p>)}
-    <div className="flex gap-2"><input className={input} placeholder="Add a comment (posts to Taskmandu)" value={drafts[key] ?? ''} onChange={e => setDrafts(d => ({ ...d, [key]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') void addComment(key === 'task' ? null : key); }}/><button className={button} disabled={busy || !(drafts[key] ?? '').trim()} onClick={() => void addComment(key === 'task' ? null : key)}>Post</button></div>
-  </div>;
-
   const done = item.checks.filter(c => c.is_done).length;
   const noteLabel = item.stage === 'Failed' || item.stage === 'Testing' || item.stage === 'Queue' ? 'Failure note (required to fail)' : 'Note';
 
@@ -147,18 +94,16 @@ export default function ReviewPanel({ item, businesses, members, sites, onChange
       ? <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 block break-all text-sm text-indigo-700 hover:underline">{item.url}</a>
       : <p className="mt-2 text-sm text-amber-700">No page URL yet. Add one so the developer can open it.</p>}
 
-    {!editing && <button className={button + ' mt-3'} onClick={() => setEditing(true)}>Edit</button>}
-    {editing && <div className="mt-3 space-y-3 rounded-lg border bg-slate-50 p-3">
-      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Title</span><input className={input} value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })}/></label>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Business</span><input className={input} list="qa-edit-biz" value={edit.business} onChange={e => setEdit({ ...edit, business: e.target.value })}/><datalist id="qa-edit-biz">{businesses.map(b => <option key={b} value={b}/>)}</datalist></label>
-        <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Website / app</span><input className={input} list="qa-edit-site" value={edit.site} onChange={e => setEdit({ ...edit, site: e.target.value })}/><datalist id="qa-edit-site">{sites.filter(x => !edit.business || x.business === edit.business).map(x => <option key={x.id} value={x.name}/>)}</datalist></label>
-      </div>
-      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Page URL</span><input className={input} value={edit.url} onChange={e => setEdit({ ...edit, url: e.target.value })}/></label>
-      <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Assignee</span><input className={input} list="qa-edit-members" value={edit.assignee} onChange={e => setEdit({ ...edit, assignee: e.target.value })}/><datalist id="qa-edit-members">{members.map(m => <option key={m} value={m}/>)}</datalist></label>
-      {isTask && <p className="text-xs text-slate-500">The title is saved to Taskmandu. Business, site, page URL and assignee apply here only; clear one to go back to the Taskmandu value.</p>}
-      <div className="flex gap-2"><button className={primary} disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const { title, ...rest } = edit; if (isTask && title.trim() !== item.title) await axios.patch(`${tm}/task`, { title }); const res = await axios.patch(base, isTask ? rest : edit); onChange(res.data.item); setEditing(false); } catch (e) { setError(errorMessage(e, 'Could not save.')); } finally { setBusy(false); } }}>Save</button><button className={button} onClick={() => setEditing(false)}>Cancel</button></div>
-    </div>}
+    {item.editable && (editing
+      ? <div className="mt-3 grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-2">
+          <input className={input + ' md:col-span-2'} aria-label="Title" value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })}/>
+          <input className={input} aria-label="Business" placeholder="Business" value={edit.business} onChange={e => setEdit({ ...edit, business: e.target.value })}/>
+          <input className={input} aria-label="Site" placeholder="Website or app" value={edit.site} onChange={e => setEdit({ ...edit, site: e.target.value })}/>
+          <input className={input + ' md:col-span-2'} aria-label="Page URL" placeholder="Page URL" value={edit.url} onChange={e => setEdit({ ...edit, url: e.target.value })}/>
+          <input className={input + ' md:col-span-2'} aria-label="Assignee" placeholder="Assignee" value={edit.assignee} onChange={e => setEdit({ ...edit, assignee: e.target.value })}/>
+          <div className="flex gap-2 md:col-span-2"><button className={primary} disabled={busy} onClick={async () => { await patch(edit); setEditing(false); }}>Save details</button><button className={button} onClick={() => setEditing(false)}>Cancel</button></div>
+        </div>
+      : <button className="mt-2 text-xs font-medium text-indigo-700 hover:underline" onClick={() => setEditing(true)}>Edit details</button>)}
 
     {item.details.length > 0 && <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
       {item.details.map(d => <div key={d.label} className="min-w-0"><dt className="inline text-slate-500">{d.label}: </dt><dd className="inline break-words text-slate-800">{d.value}</dd></div>)}
@@ -171,23 +116,13 @@ export default function ReviewPanel({ item, businesses, members, sites, onChange
       <p className="text-xs text-slate-500">Ticking a check starts testing. Pass needs every check ticked.</p>
       {item.checks.length === 0 && <div className="mt-2 rounded-lg border border-dashed p-3 text-sm text-slate-600">No checks yet. <button className="font-medium text-indigo-700 hover:underline" disabled={busy} onClick={() => void addChecks(STANDARD_CHECKS)}>Add standard checks</button></div>}
       <ul className="mt-2 space-y-1">
-        {item.checks.map(c => <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg px-1 py-1 hover:bg-slate-50">
-          {renaming === c.id
-            ? <><input autoFocus className={input} value={renameText} onChange={e => setRenameText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void renameCheck(c.id); if (e.key === 'Escape') setRenaming(null); }}/><button className="text-xs font-medium text-indigo-700" onClick={() => void renameCheck(c.id)}>Save</button><button className="text-xs text-slate-500" onClick={() => setRenaming(null)}>Cancel</button></>
-            : <>
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm text-slate-800"><input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={c.is_done} disabled={busy} onChange={e => void toggle(c.id, e.target.checked)}/><span className={`break-words ${c.is_done ? 'text-slate-500 line-through' : ''}`}>{c.label}</span></label>
-              {isTask && c.subtask_id && <button className="px-1 text-xs text-slate-500 hover:text-indigo-700" onClick={() => setOpenThreads(o => ({ ...o, [c.subtask_id as string]: !o[c.subtask_id as string] }))}>{commentsFor(c).length} comment{commentsFor(c).length === 1 ? '' : 's'}</button>}
-              <button className="px-1 text-xs text-slate-500 hover:text-indigo-700" aria-label={`Edit ${c.label}`} disabled={busy} onClick={() => { setRenaming(c.id); setRenameText(c.label); }}>Edit</button>
-              <button className="px-1 text-xs text-slate-400 hover:text-rose-700" aria-label={`Remove ${c.label}`} disabled={busy} onClick={() => void removeCheck(c.id)}>✕</button>
-            </>}
-          {isTask && c.subtask_id && openThreads[c.subtask_id] && <div className="basis-full pl-6">{thread(commentsFor(c), c.subtask_id)}</div>}
+        {item.checks.map(c => <li key={c.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-slate-50">
+          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm text-slate-800"><input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={c.is_done} disabled={busy} onChange={e => void toggle(c.id, e.target.checked)}/><span className={`break-words ${c.is_done ? 'text-slate-500 line-through' : ''}`}>{c.label}</span></label>
+          <button className="px-1 text-xs text-slate-400 hover:text-rose-700" aria-label={`Remove ${c.label}`} disabled={busy} onClick={() => void removeCheck(c.id)}>✕</button>
         </li>)}
       </ul>
-      {isTask && <div className="mt-2 text-xs text-slate-500">Checks mirror the Taskmandu subtasks. Adding, renaming or deleting one here does the same in Taskmandu. <button className="font-medium text-indigo-700 hover:underline" disabled={busy} onClick={() => void loadLive()}>Refresh from Taskmandu</button>{liveError && <span role="alert" className="ml-1 text-rose-700">{liveError}</span>}</div>}
       <div className="mt-2 flex gap-2"><input className={input} placeholder="Add check" value={newCheck} onChange={e => setNewCheck(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void submitCheck(); }}/><button className={button} disabled={busy || !newCheck.trim()} onClick={() => void submitCheck()}>Add</button></div>
     </div>
-
-    {isTask && <div className="mt-4"><h4 className={heading}>Task comments{live ? ` (${live.task.comments.length})` : ''}</h4><div className="mt-1">{live ? thread(live.task.comments, 'task') : <p className="text-xs text-slate-500">{liveError ? 'Comments unavailable.' : 'Loading from Taskmandu…'}</p>}</div></div>}
 
     <div className="mt-4">
       <div className="flex items-center justify-between"><h4 className={heading}>Screenshots</h4><button className={button} disabled={busy} onClick={() => fileRef.current?.click()}>Upload</button></div>
@@ -216,7 +151,7 @@ export default function ReviewPanel({ item, businesses, members, sites, onChange
     <div className="mt-4 border-t pt-3">
       <button className="text-sm font-medium text-slate-600" onClick={() => setShowHistory(v => !v)}>{showHistory ? 'Hide' : 'Show'} history ({item.history.length})</button>
       {showHistory && <ul className="mt-2 space-y-1 text-xs text-slate-600">{[...item.history].reverse().map((h, i) => <li key={i}><span className="text-slate-400">{dateTime(h.at)}</span> · {h.message}{h.by ? ` · ${h.by}` : ''}</li>)}</ul>}
-      {item.kind === 'issue' && <div className="mt-3"><button className="text-xs text-rose-700 hover:underline" disabled={busy} onClick={() => void destroy()}>Delete this item</button></div>}
+      {item.editable && <div className="mt-3"><button className="text-xs text-rose-700 hover:underline" disabled={busy} onClick={() => void destroy()}>Delete this item</button></div>}
     </div>
   </section>;
 }
