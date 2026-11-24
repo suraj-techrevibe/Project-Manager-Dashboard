@@ -308,8 +308,12 @@ export function NewTaskModal({
   employees: Employee[];
   defaultStatus: TaskStatus;
   onClose: () => void;
-  onSubmit: (input: NewTaskInput, projectName?: string) => Promise<void>;
-  /** When supplied, show the project picker used by All Tasks. */
+  onSubmit: (
+    input: NewTaskInput,
+    projectName?: string,
+    subTasks?: { title: string; assignedToId: string[] }[],
+  ) => Promise<void>;
+  /** When supplied, show the full Task Details-style editor used by All Tasks. */
   projects?: Project[];
 }) {
   const [title, setTitle] = useState('');
@@ -321,24 +325,39 @@ export function NewTaskModal({
   const [estimatedHours, setEstimatedHours] = useState(4);
   const [status, setStatus] = useState<TaskStatus>(defaultStatus);
   const [tags, setTags] = useState('');
+  const [subTasks, setSubTasks] = useState<{ key: string; title: string; assignedToId: string[] }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const patchSubTask = (key: string, patch: Partial<{ title: string; assignedToId: string[] }>) => {
+    setSubTasks((items) => items.map((item) => item.key === key ? { ...item, ...patch } : item));
+  };
+
   async function submit() {
-    if (!title.trim() || !dueDate) return;
+    const cleanTitle = title.trim();
+    const cleanProjectName = projectName.trim();
+    const cleanSubTasks = subTasks.map(({ title: subTitle, assignedToId: ids }) => ({
+      title: subTitle.trim(),
+      assignedToId: ids,
+    }));
+    if (!cleanTitle || !dueDate || (projects && !cleanProjectName)) return;
+    if (cleanSubTasks.some((item) => !item.title)) {
+      setError('Enter a title for every sub-task or remove the empty row.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       await onSubmit({
-        title: title.trim(),
-        description: description.trim() || undefined,
+        title: cleanTitle,
+        description: description.trim(),
         assignedToId,
         priority,
         dueDate,
-        estimatedHours: estimatedHours || 0,
+        estimatedHours: Number.isFinite(estimatedHours) ? estimatedHours : 0,
         status,
-        tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-      }, projects ? projectName.trim() : undefined);
+        tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+      }, projects ? cleanProjectName : undefined, cleanSubTasks);
     } catch (e) {
       setError(err(e, "Couldn't create that task."));
     } finally {
@@ -347,18 +366,18 @@ export function NewTaskModal({
   }
 
   return (
-    <Modal title="Add task" onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <Field label="Title">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={inputCls} autoFocus />
-        </Field>
-        {projects && (
+    <Modal title={projects ? 'Create task' : 'Add task'} onClose={onClose} wide={Boolean(projects)}>
+      {projects ? (
+        <div className="flex flex-col gap-4">
+          <Field label="Task title">
+            <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="Enter task title" className={inputCls} autoFocus />
+          </Field>
           <Field label="Business / project">
             <input
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               list="pm-all-task-project-options"
-              placeholder="Select an existing project or type a new name"
+              placeholder="Choose an existing project or type a new name"
               maxLength={200}
               className={inputCls}
               required
@@ -366,46 +385,117 @@ export function NewTaskModal({
             <datalist id="pm-all-task-project-options">
               {projects.map((project) => <option key={project._id} value={project.name} />)}
             </datalist>
-            <p className="mt-1 text-xs text-slate-500">An existing name links the task to that project. A new name creates the project automatically before adding the task.</p>
+            <p className="mt-1 text-xs text-slate-500">Existing names link to that project. A new name creates the project automatically.</p>
           </Field>
-        )}
-        <Field label="Description">
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={5000} className={inputCls} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Due date (required)">
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="Estimated hours">
-            <input type="number" min={0} max={1000} value={estimatedHours} onChange={(e) => setEstimatedHours(Number(e.target.value))} className={inputCls} />
-          </Field>
-          <Field label="Priority">
-            <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)} className={inputCls}>
-              {TASK_PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Status">
-            <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} className={inputCls}>
-              {TASK_STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </Field>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <h4 className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">Description</h4>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} maxLength={5000} placeholder="Describe the task, expected outcome and any important context…" className={inputCls} />
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">Sub-tasks ({subTasks.length})</h4>
+                  <button type="button" onClick={() => setSubTasks((items) => [...items, { key: `${Date.now()}-${items.length}`, title: '', assignedToId: [] }])} className="text-xs text-indigo-600 hover:text-indigo-800">+ Add sub-task</button>
+                </div>
+                {subTasks.length === 0 ? (
+                  <p className="text-sm text-slate-400">No sub-tasks added. You can add them now or later from Task Details.</p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {subTasks.map((item, index) => (
+                      <div key={item.key} className="rounded-lg border border-slate-200 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs font-medium text-slate-500">Sub-task {index + 1}</span>
+                          <button type="button" onClick={() => setSubTasks((items) => items.filter((row) => row.key !== item.key))} className="text-xs text-slate-400 hover:text-red-600">Remove</button>
+                        </div>
+                        <Field label="Sub-task title">
+                          <input value={item.title} onChange={(e) => patchSubTask(item.key, { title: e.target.value })} maxLength={200} placeholder="What needs to be done?" className={inputCls} />
+                        </Field>
+                        <div className="mt-3">
+                          <Field label="Assign sub-task to">
+                            <AssigneePicker employees={employees} value={item.assignedToId} onChange={(ids) => patchSubTask(item.key, { assignedToId: ids })} />
+                          </Field>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <aside className="flex flex-col gap-3 self-start rounded-xl border border-slate-200 bg-white p-4">
+              <Field label="Status">
+                <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} className={inputCls}>
+                  {TASK_STATUSES.map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </Field>
+              <Field label="Priority">
+                <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)} className={inputCls}>
+                  {TASK_PRIORITIES.map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </Field>
+              <Field label="Due date (required)">
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
+              </Field>
+              <Field label="Estimated hours">
+                <input type="number" min={0} max={1000} value={estimatedHours} onChange={(e) => setEstimatedHours(Number(e.target.value))} className={inputCls} />
+              </Field>
+              <Field label="Tags (comma separated)">
+                <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Feature, Code" className={inputCls} />
+              </Field>
+              <Field label={`Assignees (${assignedToId.length})`}>
+                <AssigneePicker employees={employees} value={assignedToId} onChange={setAssignedToId} />
+              </Field>
+            </aside>
+          </div>
+          <p className="text-xs text-slate-500">Comments can be added once the task is created, from its Task Details view.</p>
+          <ErrorNote message={error} />
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+            <button type="button" onClick={onClose} disabled={saving} className={ghostBtn}>Cancel</button>
+            <button type="button" onClick={submit} disabled={saving || !title.trim() || !dueDate || !projectName.trim()} className={primaryBtn}>{saving ? 'Creating…' : 'Create task'}</button>
+          </div>
         </div>
-        <Field label="Tags (comma separated)">
-          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Feature, Code" className={inputCls} />
-        </Field>
-        <Field label="Assignees">
-          <AssigneePicker employees={employees} value={assignedToId} onChange={setAssignedToId} />
-        </Field>
-        <ErrorNote message={error} />
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={ghostBtn}>Cancel</button>
-          <button onClick={submit} disabled={saving || !title.trim() || !dueDate || (Boolean(projects) && !projectName.trim())} className={primaryBtn}>{saving ? 'Saving…' : 'Create task'}</button>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <Field label="Title">
+            <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={inputCls} autoFocus />
+          </Field>
+          <Field label="Description">
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={5000} className={inputCls} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Due date (required)">
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
+            </Field>
+            <Field label="Estimated hours">
+              <input type="number" min={0} max={1000} value={estimatedHours} onChange={(e) => setEstimatedHours(Number(e.target.value))} className={inputCls} />
+            </Field>
+            <Field label="Priority">
+              <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)} className={inputCls}>
+                {TASK_PRIORITIES.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </Field>
+            <Field label="Status">
+              <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} className={inputCls}>
+                {TASK_STATUSES.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="Tags (comma separated)">
+            <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Feature, Code" className={inputCls} />
+          </Field>
+          <Field label="Assignees">
+            <AssigneePicker employees={employees} value={assignedToId} onChange={setAssignedToId} />
+          </Field>
+          <ErrorNote message={error} />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className={ghostBtn}>Cancel</button>
+            <button type="button" onClick={submit} disabled={saving || !title.trim() || !dueDate} className={primaryBtn}>{saving ? 'Saving…' : 'Create task'}</button>
+          </div>
         </div>
-      </div>
+      )}
     </Modal>
   );
 }

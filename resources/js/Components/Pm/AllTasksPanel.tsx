@@ -466,17 +466,27 @@ export default function AllTasksPanel({
           projects={projectRecords}
           defaultStatus="Assigned"
           onClose={() => setCreateOpen(false)}
-          onSubmit={async (input, projectName) => {
+          onSubmit={async (input, projectName, subTasks = []) => {
             const requestedName = (projectName ?? '').trim();
             if (!requestedName) throw new Error('Choose an existing project or enter a new project name.');
             let target = projectRecords.find((p) => p.name.trim().toLowerCase() === requestedName.toLowerCase());
             if (!target) {
               const { data } = await pmApi.createProject({ name: requestedName, status: 'Active', color: 'bg-teal-500' });
               target = data.project;
-              onProjectChanged?.(target);
             }
-            const { data } = await pmApi.addProjectTask(target._id, input);
-            onProjectChanged?.(data.project);
+
+            // Capture existing IDs so identical task titles cannot make us attach sub-tasks to an older task.
+            const existingTaskIds = new Set(target.tasks.map((task) => task._id));
+            let latestProject = (await pmApi.addProjectTask(target._id, input)).data.project;
+            const createdTask = latestProject.tasks.find((task) => !existingTaskIds.has(task._id));
+            if (!createdTask) throw new Error('The task was created, but its new record could not be located to attach sub-tasks.');
+            for (const subTask of subTasks) {
+              latestProject = (await pmApi.addSubTask(latestProject._id, createdTask._id, {
+                title: subTask.title,
+                assignedToId: subTask.assignedToId,
+              })).data.project;
+            }
+            onProjectChanged?.(latestProject);
             setCreateOpen(false);
           }}
         />
