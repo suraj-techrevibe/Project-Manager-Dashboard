@@ -9,7 +9,7 @@ type Panel = 'none' | 'site' | 'item' | 'summary';
 type Sort = 'newest' | 'oldest' | 'code';
 
 const tab = (active: boolean) => (active ? primary : button);
-const EMPTY: Payload = { items: [], sites: [], businesses: [], projects: [] };
+const EMPTY: Payload = { items: [], sites: [], businesses: [], members: [], projects: [] };
 const stageTone: Record<Stage, string> = { Queue: 'text-blue-700', Testing: 'text-amber-700', Failed: 'text-rose-700', Passed: 'text-emerald-700' };
 
 export default function QACenter() {
@@ -81,7 +81,7 @@ export default function QACenter() {
   const form = panel === 'site'
     ? <SitePanel businesses={data.businesses} projects={data.projects} sites={data.sites} onSaved={() => load(true)} onClose={() => setPanel('none')}/>
     : panel === 'item'
-      ? <ItemPanel businesses={data.businesses} sites={data.sites} onClose={() => setPanel('none')}
+      ? <ItemPanel members={data.members} businesses={data.businesses} sites={data.sites} onClose={() => setPanel('none')}
           onCreated={item => { setData(d => ({ ...d, items: [item, ...d.items] })); setSelectedKey(item.key); setPanel('none'); void load(true); }}/>
       : null;
 
@@ -122,7 +122,7 @@ export default function QACenter() {
     </div>
 
     {panel === 'summary'
-      ? <SummaryTable items={visible} scope={scope} onChange={replaceItem}/>
+      ? <SummaryTable members={data.members} items={visible} scope={scope} onChange={replaceItem}/>
       : <div className="grid gap-4 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <div className="space-y-2">
         {loading && <p className="text-sm text-slate-500">Loading…</p>}
@@ -142,13 +142,13 @@ export default function QACenter() {
       {/* Desktop: side panel. Mobile: full-screen overlay. */}
       <div className="hidden md:block">
         {form ? <div className="sticky top-4">{form}</div> : selected
-          ? <div className="sticky top-4"><ReviewPanel item={selected} onChange={replaceItem} onClose={() => setSelectedKey(null)} onDeleted={key => { setData(d => ({ ...d, items: d.items.filter(i => i.key !== key) })); setSelectedKey(null); }}/></div>
+          ? <div className="sticky top-4"><ReviewPanel members={data.members} businesses={data.businesses} sites={data.sites} item={selected} onChange={replaceItem} onClose={() => setSelectedKey(null)} onDeleted={key => { setData(d => ({ ...d, items: d.items.filter(i => i.key !== key) })); setSelectedKey(null); }}/></div>
           : <div className="rounded-xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">Select an item to review it.</div>}
       </div>
     </div>}
 
     {(form || selected) && panel !== 'summary' && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-100 p-3 md:hidden">
-      {form ?? (selected && <ReviewPanel item={selected} onChange={replaceItem} onClose={() => setSelectedKey(null)} onDeleted={key => { setData(d => ({ ...d, items: d.items.filter(i => i.key !== key) })); setSelectedKey(null); }}/>)}
+      {form ?? (selected && <ReviewPanel members={data.members} businesses={data.businesses} sites={data.sites} item={selected} onChange={replaceItem} onClose={() => setSelectedKey(null)} onDeleted={key => { setData(d => ({ ...d, items: d.items.filter(i => i.key !== key) })); setSelectedKey(null); }}/>)}
     </div>}
   </div>;
 }

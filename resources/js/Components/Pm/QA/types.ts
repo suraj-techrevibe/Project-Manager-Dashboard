@@ -1,7 +1,10 @@
 export type Stage = 'Queue' | 'Testing' | 'Failed' | 'Passed';
 export type Source = 'Taskmandu' | 'Site check' | 'Client report';
 
-export type Check = { id: number; label: string; is_done: boolean };
+export type Check = { id: number; label: string; is_done: boolean; subtask_id?: string | null };
+export type TComment = { id: string; text: string; author: string | null; at: string | null };
+export type LiveSubtask = { id: string; title: string; status: string | null; comments: TComment[] };
+export type Live = { task: { title: string; description: string | null; status: string | null; comments: TComment[] }; subtasks: LiveSubtask[] };
 export type Shot = { id: string; name: string; url: string; created_at: string };
 export type Detail = { label: string; value: string };
 export type HistoryEntry = { at: string; message: string; by?: string };
@@ -43,7 +46,7 @@ export type Site = {
 };
 
 export type Project = { id: string; name: string };
-export type Payload = { items: QAItem[]; sites: Site[]; businesses: string[]; projects: Project[] };
+export type Payload = { items: QAItem[]; sites: Site[]; businesses: string[]; members: string[]; projects: Project[] };
 
 export const STAGES: Stage[] = ['Queue', 'Testing', 'Failed', 'Passed'];
 export const SOURCES: Source[] = ['Taskmandu', 'Site check', 'Client report'];

@@ -93,6 +93,16 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
         Route::patch('items/{kind}/{id}/checks/{check}', [PmQaCenterController::class, 'updateCheck'])->name('items.checks.update');
         Route::delete('items/{kind}/{id}/checks/{check}', [PmQaCenterController::class, 'destroyCheck'])->name('items.checks.destroy');
         Route::post('items/{kind}/{id}/screenshots', [PmQaCenterController::class, 'storeScreenshot'])->name('items.screenshots.store');
+        Route::post('items/{kind}/{id}/subtasks', [PmQaCenterController::class, 'importSubtasks'])->name('items.subtasks.import');
+        // Live Taskmandu data for a task item: subtasks (the checklist) and comments, written back through the Taskmandu API.
+        Route::prefix('tasks/{id}/taskmandu')->where(['subtask' => '[A-Za-z0-9]+'])->name('taskmandu.')->group(function () {
+            Route::get('/', [PmQaCenterController::class, 'taskmandu'])->name('show');
+            Route::patch('task', [PmQaCenterController::class, 'renameTask'])->name('task');
+            Route::post('subtasks', [PmQaCenterController::class, 'addSubtask'])->name('subtasks.store');
+            Route::patch('subtasks/{subtask}', [PmQaCenterController::class, 'renameSubtask'])->name('subtasks.update');
+            Route::delete('subtasks/{subtask}', [PmQaCenterController::class, 'deleteSubtask'])->name('subtasks.destroy');
+            Route::post('comments', [PmQaCenterController::class, 'addComment'])->name('comments.store');
+        });
         Route::post('reports', [PmQaCenterController::class, 'storeReport'])->name('reports.store');
         Route::patch('reports/{report}', [PmQaCenterController::class, 'updateReport'])->name('reports.update');
         Route::delete('items/{kind}/{id}/screenshots/{screenshot}', [PmQaCenterController::class, 'destroyScreenshot'])->name('items.screenshots.destroy');
