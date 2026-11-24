@@ -625,6 +625,8 @@ function SubTasks({
 }
 
 
+const NEW_PROJECT = '__new_project__';
+
 /**
  * "New task" form with exactly the same layout as the edit form above: title, description,
  * sub-tasks on the left; status, priority, due date, hours, tags and assignees on the right.
@@ -647,6 +649,7 @@ export function NewTaskDetail({
   onCancel: () => void;
 }) {
   const [projectName, setProjectName] = useState('');
+  const [typingNew, setTypingNew] = useState(false);
   const typed = projectName.trim();
   const project = projects.find((p) => p.name.trim().toLowerCase() === typed.toLowerCase()) ?? null;
   const [d, setD] = useState({ title: '', description: '', status: defaultStatus, priority: 'Medium' as TaskPriority, dueDate: today(), hours: '4', tags: '', assignees: [] as string[] });
@@ -721,9 +724,19 @@ export function NewTaskDetail({
         <input value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} maxLength={200} placeholder="Task title" className={`${inputCls} mt-2 text-base font-medium`} autoFocus />
         <div className="mt-3">
           <Field label="Business / project">
-            <input value={projectName} onChange={(e) => setProjectName(e.target.value)} list="pm-new-task-projects" placeholder="Select an existing project or type a new name" maxLength={200} className={inputCls} />
-            <datalist id="pm-new-task-projects">{projects.map((p) => <option key={p._id} value={p.name} />)}</datalist>
-            <p className="mt-1 text-xs text-slate-500">An existing name links the task to that project. A new name creates the project automatically before adding the task.</p>
+            {typingNew || projects.length === 0 ? (
+              <div className="flex items-center gap-2">
+                <input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="New project name" maxLength={200} className={inputCls} autoFocus={typingNew} />
+                {projects.length > 0 && <button type="button" onClick={() => { setTypingNew(false); setProjectName(''); }} className="shrink-0 text-xs font-medium text-indigo-700 hover:underline">Pick from list</button>}
+              </div>
+            ) : (
+              <select value={project ? project.name : ''} onChange={(e) => { if (e.target.value === NEW_PROJECT) { setTypingNew(true); setProjectName(''); } else setProjectName(e.target.value); }} className={inputCls}>
+                <option value="">Choose a business / project</option>
+                {[...projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => <option key={p._id} value={p.name}>{p.name}</option>)}
+                <option value={NEW_PROJECT}>+ New project…</option>
+              </select>
+            )}
+            <p className="mt-1 text-xs text-slate-500">Pick any Taskmandu project, or choose “+ New project…” to create one before adding the task.</p>
           </Field>
         </div>
       </div>
