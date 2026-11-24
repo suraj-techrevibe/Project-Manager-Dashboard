@@ -10,7 +10,7 @@ const Field = ({ label, hint, children }: { label: string; hint?: string; childr
 
 /** Pick an existing business or type a new one. */
 const BusinessInput = ({ id, value, options, onChange }: { id: string; value: string; options: string[]; onChange: (v: string) => void }) =>
-  <><input className={input} list={id} placeholder="Choose or type a project" value={value} onChange={e => onChange(e.target.value)}/><datalist id={id}>{options.map(b => <option key={b} value={b}/>)}</datalist></>;
+  <><input className={input} list={id} placeholder="Choose or type a business" value={value} onChange={e => onChange(e.target.value)}/><datalist id={id}>{options.map(b => <option key={b} value={b}/>)}</datalist></>;
 
 /** Register a website or app. Linking its Taskmandu project is what files that project's tasks under this site. */
 export function SitePanel({ businesses, projects, sites, onSaved, onClose }: {
@@ -25,7 +25,7 @@ export function SitePanel({ businesses, projects, sites, onSaved, onClose }: {
 
   async function save() {
     const url = /^https?:\/\//i.test(draft.url.trim()) ? draft.url.trim() : 'https://' + draft.url.trim();
-    if (!draft.business.trim() || !draft.name.trim() || draft.url.trim() === '') { setError('Enter a project, a name and an address.'); return; }
+    if (!draft.business.trim() || !draft.name.trim() || draft.url.trim() === '') { setError('Enter a business, a name and an address.'); return; }
     setSaving(true);
     try {
       const project = projects.find(p => p.id === draft.project_id);
@@ -50,8 +50,8 @@ export function SitePanel({ businesses, projects, sites, onSaved, onClose }: {
   return <section className="rounded-xl border bg-white p-4">
     <div className="mb-3 flex items-center justify-between"><h3 className={heading}>{editId ? 'Edit website / app' : 'Add website / app'}</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
     <div className="space-y-3">
-      <Field label="Project"><BusinessInput id="qa-site-biz" value={draft.business} options={businesses} onChange={v => set({ business: v })}/></Field>
-      <Field label="Name"><input className={input} placeholder="e.g. Maison Éclat" value={draft.name} onChange={e => set({ name: e.target.value })}/></Field>
+      <Field label="Business"><BusinessInput id="qa-site-biz" value={draft.business} options={businesses} onChange={v => set({ business: v })}/></Field>
+      <Field label="Name"><input className={input} placeholder="e.g. Tec.com" value={draft.name} onChange={e => set({ name: e.target.value })}/></Field>
       <Field label="Address"><input className={input} placeholder="e.g. maisoneclat.com" value={draft.url} onChange={e => set({ url: e.target.value })}/></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Type"><select className={input} value={draft.website_type} onChange={e => set({ website_type: e.target.value })}>{SITE_TYPES.map(v => <option key={v}>{v}</option>)}</select></Field>
@@ -95,7 +95,7 @@ export function ItemPanel({ businesses, members, sites, onCreated, onClose }: {
     <div className="space-y-3">
       <Field label="What needs checking?"><input className={input} placeholder="e.g. Fix checkout total rounding" value={draft.title} onChange={e => set({ title: e.target.value })}/></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Project"><BusinessInput id="qa-item-biz" value={draft.business} options={businesses} onChange={v => set({ business: v, site: '' })}/></Field>
+        <Field label="Business"><BusinessInput id="qa-item-biz" value={draft.business} options={businesses} onChange={v => set({ business: v, site: '' })}/></Field>
         <Field label="Website / app"><input className={input} list="qa-site-options" placeholder="Choose a site" value={draft.site} onChange={e => set({ site: e.target.value })}/><datalist id="qa-site-options">{siteOptions.map(s => <option key={s.id} value={s.name}/>)}</datalist></Field>
       </div>
       <Field label="Page URL" hint="So the developer can open it directly. Blank uses the site's address."><input className={input} placeholder="https://…" value={draft.url} onChange={e => set({ url: e.target.value })}/></Field>
@@ -126,36 +126,36 @@ export function BusinessPanel({ businesses, sites, items, onChanged, onClose }: 
   }
 
   async function add() {
-    if (!name.trim()) { setError('Enter a project name.'); return; }
-    if (await run(() => axios.post('/pm/api/qa-center/businesses', { name: name.trim() }), 'Could not add the project.')) setName('');
+    if (!name.trim()) { setError('Enter a business name.'); return; }
+    if (await run(() => axios.post('/pm/api/qa-center/businesses', { name: name.trim() }), 'Could not add the business.')) setName('');
   }
   async function save(from: string) {
-    if (!rename.trim()) { setError('Enter a project name.'); return; }
-    if (await run(() => axios.patch('/pm/api/qa-center/businesses', { from, name: rename.trim() }), 'Could not rename the project.')) setEditing(null);
+    if (!rename.trim()) { setError('Enter a business name.'); return; }
+    if (await run(() => axios.patch('/pm/api/qa-center/businesses', { from, name: rename.trim() }), 'Could not rename the business.')) setEditing(null);
   }
   async function remove(b: string) {
     if (!window.confirm(`Delete ${b}?`)) return;
-    await run(() => axios.delete('/pm/api/qa-center/businesses', { data: { name: b } }), 'Could not delete the project.');
+    await run(() => axios.delete('/pm/api/qa-center/businesses', { data: { name: b } }), 'Could not delete the business.');
   }
 
   return <section className="rounded-xl border bg-white p-4">
-    <div className="mb-3 flex items-center justify-between"><h3 className={heading}>Projects</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
-    <Field label="Add project"><div className="flex gap-2"><input className={input} placeholder="e.g. Maison Éclat" value={name} onChange={e => { setName(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') void add(); }}/><button className={primary} disabled={busy} onClick={() => void add()}>Add</button></div></Field>
-    <p className="mt-2 text-xs text-slate-500">Taskmandu projects appear here automatically.</p>
+    <div className="mb-3 flex items-center justify-between"><h3 className={heading}>Businesses</h3><button className="text-sm text-slate-500" onClick={onClose}>Close</button></div>
+    <Field label="Add business"><div className="flex gap-2"><input className={input} placeholder="e.g. Tec.com" value={name} onChange={e => { setName(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') void add(); }}/><button className={primary} disabled={busy} onClick={() => void add()}>Add</button></div></Field>
+    <p className="mt-2 text-xs text-slate-500">Taskmandu projects are your businesses and appear here automatically.</p>
     {error && <p role="alert" className="mt-2 text-sm text-rose-700">{error}</p>}
     <ul className="mt-4 divide-y text-sm">
-      {businesses.length === 0 && <li className="py-3 text-slate-500">No projects yet.</li>}
+      {businesses.length === 0 && <li className="py-3 text-slate-500">No businesses yet.</li>}
       {businesses.map(b => {
         const nSites = sites.filter(x => x.business === b).length;
         const nItems = items.filter(x => x.business === b).length;
         return <li key={b} className="py-2">
           {editing === b
-            ? <div className="flex flex-wrap gap-2"><input className={input + ' flex-1'} aria-label="Project name" value={rename} onChange={e => { setRename(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') void save(b); }}/><button className={primary} disabled={busy} onClick={() => void save(b)}>Save</button><button className={button} onClick={() => setEditing(null)}>Cancel</button></div>
+            ? <div className="flex flex-wrap gap-2"><input className={input + ' flex-1'} aria-label="Business name" value={rename} onChange={e => { setRename(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') void save(b); }}/><button className={primary} disabled={busy} onClick={() => void save(b)}>Save</button><button className={button} onClick={() => setEditing(null)}>Cancel</button></div>
             : <div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-medium text-slate-800">{b}</div><div className="text-xs text-slate-500">{nSites} site{nSites === 1 ? '' : 's'} · {nItems} item{nItems === 1 ? '' : 's'}</div></div>
                 <div className="flex gap-2"><button className={button} onClick={() => { setEditing(b); setRename(b); setError(''); }}>Edit</button><button className={button + ' text-rose-700'} disabled={busy} onClick={() => void remove(b)}>Delete</button></div></div>}
         </li>;
       })}
     </ul>
-    <p className="mt-3 text-xs text-slate-500">Renaming updates every site, item and report; QA codes keep their prefix. A project that still has sites or items can't be deleted.</p>
+    <p className="mt-3 text-xs text-slate-500">Renaming updates every site, item and report; QA codes keep their prefix. A business that still has sites or items can't be deleted.</p>
   </section>;
 }

@@ -8,6 +8,7 @@ use App\Models\PmQaReport;
 use App\Models\PmQaTaskReview;
 use App\Services\Pm\QaCenterService;
 use App\Services\Pm\QaStage;
+use App\Services\Pm\QaTaskmanduService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,7 @@ use Illuminate\Validation\Rule;
 /** JSON API for the QA Center tab. The rules live in QaCenterService; this only validates and routes. */
 class PmQaCenterController extends Controller
 {
-    public function __construct(private QaCenterService $qa) {}
+    public function __construct(private QaCenterService $qa, private QaTaskmanduService $taskmandu) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -127,6 +128,62 @@ class PmQaCenterController extends Controller
         abort_unless($this->qa->removeScreenshot($item, $screenshot, $request->user()), 404);
 
         return $this->respond($item, $kind, $request);
+    }
+
+    /** Live subtasks (the checklist) and comments for a Taskmandu task item. */
+    public function taskmandu(Request $request, int $id): JsonResponse
+    {
+        $review = $this->review($id);
+
+        return response()->json($this->taskmandu->live($review) + ['item' => $this->qa->present($review->refresh(), QaCenterService::TASK, $request->user())]);
+    }
+
+    public function addSubtask(Request $request, int $id): JsonResponse
+    {
+        $review = $this->review($id);
+        $data = $request->validate(['title' => 'required|string|max:200']);
+        $this->taskmandu->addSubtask($review, $data['title'], (string) $request->user()->name);
+
+        return $this->taskmandu($request, $id);
+    }
+
+    public function renameSubtask(Request $request, int $id, string $subtask): JsonResponse
+    {
+        $review = $this->review($id);
+        $data = $request->validate(['title' => 'required|string|max:200']);
+        $this->taskmandu->renameSubtask($review, $subtask, $data['title']);
+
+        return $this->taskmandu($request, $id);
+    }
+
+    public function deleteSubtask(Request $request, int $id, string $subtask): JsonResponse
+    {
+        $this->taskmandu->deleteSubtask($this->review($id), $subtask);
+
+        return $this->taskmandu($request, $id);
+    }
+
+    public function addComment(Request $request, int $id): JsonResponse
+    {
+        $review = $this->review($id);
+        $data = $request->validate(['text' => 'required|string|max:2000', 'subtask_id' => 'nullable|string|max:40']);
+        $this->taskmandu->addComment($review, $data['subtask_id'] ?? null, $data['text']);
+
+        return $this->taskmandu($request, $id);
+    }
+
+    public function renameTask(Request $request, int $id): JsonResponse
+    {
+        $review = $this->review($id);
+        $data = $request->validate(['title' => 'required|string|max:200']);
+        $this->taskmandu->renameTask($review, $data['title']);
+
+        return $this->taskmandu($request, $id);
+    }
+
+    private function review(int $id): PmQaTaskReview
+    {
+        return PmQaTaskReview::query()->findOrFail($id);
     }
 
     public function importProjects(): JsonResponse

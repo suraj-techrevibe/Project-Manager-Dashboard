@@ -143,21 +143,28 @@ class QaCenterService
         if (! $review instanceof PmQaTaskReview || blank($review->project_id) || blank($review->task_id)) {
             return 0;
         }
-        $titles = PmSubtask::query()->where('project_id', $review->project_id)->where('task_id', $review->task_id)
-            ->orderBy('id')->pluck('title')->map(fn ($t) => trim((string) $t))->filter()->all();
-        if ($titles === []) {
+        $subs = PmSubtask::query()->where('project_id', $review->project_id)->where('task_id', $review->task_id)
+            ->orderBy('id')->get(['subtask_id', 'title'])->filter(fn ($s) => filled(trim((string) $s->title)));
+        if ($subs->isEmpty()) {
             return 0; // nothing synced yet; try again later rather than marking it done
         }
-        $have = PmQaCheck::query()->where('item_type', self::TASK)->where('item_id', $review->id)->pluck('label')
-            ->map(fn ($l) => mb_strtolower(trim($l)))->all();
-        $sort = (int) (PmQaCheck::query()->where('item_type', self::TASK)->where('item_id', $review->id)->max('sort') ?? -1);
+        $checks = PmQaCheck::query()->where('item_type', self::TASK)->where('item_id', $review->id)->get();
+        $sort = (int) ($checks->max('sort') ?? -1);
         $added = 0;
-        foreach ($titles as $title) {
-            if (in_array(mb_strtolower($title), $have, true) || $sort + 1 >= self::MAX_CHECKS) {
+        foreach ($subs as $sub) {
+            $title = mb_substr(trim($sub->title), 0, 300);
+            if ($checks->contains(fn ($c) => $c->subtask_id === $sub->subtask_id)) {
                 continue;
             }
-            PmQaCheck::create(['item_type' => self::TASK, 'item_id' => $review->id, 'label' => mb_substr($title, 0, 300), 'sort' => ++$sort]);
-            $have[] = mb_strtolower($title);
+            $existing = $checks->first(fn ($c) => blank($c->subtask_id) && mb_strtolower(trim($c->label)) === mb_strtolower($title));
+            if ($existing) {
+                $existing->update(['subtask_id' => $sub->subtask_id]);
+                continue;
+            }
+            if ($checks->count() >= self::MAX_CHECKS) {
+                continue;
+            }
+            $checks->push(PmQaCheck::create(['item_type' => self::TASK, 'item_id' => $review->id, 'label' => $title, 'sort' => ++$sort, 'subtask_id' => $sub->subtask_id]));
             $added++;
         }
         $review->forceFill(['qa_subtasks_imported_at' => now()])->saveQuietly();
@@ -193,7 +200,7 @@ class QaCenterService
     {
         $name = trim($name);
         if ($this->businessExists($name)) {
-            throw ValidationException::withMessages(['name' => 'That project already exists.']);
+            throw ValidationException::withMessages(['name' => 'That business already exists.']);
         }
         $slug = $base = Str::slug($name) ?: 'business';
         for ($n = 2; PmBusiness::query()->where('slug', $slug)->exists(); $n++) {
@@ -209,10 +216,10 @@ class QaCenterService
         $from = trim($from);
         $to = trim($to);
         if ($from === '' || $to === '') {
-            throw ValidationException::withMessages(['name' => 'Enter a project name.']);
+            throw ValidationException::withMessages(['name' => 'Enter a business name.']);
         }
         if (strcasecmp($from, $to) !== 0 && $this->businessExists($to)) {
-            throw ValidationException::withMessages(['name' => 'That project already exists.']);
+            throw ValidationException::withMessages(['name' => 'That business already exists.']);
         }
         DB::transaction(function () use ($from, $to) {
             PmBusiness::query()->where('name', $from)->update(['name' => $to]);
@@ -687,7 +694,7 @@ class QaCenterService
             'code' => $item->qa_code,
             'stage' => $item->qa_stage ?: QaStage::QUEUE,
             'checks' => ($checks->get($key) ?? collect())
-                ->map(fn (PmQaCheck $c) => ['id' => $c->id, 'label' => $c->label, 'is_done' => (bool) $c->is_done])->values(),
+                ->map(fn (PmQaCheck $c) => ['id' => $c->id, 'label' => $c->label, 'is_done' => (bool) $c->is_done, 'subtask_id' => $c->subtask_id])->values(),
             'screenshots' => array_values($item->qa_screenshots ?? []),
             'fail_note' => $item->qa_fail_note,
             'remarks' => $item->qa_remarks,

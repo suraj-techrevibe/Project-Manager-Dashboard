@@ -374,4 +374,40 @@ class PmQaCenterTest extends TestCase
         $again = collect($this->getJson('/pm/api/qa-center')->json('items'))->firstWhere('key', 'task:'.$review->id);
         $this->assertNotContains('Coupon field', collect($again['checks'])->pluck('label')->all());
     }
+
+    public function test_task_checklist_follows_taskmandu_subtasks_and_writes_back_through_the_api(): void
+    {
+        $user = User::factory()->create();
+        $review = $this->review(['project_id' => 'cccccccccccccccccccccccc', 'task_id' => 'dddddddddddddddddddddddd', 'project_name' => 'Tec.com']);
+        $project = ['data' => ['tasks' => [['_id' => 'dddddddddddddddddddddddd', 'title' => 'Fix booking calendar', 'status' => 'Completed',
+            'comments' => [['_id' => 'c1', 'text' => 'Please retest', 'authorName' => 'Ravi', 'createdAt' => '2026-11-24T01:00:00Z']],
+            'subTasks' => [['_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa', 'title' => 'Header fix', 'status' => 'Completed', 'comments' => [['_id' => 'c2', 'text' => 'Done on staging', 'authorName' => 'Mia', 'createdAt' => '2026-11-24T02:00:00Z']]]]]]]];
+
+        $client = \Mockery::mock(\App\Services\Pm\TaskmanduClient::class);
+        $client->shouldReceive('configured')->andReturn(false);
+        $renamed = $project;
+        $renamed['data']['tasks'][0]['subTasks'][0]['title'] = 'Header and nav fix';
+        $gone = ['data' => ['tasks' => [['_id' => 'dddddddddddddddddddddddd', 'title' => 'Fix booking calendar', 'subTasks' => []]]]];
+        // Taskmandu is read after each action: first as loaded, then after the rename, then after the delete.
+        $client->shouldReceive('get')->with('/projects/cccccccccccccccccccccccc')->andReturn($project, $project, $renamed, $gone);
+        $client->shouldReceive('post')->once()->with('/projects/cccccccccccccccccccccccc/tasks/dddddddddddddddddddddddd/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa/comments', ['text' => 'Retested OK'])->andReturn([]);
+        $client->shouldReceive('patch')->once()->with('/projects/cccccccccccccccccccccccc/tasks/dddddddddddddddddddddddd/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa', ['title' => 'Header and nav fix'])->andReturn([]);
+        $client->shouldReceive('delete')->once()->with('/projects/cccccccccccccccccccccccc/tasks/dddddddddddddddddddddddd/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa')->andReturn([]);
+        $this->app->instance(\App\Services\Pm\TaskmanduClient::class, $client);
+        $base = '/pm/api/qa-center/tasks/'.$review->id.'/taskmandu';
+
+        $res = $this->actingAs($user)->getJson($base)->assertOk();
+        $res->assertJsonPath('subtasks.0.comments.0.text', 'Done on staging')->assertJsonPath('task.comments.0.author', 'Ravi');
+        $labels = collect($res->json('item.checks'))->pluck('label')->all();
+        $this->assertContains('Header fix', $labels);
+        $this->assertNotNull(collect($res->json('item.checks'))->firstWhere('label', 'Header fix')['subtask_id']);
+
+        $this->postJson($base.'/comments', ['text' => 'Retested OK', 'subtask_id' => 'aaaaaaaaaaaaaaaaaaaaaaaa'])->assertOk();
+        $this->patchJson($base.'/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa', ['title' => 'Header and nav fix'])->assertOk();
+        $this->assertSame('Header and nav fix', \App\Models\PmQaCheck::where('subtask_id', 'aaaaaaaaaaaaaaaaaaaaaaaa')->value('label'));
+
+        // Deleting the check's subtask removes it in Taskmandu and here.
+        $this->deleteJson($base.'/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa')->assertOk();
+        $this->assertSame(0, \App\Models\PmQaCheck::where('subtask_id', 'aaaaaaaaaaaaaaaaaaaaaaaa')->count());
+    }
 }
