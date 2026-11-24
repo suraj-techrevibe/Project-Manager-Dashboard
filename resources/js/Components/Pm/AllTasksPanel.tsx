@@ -475,9 +475,10 @@ export default function AllTasksPanel({
               target = data.project;
             }
 
-            // Create the parent task first, then attach its requested sub-tasks to the returned task ID.
+            // Capture existing IDs so identical task titles cannot make us attach sub-tasks to an older task.
+            const existingTaskIds = new Set(target.tasks.map((task) => task._id));
             let latestProject = (await pmApi.addProjectTask(target._id, input)).data.project;
-            const createdTask = latestProject.tasks.find((task) => task.title === input.title);
+            const createdTask = latestProject.tasks.find((task) => !existingTaskIds.has(task._id));
             if (!createdTask) throw new Error('The task was created, but its new record could not be located to attach sub-tasks.');
             for (const subTask of subTasks) {
               latestProject = (await pmApi.addSubTask(latestProject._id, createdTask._id, {
