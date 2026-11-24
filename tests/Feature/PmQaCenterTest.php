@@ -387,4 +387,15 @@ class PmQaCenterTest extends TestCase
         $this->deleteJson($base.'/subtasks/aaaaaaaaaaaaaaaaaaaaaaaa')->assertOk();
         $this->assertSame(0, \App\Models\PmQaCheck::where('subtask_id', 'aaaaaaaaaaaaaaaaaaaaaaaa')->count());
     }
+
+    public function test_project_import_works_when_the_name_is_already_used_by_a_site_and_never_breaks_the_tab(): void
+    {
+        $user = User::factory()->create();
+        PmQaWebsite::create(['created_by' => $user->id, 'business' => 'Tec.com', 'name' => 'Tec', 'url' => 'https://tec.com', 'website_type' => 'Business website', 'frequency' => 'Manual']);
+        PmCard::create(['external_id' => 'p5', 'title' => 'X', 'status' => 'todo', 'project_id' => 'eeeeeeeeeeeeeeeeeeeeeeee', 'project_name' => 'Tec.com', 'task_id' => 't5']);
+
+        $res = $this->actingAs($user)->getJson('/pm/api/qa-center')->assertOk();
+        $this->assertSame(['Tec.com'], $res->json('businesses'));
+        $this->assertSame(1, PmBusiness::where('name', 'Tec.com')->count());
+    }
 }

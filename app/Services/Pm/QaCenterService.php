@@ -41,8 +41,13 @@ class QaCenterService
     public function payload(User $user): array
     {
         // Projects and subtasks follow Taskmandu on their own; both are no-ops once everything is imported.
-        $this->importProjects();
-        $this->importPendingSubtasks();
+        // Imports must never stop the tab from loading.
+        try {
+            $this->importProjects();
+            $this->importPendingSubtasks();
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         $websites = $this->websitesFor($user->id);
         $projectBusinesses = $this->projectBusinesses();
@@ -88,7 +93,7 @@ class QaCenterService
                 $name = trim((string) $project->project_name);
                 $business = PmBusiness::query()->whereRaw('lower(name) = ?', [mb_strtolower($name)])->first();
                 if (! $business) {
-                    $business = $this->createBusiness($name);
+                    $business = $this->makeBusiness($name);
                     $created++;
                 }
                 PmBusinessProjectLink::create([
@@ -202,6 +207,13 @@ class QaCenterService
         if ($this->businessExists($name)) {
             throw ValidationException::withMessages(['name' => 'That business already exists.']);
         }
+
+        return $this->makeBusiness($name);
+    }
+
+    /** Create the Operations record without the duplicate check (a name used only by sites or items is fine). */
+    private function makeBusiness(string $name): PmBusiness
+    {
         $slug = $base = Str::slug($name) ?: 'business';
         for ($n = 2; PmBusiness::query()->where('slug', $slug)->exists(); $n++) {
             $slug = $base.'-'.$n;
