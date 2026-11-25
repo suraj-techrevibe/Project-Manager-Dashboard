@@ -17,7 +17,8 @@ import {
 } from '../../lib/minutesFormat';
 import EmailModal from './EmailModal';
 import TaskmanduActivityMinutes from './TaskmanduActivityMinutes';
-import { EmptyState, JumpNav, PageHeader, Section, SortSelect, StatTile, btnChip, btnPrimary, compareDates, type SortOption } from './ui/kit';
+import { EmptyState, PageHeader, SortSelect, btnChip, btnPrimary, compareDates, type SortOption } from './ui/kit';
+import { ActionCheck, DecisionsView, OpenActionsView, dueLabel, isOverdue, openActionRows } from './MeetingMinutesViews';
 import type { ActionItem, MeetingMinutesFull, MeetingMinutesSummary, MinutesStatus, MinutesTopic, Project, MeetingWorkItem } from '../../types/pm';
 import {
   ErrorNote,
@@ -61,6 +62,7 @@ export default function MeetingMinutesPanel() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<MinutesSort>('date-desc');
   const [activityBuilderOpen, setActivityBuilderOpen] = useState(false);
+  const [tab, setTab] = useState<'meetings' | 'actions' | 'decisions'>('meetings');
 
   async function load() {
     setLoading(true);
@@ -79,21 +81,38 @@ export default function MeetingMinutesPanel() {
     load();
   }, []);
 
-  useEffect(() => {
-    if (!openId) {
-      setExpanded(null);
-      return;
-    }
-    setExpandLoading(true);
-    pmApi
-      .minutesShow(Number(openId))
-      .then(({ data }) => setExpanded(data.minute))
-      .catch((e) => setError(err(e, "Couldn't load that entry.")))
-      .finally(() => setExpandLoading(false));
-  }, [openId]);
+  function select(id: number) {
+    setTab('meetings');
+    setUrlParams({ minute: String(id) });
+    // On a phone the detail sits under the list: bring it into view.
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) setTimeout(() => document.getElementById('minute-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
 
-  function toggle(id: number) {
-    setUrlParams({ minute: String(openId) === String(id) ? null : String(id) });
+  /** Saves a meeting's action items (tick, add). Updates the screen first and puts it back if the save fails. */
+  async function setActions(minuteId: number, items: ActionItem[]) {
+    const before = minutes;
+    const beforeExpanded = expanded;
+    setMinutes((ms) => ms.map((m) => (m.id === minuteId ? { ...m, action_items: items } : m)));
+    setExpanded((e) => (e && e.id === minuteId ? { ...e, action_items: items } : e));
+    try {
+      await pmApi.minutesUpdate(minuteId, { action_items: items });
+    } catch (e) {
+      setMinutes(before);
+      setExpanded(beforeExpanded);
+      setError(err(e, "Couldn't save that change."));
+    }
+  }
+  function toggleAction(minuteId: number, index: number) {
+    const m = minutes.find((x) => x.id === minuteId);
+    if (!m) return;
+    void setActions(minuteId, m.action_items.map((a, i) => (i === index ? { ...a, done: !a.done } : a)));
+  }
+  function addAction(minuteId: number, task: string, owner: string) {
+    const m = minutes.find((x) => x.id === minuteId);
+    if (!m) return;
+    const due = new Date();
+    due.setDate(due.getDate() + 7);
+    void setActions(minuteId, [...m.action_items, { task, owner, due_date: localISO(due), done: false }]);
   }
 
   async function remove(id: number) {
@@ -126,6 +145,9 @@ export default function MeetingMinutesPanel() {
         meeting_date: minute.meeting_date,
         attendees: minute.attendees,
         action_items: minute.action_items,
+        work_items: minute.work_items,
+        decisions: minute.decisions,
+        topics: minute.topics,
       };
       const next = ms.some((m) => m.id === minute.id) ? ms.map((m) => (m.id === minute.id ? summary : m)) : [summary, ...ms];
       return next.sort((a, b) => (a.meeting_date < b.meeting_date ? 1 : a.meeting_date > b.meeting_date ? -1 : b.id - a.id));
@@ -155,6 +177,21 @@ export default function MeetingMinutesPanel() {
     return out;
   }, [visible]);
 
+  // The meeting shown on the right: the one in the URL, else the newest one in the list.
+  const selectedId = openId ? String(openId) : visible[0] ? String(visible[0].id) : null;
+  useEffect(() => {
+    if (!selectedId) {
+      setExpanded(null);
+      return;
+    }
+    setExpandLoading(true);
+    pmApi
+      .minutesShow(Number(selectedId))
+      .then(({ data }) => setExpanded(data.minute))
+      .catch((e) => setError(err(e, "Couldn't load that entry.")))
+      .finally(() => setExpandLoading(false));
+  }, [selectedId]);
+
   if (activityBuilderOpen) {
     return <TaskmanduActivityMinutes onCancel={() => setActivityBuilderOpen(false)} onSaved={(m) => { setActivityBuilderOpen(false); onSaved(m); }} lastMeetingDate={minutes[0]?.meeting_date ?? null} />;
   }
@@ -170,10 +207,20 @@ export default function MeetingMinutesPanel() {
     );
   }
 
-  const jumpToList = () => document.getElementById('minutes-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const drafts = minutes.filter((m) => m.status === 'draft').length;
-  const finals = minutes.filter((m) => m.status === 'final').length;
-  const openActions = minutes.reduce((n, m) => n + (m.status === 'final' ? 0 : m.action_items.length), 0);
+  const openRows = openActionRows(minutes);
+  const overdue = openRows.filter((r) => isOverdue(r.item)).length;
+  const decisionCount = minutes.reduce((n, m) => n + new Set([...(m.decisions ?? []), ...(m.topics ?? []).map((t) => t.decision)].map((d) => (d ?? '').trim().toLowerCase()).filter(Boolean)).size, 0);
+  const byDate = [...minutes].sort((a, b) => b.meeting_date.localeCompare(a.meeting_date) || b.id - a.id);
+  const previousOf = (id: number) => {
+    const i = byDate.findIndex((m) => m.id === id);
+    return i >= 0 ? byDate[i + 1] ?? null : null;
+  };
+  const openMeeting = (id: number) => select(id);
+  const tabBtn = (active: boolean) =>
+    `flex min-h-[44px] items-center gap-2 rounded-lg px-4 text-sm font-semibold ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`;
+  const count = (n: number, tone: string) => <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold text-white ${tone}`}>{n}</span>;
+  const selected = minutes.find((m) => String(m.id) === selectedId) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -181,7 +228,6 @@ export default function MeetingMinutesPanel() {
         icon="notes"
         title="Meeting minutes"
         description="Record decisions and action items, then turn them into tasks."
-        status={minutes.length ? `${minutes.length} meeting${minutes.length === 1 ? '' : 's'} · ${drafts} draft${drafts === 1 ? '' : 's'}` : undefined}
         actions={
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setActivityBuilderOpen(true)} className={ghostBtn}>Build from Taskmandu activity</button>
@@ -195,44 +241,14 @@ export default function MeetingMinutesPanel() {
         ]}
       />
 
-      <JumpNav
-        items={[
-          { id: 'minutes-overview', label: 'Overview' },
-          { id: 'minutes-list', label: 'All meetings', count: minutes.length },
-        ]}
-      />
-
-      <Section id="minutes-overview" title="Overview" tone="brand">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatTile label="Meetings" value={minutes.length} active={filter === 'all'} onClick={() => { setFilter('all'); jumpToList(); }} />
-          <StatTile label="Drafts" value={drafts} tone={drafts ? 'warn' : 'neutral'} hint="not finalised" active={filter === 'draft'} onClick={() => { setFilter('draft'); jumpToList(); }} />
-          <StatTile label="Final" value={finals} tone="ok" active={filter === 'final'} onClick={() => { setFilter('final'); jumpToList(); }} />
-          <StatTile label="Action items" value={openActions} tone={openActions ? 'info' : 'neutral'} hint="in draft meetings" />
+      <div className="flex flex-wrap items-center gap-3">
+        <div role="tablist" aria-label="Meeting minutes views" className="flex rounded-xl bg-slate-200 p-1">
+          <button role="tab" aria-selected={tab === 'meetings'} onClick={() => setTab('meetings')} className={tabBtn(tab === 'meetings')}>Meetings {count(minutes.length, 'bg-slate-500')}</button>
+          <button role="tab" aria-selected={tab === 'actions'} onClick={() => setTab('actions')} className={tabBtn(tab === 'actions')}>Open actions {count(openRows.length, 'bg-indigo-600')}</button>
+          <button role="tab" aria-selected={tab === 'decisions'} onClick={() => setTab('decisions')} className={tabBtn(tab === 'decisions')}>Decisions {count(decisionCount, 'bg-slate-500')}</button>
         </div>
-      </Section>
-
-      <Section
-        id="minutes-list"
-        title="All meetings"
-        count={visible.length}
-        tone="info"
-        actions={
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search title or attendee…"
-            aria-label="Search meetings"
-            className="w-40 rounded-lg border border-slate-300 px-2.5 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-56"
-          />
-        }
-      >
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        {(['all', 'draft', 'final'] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={btnChip(filter === f)}>
-            {f === 'all' ? 'All' : f === 'draft' ? `Drafts${drafts ? ` (${drafts})` : ''}` : 'Final'}
-          </button>
-        ))}
-        <SortSelect value={sort} onChange={setSort} options={MINUTES_SORTS} className="ml-auto rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-700" />
+        {overdue > 0 && <button type="button" onClick={() => setTab('actions')} className="text-sm font-semibold text-red-600 hover:underline">{overdue} overdue</button>}
+        {drafts > 0 && <button type="button" onClick={() => { setTab('meetings'); setFilter('draft'); }} className="text-sm text-slate-600 hover:underline">{drafts} draft{drafts === 1 ? '' : 's'} not finalised</button>}
       </div>
 
       <ErrorNote message={error} />
@@ -240,71 +256,125 @@ export default function MeetingMinutesPanel() {
       {!loading && minutes.length === 0 && !error && (
         <EmptyState
           title="No meeting minutes yet"
-          action={
-            <button onClick={() => setEditing({ minute: null, copy: false })} className={btnPrimary}>
-              + New meeting
-            </button>
-          }
+          action={<button onClick={() => setEditing({ minute: null, copy: false })} className={btnPrimary}>+ New meeting</button>}
         >
-          Add your first meeting to capture decisions and action items.
+          Record a meeting in a minute or two: attendees, what was discussed and decided, and who does what.
         </EmptyState>
       )}
-      {!loading && minutes.length > 0 && visible.length === 0 && <EmptyState title="Nothing matches">Try a different filter or search.</EmptyState>}
 
-      {groups.map((g) => (
-        <div key={g.label} className="flex flex-col gap-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">{g.label}</div>
-          {g.items.map((m) => {
-            const isOpen = String(openId) === String(m.id);
-            return (
-              <div key={m.id} className="rounded-xl border border-slate-200 bg-white">
-                <button onClick={() => toggle(m.id)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium text-slate-900">{m.title}</span>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${badge(m.status)}`}>{m.status}</span>
-                    </div>
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      {shortDate(m.meeting_date)}
-                      {m.attendees.length > 0 && ` · ${m.attendees.length} attendee${m.attendees.length === 1 ? '' : 's'}`}
-                      {m.action_items.length > 0 && ` · ${m.action_items.length} action item${m.action_items.length === 1 ? '' : 's'}`}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-slate-400">{isOpen ? '▲' : '▼'}</span>
+      {!loading && minutes.length > 0 && tab === 'actions' && <OpenActionsView minutes={minutes} onToggle={toggleAction} onOpenMeeting={openMeeting} />}
+      {!loading && minutes.length > 0 && tab === 'decisions' && <DecisionsView minutes={minutes} onOpenMeeting={openMeeting} />}
+
+      {!loading && minutes.length > 0 && tab === 'meetings' && (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
+          <div id="minutes-list" className="flex min-w-0 flex-col gap-3">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search title or attendee…"
+              aria-label="Search meetings"
+              className="min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(['all', 'draft', 'final'] as const).map((f) => (
+                <button key={f} onClick={() => setFilter(f)} className={btnChip(filter === f)}>
+                  {f === 'all' ? 'All' : f === 'draft' ? `Drafts${drafts ? ` (${drafts})` : ''}` : 'Final'}
                 </button>
+              ))}
+              <SortSelect value={sort} onChange={setSort} options={MINUTES_SORTS} className="ml-auto rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700" />
+            </div>
 
-                {isOpen && (
-                  <div className="border-t border-slate-100 p-4">
-                    {expandLoading && <p className="text-sm text-slate-500">Loading…</p>}
-                    {!expandLoading && expanded && expanded.id === m.id && (
-                      <MinutesDetail
-                        minute={expanded}
-                        onEdit={() => setEditing({ minute: expanded, copy: false })}
-                        onDuplicate={() => setEditing({ minute: expanded, copy: true })}
-                        onMarkFinal={() => markFinal(expanded)}
-                        onDelete={() => remove(m.id)}
-                      />
-                    )}
-                  </div>
-                )}
+            {visible.length === 0 && <EmptyState title="Nothing matches">Try a different filter or search.</EmptyState>}
+
+            {groups.map((g) => (
+              <div key={g.label} className="flex flex-col gap-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">{g.label}</div>
+                {g.items.map((m) => {
+                  const on = String(m.id) === selectedId;
+                  const done = m.action_items.filter((a) => a.done).length;
+                  const total = m.action_items.length;
+                  const [, mon, day] = m.meeting_date.split('-');
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => select(m.id)}
+                      aria-current={on ? 'true' : undefined}
+                      className={`flex w-full items-start gap-3 rounded-xl border bg-white p-3 text-left ${on ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}
+                    >
+                      <div className="w-12 shrink-0 rounded-lg bg-slate-100 py-1.5 text-center">
+                        <div className="text-lg font-bold leading-none text-slate-900">{Number(day)}</div>
+                        <div className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-500">{new Date(2000, Number(mon) - 1, 1).toLocaleString(undefined, { month: 'short' })}</div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-slate-900">{m.title}</span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${badge(m.status)}`}>{m.status}</span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">{m.attendees.length} attendee{m.attendees.length === 1 ? '' : 's'}</div>
+                        {total > 0 && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${Math.round((done / total) * 100)}%` }} /></div>
+                            <span className="text-[11px] text-slate-500">{done}/{total} actions</span>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          <div id="minute-detail" className="min-w-0 rounded-xl border border-slate-200 bg-white">
+            {selected && (
+              <div className="border-b border-slate-100 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-bold text-slate-900">{selected.title}</h2>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${badge(selected.status)}`}>{selected.status}</span>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">{shortDate(selected.meeting_date)} · {selected.attendees.length} attendee{selected.attendees.length === 1 ? '' : 's'}</p>
+              </div>
+            )}
+            <div className="p-4">
+              {expandLoading && <p className="text-sm text-slate-500">Loading…</p>}
+              {!expandLoading && expanded && selected && expanded.id === selected.id && (
+                <MinutesDetail
+                  minute={expanded}
+                  previous={previousOf(expanded.id)}
+                  onShowOpen={() => setTab('actions')}
+                  onToggleAction={(i) => toggleAction(expanded.id, i)}
+                  onAddAction={(task, owner) => addAction(expanded.id, task, owner)}
+                  onEdit={() => setEditing({ minute: expanded, copy: false })}
+                  onDuplicate={() => setEditing({ minute: expanded, copy: true })}
+                  onMarkFinal={() => markFinal(expanded)}
+                  onDelete={() => remove(expanded.id)}
+                />
+              )}
+            </div>
+          </div>
         </div>
-      ))}
-      </Section>
+      )}
     </div>
   );
 }
 
 function MinutesDetail({
   minute,
+  previous,
+  onShowOpen,
+  onToggleAction,
+  onAddAction,
   onEdit,
   onDuplicate,
   onMarkFinal,
   onDelete,
 }: {
   minute: MeetingMinutesFull;
+  /** The meeting before this one, for the carry-over banner. */
+  previous: MeetingMinutesSummary | null;
+  onShowOpen: () => void;
+  onToggleAction: (index: number) => void;
+  onAddAction: (task: string, owner: string) => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onMarkFinal: () => void;
@@ -314,7 +384,11 @@ function MinutesDetail({
   const [showEmail, setShowEmail] = useState(false);
   const [sentNote, setSentNote] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [newTask, setNewTask] = useState('');
+  const [newOwner, setNewOwner] = useState('');
   const topics = topicsFor(minute);
+  const carried = previous ? previous.action_items.filter((a) => !a.done) : [];
+  const ownerOptions = Array.from(new Set([...minute.attendees, ...minute.action_items.map((a) => a.owner).filter(Boolean)])) as string[];
   const text = minutesToText({ ...minute, topics });
 
   async function copy() {
@@ -340,7 +414,7 @@ function MinutesDetail({
         <div key={i}>
           <div className="text-sm font-medium text-slate-800">{i + 1}. {t.title}</div>
           {t.notes && <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{t.notes}</p>}
-          {t.decision && <p className="mt-0.5 text-sm text-slate-700"><span className="font-medium">Decision:</span> {t.decision}</p>}
+          {t.decision && <p className="mt-1 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-950"><span className="font-semibold">Decision:</span> {t.decision}</p>}
         </div>
       ))}
 
@@ -358,20 +432,54 @@ function MinutesDetail({
         </div>
       )}
 
-      {minute.action_items.length > 0 && (
-        <div>
-          <div className="mb-1 text-xs font-medium text-slate-500">Action items</div>
-          <ul className="flex flex-col gap-1">
-            {minute.action_items.map((a, i) => (
-              <li key={i} className="text-sm text-slate-700">
-                {a.task}
-                <span className="text-slate-400"> — {a.owner || 'Unassigned'}</span>
-                <span className="text-slate-400">{a.due_date ? ` (due ${shortDate(a.due_date)})` : ' (no due date)'}</span>
-              </li>
-            ))}
-          </ul>
+      <div>
+        <div className="mb-1 flex items-baseline justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Action items</div>
+          {minute.action_items.length > 0 && <span className="text-xs text-slate-500">{minute.action_items.filter((a) => a.done).length} of {minute.action_items.length} done</span>}
         </div>
-      )}
+        {carried.length > 0 && previous && (
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <span>{carried.length} action{carried.length === 1 ? '' : 's'} still open from <b>{previous.title}</b>: {carried.map((a) => a.task).join('; ')}</span>
+            <button type="button" onClick={onShowOpen} className="min-h-[44px] rounded-lg border border-amber-400 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100">Review in Open actions</button>
+          </div>
+        )}
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          {minute.action_items.length > 0 && (
+            <ul className="divide-y divide-slate-100">
+              {minute.action_items.map((a, i) => {
+                const due = dueLabel(a);
+                return (
+                  <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
+                    <ActionCheck done={!!a.done} label={`${a.done ? 'Mark not done' : 'Mark done'}: ${a.task}`} onChange={() => onToggleAction(i)} />
+                    <div className="min-w-0 flex-1 basis-56">
+                      <div className={`text-sm ${a.done ? 'text-slate-400 line-through' : 'font-medium text-slate-900'}`}>{a.task}</div>
+                      <div className="text-xs text-slate-500">{a.owner || 'Unassigned'} · <span className={due.cls}>{due.text}</span></div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const t = newTask.trim();
+              if (!t) return;
+              onAddAction(t, newOwner);
+              setNewTask('');
+            }}
+            className="flex flex-wrap gap-2 bg-slate-50 p-2.5"
+          >
+            <input value={newTask} onChange={(e) => setNewTask(e.target.value)} maxLength={300} aria-label="New action item" placeholder="Add an action item…" className="min-h-[44px] min-w-0 flex-1 basis-56 rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+            <select value={newOwner} onChange={(e) => setNewOwner(e.target.value)} aria-label="Owner" className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-700">
+              <option value="">Unassigned</option>
+              {ownerOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+            <button type="submit" disabled={!newTask.trim()} className="min-h-[44px] rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50">Add</button>
+          </form>
+        </div>
+        <p className="mt-1 text-xs text-slate-400">New actions are due in a week. Open Edit to change owners or dates.</p>
+      </div>
 
       <p className="text-xs text-slate-400">
         Created {formatTimestamp(minute.created_at)}{minute.created_by && ` by ${minute.created_by}`}

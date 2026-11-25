@@ -17,7 +17,7 @@ class MeetingMinutesController extends Controller
     {
         $minutes = MeetingMinutes::query()
             ->orderByDesc('meeting_date')->orderByDesc('id')
-            ->get(['id', 'title', 'status', 'meeting_date', 'attendees', 'action_items', 'work_items'])
+            ->get(['id', 'title', 'status', 'meeting_date', 'attendees', 'action_items', 'work_items', 'decisions', 'topics'])
             ->map(fn (MeetingMinutes $m) => [
                 'id' => $m->id,
                 'title' => $m->title,
@@ -26,6 +26,8 @@ class MeetingMinutesController extends Controller
                 'attendees' => $m->attendees ?? [],
                 'action_items' => $m->action_items ?? [],
                 'work_items' => $m->work_items ?? [],
+                'decisions' => $m->decisions ?? [],
+                'topics' => $m->topics ?? [],
             ]);
 
         return response()->json(['minutes' => $minutes]);
