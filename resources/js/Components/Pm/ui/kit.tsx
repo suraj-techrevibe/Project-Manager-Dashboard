@@ -431,3 +431,42 @@ export function Notice({ tone = 'info', children }: { tone?: Tone; children: Rea
   };
   return <div className={`rounded-lg border px-3 py-2 text-sm ${cls[tone]}`}>{children}</div>;
 }
+
+/* ------------------------------------------------------------------ */
+/* Date sorting shared by every list                                    */
+/* ------------------------------------------------------------------ */
+
+export type SortOption<K extends string = string> = { value: K; label: string };
+
+/** Compare two dates (ISO strings, YYYY-MM-DD or timestamps). Missing dates always sort last, whatever the direction. */
+export function compareDates(a: string | null | undefined, b: string | null | undefined, dir: 'asc' | 'desc'): number {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  const ma = Number.isNaN(ta);
+  const mb = Number.isNaN(tb);
+  if (ma && mb) return 0;
+  if (ma) return 1;
+  if (mb) return -1;
+  return dir === 'asc' ? ta - tb : tb - ta;
+}
+
+/** "Sort by" dropdown used on every list. A real <select> so it works on phones. */
+export function SortSelect<K extends string>({ value, onChange, options, label = 'Sort by', className }: {
+  value: K;
+  onChange: (v: K) => void;
+  options: SortOption<K>[];
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <select
+      aria-label={label}
+      title={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value as K)}
+      className={className ?? 'rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'}
+    >
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}

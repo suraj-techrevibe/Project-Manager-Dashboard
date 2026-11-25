@@ -5,6 +5,7 @@ import type { PmFlag, PmMetrics, Severity, SinceItem, SinceSummary, TaskFocus, T
 import DigestPanel from './DigestPanel';
 import EmailModal from './EmailModal';
 import SinceStrip from './SinceStrip';
+import { SortSelect, compareDates } from './ui/kit';
 import TeamWorkload, { levelOf, overloadThreshold } from './TeamWorkload';
 
 const severityClasses: Record<Severity, string> = {
@@ -361,6 +362,7 @@ export default function TodayDashboard({
   const [emailFor, setEmailFor] = useState<TaskCard | null>(null);
   const [filter, setFilter] = useState<FlagType | 'critical' | null>(null);
   const [search, setSearch] = useState('');
+  const [dateSort, setDateSort] = useState<'default' | 'due-asc' | 'due-desc'>('default');
   const [assignee, setAssignee] = useState('');
   const [project, setProject] = useState('');
   const [pinnedOnly, setPinnedOnly] = useState(false);
@@ -486,13 +488,17 @@ export default function TodayDashboard({
         const t = c.task;
         return [t.title, t.project_name, t.assignee, t.description, ...t.tags].some((v) => v?.toLowerCase().includes(q));
       })
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        if (dateSort !== 'default') {
+          return compareDates(a.task.due_at, b.task.due_at, dateSort === 'due-asc' ? 'asc' : 'desc');
+        }
+        return (
           Number(pins.includes(b.card_id)) - Number(pins.includes(a.card_id)) ||
           severityRank[a.severity] - severityRank[b.severity] ||
           dueTs(a) - dueTs(b)
-      );
-  }, [allCards, filter, active, search, assignee, project, pinnedOnly, pins]);
+        );
+      });
+  }, [allCards, filter, active, search, assignee, project, pinnedOnly, pins, dateSort]);
 
   const totalTasks = useMemo(() => new Set(flags.map((f) => f.card_id)).size, [flags]);
   const pinnedVisible = cards.filter((c) => isPinned(c.card_id)).length;
@@ -981,7 +987,7 @@ export default function TodayDashboard({
                 <button type="button" onClick={() => setQuestion(null)} className="text-xs text-slate-400 hover:text-slate-700">Clear</button>
               </div>
             )}
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
               <input
                 id="flag-search"
                 value={search}
@@ -999,6 +1005,16 @@ export default function TodayDashboard({
                 <option value={STANDALONE}>Standalone tasks</option>
                 {projectNames.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
+              <SortSelect
+                value={dateSort}
+                onChange={setDateSort}
+                className={selectCls}
+                options={[
+                  { value: 'default', label: 'Sort: most urgent first' },
+                  { value: 'due-asc', label: 'Due date: soonest first' },
+                  { value: 'due-desc', label: 'Due date: latest first' },
+                ]}
+              />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <button

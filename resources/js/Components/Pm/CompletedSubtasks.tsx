@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Project, TaskFocus } from '../../types/pm';
-import { EmptyState, Icon, btnSecondary } from './ui/kit';
+import { EmptyState, Icon, btnSecondary, SortSelect, compareDates } from './ui/kit';
 import { useEmployees } from './Projects/ui';
 
 export interface CompletedSubtask {
@@ -65,6 +65,7 @@ export default function CompletedSubtasksGrid({
   const [staff, setStaff] = useState('');
   const [parentStatus, setParentStatus] = useState('');
   const [limit, setLimit] = useState(pageSize);
+  const [order, setOrder] = useState<'desc' | 'asc'>('desc');
 
   const projects = useMemo(() => Array.from(new Set(items.map((i) => i.projectName))).sort(), [items]);
   const staffNames = useMemo(() => Array.from(new Set(items.flatMap((i) => i.assignees))).filter(Boolean).sort(), [items]);
@@ -72,13 +73,14 @@ export default function CompletedSubtasksGrid({
 
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return items.filter((i) => {
+    const matched = items.filter((i) => {
       if (project && i.projectName !== project) return false;
       if (staff && !i.assignees.includes(staff)) return false;
       if (parentStatus && i.taskStatus !== parentStatus) return false;
       return !s || [i.subtaskTitle, i.taskTitle, i.projectName, ...i.assignees].some((v) => v.toLowerCase().includes(s));
     });
-  }, [items, q, project, staff, parentStatus]);
+    return [...matched].sort((a, b) => compareDates(a.completedAt, b.completedAt, order));
+  }, [items, q, project, staff, parentStatus, order]);
 
   const filtersOn = Boolean(q || project || staff || parentStatus);
   const pick = (set: (v: string) => void) => (e: { target: { value: string } }) => {
@@ -94,7 +96,7 @@ export default function CompletedSubtasksGrid({
   return (
     <div>
       {searchable && (
-        <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           <input
             value={q}
             onChange={pick(setQ)}
@@ -113,6 +115,12 @@ export default function CompletedSubtasksGrid({
             <option value="">Any parent task status</option>
             {parentStatuses.map((x) => <option key={x} value={x}>Parent: {x}</option>)}
           </select>
+          <SortSelect
+            value={order}
+            onChange={(v) => { setOrder(v); setLimit(pageSize); }}
+            options={[{ value: 'desc', label: 'Completed: newest first' }, { value: 'asc', label: 'Completed: oldest first' }]}
+            className={field}
+          />
         </div>
       )}
       {searchable && (

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Employee, Project, ProjectTask } from '../../types/pm';
 import TaskDetail, { NewTaskDetail } from './Projects/TaskDetail';
 import { TASK_STATUSES } from '../../types/pm';
-import { EmptyState, Pill, btnChip, btnSecondary, type Tone } from './ui/kit';
+import { EmptyState, Pill, SortSelect, btnChip, btnSecondary, compareDates, type SortOption, type Tone } from './ui/kit';
 import { resolveEmployeeName, useEmployees } from './Projects/ui';
 
 /** A task row from the synced board (Today data). Used for standalone tasks that live outside any project. */
@@ -46,6 +46,8 @@ export interface TaskRow {
   status: string;
   priority: string | null;
   due: string | null; // YYYY-MM-DD
+  /** When the task was created (project tasks only). */
+  created: string | null;
   assignees: string[];
   subs: SubRow[];
   /** Sub-task count when the individual sub-tasks aren't loaded (standalone synced tasks). */
@@ -84,6 +86,7 @@ export function useTaskRows(tasks: AllTask[] | null, projects: Project[], projec
           status: t.status,
           priority: t.priority ?? null,
           due: day(t.dueDate),
+          created: t.createdAt ?? null,
           assignees: (t.assignedToId ?? []).map(nameFor),
           subs: (t.subTasks ?? []).map((s) => ({
             id: s._id,
@@ -115,6 +118,7 @@ export function useTaskRows(tasks: AllTask[] | null, projects: Project[], projec
         status: t.status,
         priority: t.priority,
         due: day(t.due_at),
+        created: null,
         assignees: names(t.assignee),
         subs: [],
         subCount: t.subtasks_count,
@@ -128,6 +132,15 @@ export function useTaskRows(tasks: AllTask[] | null, projects: Project[], projec
     return rows;
   }, [tasks, projects, projectsLoading, employees]);
 }
+
+type TaskSort = 'default' | 'due-asc' | 'due-desc' | 'created-desc' | 'created-asc';
+const TASK_SORTS: SortOption<TaskSort>[] = [
+  { value: 'default', label: 'Sort: default order' },
+  { value: 'due-asc', label: 'Due date: soonest first' },
+  { value: 'due-desc', label: 'Due date: latest first' },
+  { value: 'created-desc', label: 'Created: newest first' },
+  { value: 'created-asc', label: 'Created: oldest first' },
+];
 
 const isOpen = (t: TaskRow) => t.status !== 'Completed' && t.status !== 'Cancelled';
 const startOfToday = () => {
@@ -215,6 +228,7 @@ export default function AllTasksPanel({
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
   const [quick, setQuick] = useState<QuickKey>('all');
+  const [sort, setSort] = useState<TaskSort>('default');
   const [limit, setLimit] = useState(PAGE);
   // Per-task expand state; `expandAll` (when set) overrides the default for tasks not toggled by hand.
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
@@ -258,7 +272,7 @@ export default function AllTasksPanel({
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const test = QUICK.find((x) => x.key === quick)!.test;
-    return rows.filter((t) => {
+    const filtered = rows.filter((t) => {
       if (!test(t, today)) return false;
       if (project && t.projectName !== project) return false;
       if (priority && t.priority !== priority) return false;
@@ -270,7 +284,10 @@ export default function AllTasksPanel({
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [rows, search, project, staff, status, priority, quick, today]);
+    if (sort === 'default') return filtered;
+    const [field, dir] = sort.split('-') as ['due' | 'created', 'asc' | 'desc'];
+    return [...filtered].sort((a, b) => compareDates(a[field], b[field], dir));
+  }, [rows, search, project, staff, status, priority, quick, today, sort]);
 
   const subtaskTotal = useMemo(() => rows.reduce((n, t) => n + (t.subs.length || t.subCount), 0), [rows]);
   const reset = () => setLimit(PAGE);
@@ -311,7 +328,7 @@ export default function AllTasksPanel({
         ))}
       </div>
 
-      <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-6">
         <input
           value={search}
           onChange={(e) => {
@@ -337,6 +354,7 @@ export default function AllTasksPanel({
           <option value="">All priorities</option>
           {priorities.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
+        <SortSelect value={sort} onChange={(v) => { setSort(v); reset(); }} options={TASK_SORTS} className={field} />
       </div>
 
       <div className="px-4 py-2 text-xs text-slate-500">
@@ -355,7 +373,9 @@ export default function AllTasksPanel({
             <span>Task</span>
             <span>Staff</span>
             <span>Status</span>
-            <span>Due</span>
+            <button type="button" onClick={() => { setSort(sort === 'due-asc' ? 'due-desc' : 'due-asc'); reset(); }} className="flex items-center gap-1 text-left font-semibold uppercase tracking-wide hover:text-slate-800" title="Sort by due date">
+              Due <span aria-hidden>{sort === 'due-asc' ? '↑' : sort === 'due-desc' ? '↓' : '↕'}</span>
+            </button>
           </div>
           <ul className="divide-y divide-slate-100">
             {visible.slice(0, limit).map((t) => {

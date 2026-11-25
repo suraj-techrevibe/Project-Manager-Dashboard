@@ -17,7 +17,7 @@ import {
 } from '../../lib/minutesFormat';
 import EmailModal from './EmailModal';
 import TaskmanduActivityMinutes from './TaskmanduActivityMinutes';
-import { EmptyState, JumpNav, PageHeader, Section, StatTile, btnChip, btnPrimary } from './ui/kit';
+import { EmptyState, JumpNav, PageHeader, Section, SortSelect, StatTile, btnChip, btnPrimary, compareDates, type SortOption } from './ui/kit';
 import type { ActionItem, MeetingMinutesFull, MeetingMinutesSummary, MinutesStatus, MinutesTopic, Project, MeetingWorkItem } from '../../types/pm';
 import {
   ErrorNote,
@@ -43,6 +43,12 @@ type EditTarget = { minute: MeetingMinutesFull | null; copy: boolean };
 const badge = (s: MinutesStatus) =>
   s === 'draft' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800';
 
+type MinutesSort = 'date-desc' | 'date-asc';
+const MINUTES_SORTS: SortOption<MinutesSort>[] = [
+  { value: 'date-desc', label: 'Meeting date: newest first' },
+  { value: 'date-asc', label: 'Meeting date: oldest first' },
+];
+
 export default function MeetingMinutesPanel() {
   const [minutes, setMinutes] = useState<MeetingMinutesSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +59,7 @@ export default function MeetingMinutesPanel() {
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [filter, setFilter] = useState<'all' | MinutesStatus>('all');
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<MinutesSort>('date-desc');
   const [activityBuilderOpen, setActivityBuilderOpen] = useState(false);
 
   async function load() {
@@ -129,12 +136,13 @@ export default function MeetingMinutesPanel() {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return minutes.filter(
+    const matches = minutes.filter(
       (m) =>
         (filter === 'all' || m.status === filter) &&
         (!q || m.title.toLowerCase().includes(q) || m.attendees.some((a) => a.toLowerCase().includes(q))),
     );
-  }, [minutes, filter, query]);
+    return [...matches].sort((a, b) => compareDates(a.meeting_date, b.meeting_date, sort === 'date-asc' ? 'asc' : 'desc') || b.id - a.id);
+  }, [minutes, filter, query, sort]);
 
   const groups = useMemo(() => {
     const out: { label: string; items: MeetingMinutesSummary[] }[] = [];
@@ -224,6 +232,7 @@ export default function MeetingMinutesPanel() {
             {f === 'all' ? 'All' : f === 'draft' ? `Drafts${drafts ? ` (${drafts})` : ''}` : 'Final'}
           </button>
         ))}
+        <SortSelect value={sort} onChange={setSort} options={MINUTES_SORTS} className="ml-auto rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-700" />
       </div>
 
       <ErrorNote message={error} />

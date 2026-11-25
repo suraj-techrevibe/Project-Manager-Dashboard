@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { visitPm } from '../../lib/pmNav';
+import { SortSelect, compareDates, type SortOption } from './ui/kit';
 import type {
   PmIntake,
   PmIntakeInput,
@@ -102,6 +103,17 @@ function priorityTone(priority: PmIntake['priority']): string {
   return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
+type IntakeSort = 'attention' | 'created-desc' | 'created-asc' | 'updated-desc' | 'updated-asc' | 'due-asc' | 'due-desc';
+const INTAKE_SORTS: SortOption<IntakeSort>[] = [
+  { value: 'attention', label: 'Needs attention first' },
+  { value: 'created-desc', label: 'Created: newest first' },
+  { value: 'created-asc', label: 'Created: oldest first' },
+  { value: 'updated-desc', label: 'Updated: newest first' },
+  { value: 'updated-asc', label: 'Updated: oldest first' },
+  { value: 'due-asc', label: 'Requested due: soonest first' },
+  { value: 'due-desc', label: 'Requested due: latest first' },
+];
+
 export default function RequestsIdeasPanel() {
   const [section, setSection] = useState<Section>('requests');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -117,6 +129,7 @@ export default function RequestsIdeasPanel() {
   const [projectSelection, setProjectSelection] = useState<Record<number, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'needs_attention' | PmIntakeStatus>('all');
+  const [dateSort, setDateSort] = useState<IntakeSort>('attention');
   const [projectFilter, setProjectFilter] = useState('all');
   const [editingContextId, setEditingContextId] = useState<number | null>(null);
   const [contextDraft, setContextDraft] = useState({ clarification: '', decision_notes: '' });
@@ -199,6 +212,11 @@ export default function RequestsIdeasPanel() {
   const priorityRank: Record<PmIntake['priority'], number> = { critical: 4, high: 3, medium: 2, low: 1 };
   const attentionStatuses = new Set(['received', 'needs_clarification', 'in_review', 'captured', 'under_review']);
   const orderedIntakes = [...filteredIntakes].sort((a, b) => {
+    if (dateSort !== 'attention') {
+      const [key, dir] = dateSort.split('-') as ['created' | 'updated' | 'due', 'asc' | 'desc'];
+      const get = (i: typeof a) => ({ created: i.created_at, updated: i.updated_at, due: i.requested_due_at }[key]);
+      return compareDates(get(a), get(b), dir);
+    }
     const aAttention = attentionStatuses.has(a.status) ? 1 : 0;
     const bAttention = attentionStatuses.has(b.status) ? 1 : 0;
     return bAttention - aAttention || priorityRank[b.priority] - priorityRank[a.priority] || (b.updated_at || '').localeCompare(a.updated_at || '');
@@ -473,7 +491,7 @@ export default function RequestsIdeasPanel() {
             </form>
           )}
 
-          <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_190px_190px]">
+          <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_190px_190px_190px]">
             <label className="block text-xs font-semibold text-slate-600">
               Search {section}
               <input
@@ -509,6 +527,10 @@ export default function RequestsIdeasPanel() {
                 <option value="">No project matched</option>
                 {projects.map((project) => <option key={project._id} value={project._id}>{project.name}</option>)}
               </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              Sort by date
+              <SortSelect value={dateSort} onChange={setDateSort} options={INTAKE_SORTS} label="Sort by date" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-normal text-slate-800" />
             </label>
           </div>
           <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">

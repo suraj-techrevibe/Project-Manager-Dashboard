@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import axios from 'axios';
+import { SortSelect, compareDates } from './ui/kit';
 
 type Item = {
   id: number; kind: 'Action' | 'Rough note'; title: string; notes: string | null;
@@ -44,7 +45,13 @@ export default function MyActionListPanel() {
     return () => window.removeEventListener('pm:action-items-changed', refresh);
   }, [load]);
 
-  const visible = useMemo(() => items.filter((item) => filter === 'All' || item.status === filter), [items, filter]);
+  const [dateSort, setDateSort] = useState('default');
+  const visible = useMemo(() => {
+    const list = items.filter((item) => filter === 'All' || item.status === filter);
+    if (dateSort === 'default') return list;
+    const [key, dir] = dateSort.split('-') as ['due' | 'created', 'asc' | 'desc'];
+    return [...list].sort((a, b) => compareDates(key === 'due' ? a.due_date : a.created_at, key === 'due' ? b.due_date : b.created_at, dir));
+  }, [items, filter, dateSort]);
   const openCount = items.filter((i) => i.status === 'Open').length;
   const waitingCount = items.filter((i) => i.status === 'Waiting').length;
 
@@ -133,6 +140,13 @@ export default function MyActionListPanel() {
     <section className="rounded-2xl border border-slate-200 bg-slate-50/70 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4"><div><h2 className="font-semibold text-slate-900">Your captured items</h2><p className="text-xs text-slate-500">Work through open items one by one. Waiting items remain visible for later follow-up.</p></div>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm"><option>Open</option><option>Waiting</option><option>Done</option><option>Archived</option><option>All</option></select>
+        <SortSelect value={dateSort} onChange={setDateSort} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" options={[
+          { value: 'default', label: 'Sort: default order' },
+          { value: 'due-asc', label: 'Due date: soonest first' },
+          { value: 'due-desc', label: 'Due date: latest first' },
+          { value: 'created-desc', label: 'Captured: newest first' },
+          { value: 'created-asc', label: 'Captured: oldest first' },
+        ]} />
       </div>
       {error && <p role="alert" className="m-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
       {loading ? <p className="p-6 text-sm text-slate-500">Loading your items…</p> : visible.length === 0 ? <div className="p-8 text-center"><p className="font-medium text-slate-700">Nothing in this view.</p><p className="mt-1 text-sm text-slate-500">Capture an action or rough note above whenever something needs attention.</p></div> :

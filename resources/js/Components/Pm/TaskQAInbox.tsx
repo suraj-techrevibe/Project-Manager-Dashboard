@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import { SortSelect, compareDates } from './ui/kit';
 
 type Result = 'Pass' | 'Fail';
 type QAStatus = 'Awaiting QA' | 'Passed' | 'Failed';
@@ -72,6 +73,7 @@ export default function TaskQAInbox() {
   const [taskStatus, setTaskStatus] = useState('All');
   const [qaStatus, setQaStatus] = useState('Awaiting QA');
   const [period, setPeriod] = useState('All dates');
+  const [dateSort, setDateSort] = useState('queued-desc');
   const [search, setSearch] = useState('');
 
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -115,7 +117,7 @@ export default function TaskQAInbox() {
     const q = search.trim().toLowerCase();
     const now = Date.now();
     const periodDays = period === 'This week' ? 7 : period === 'This month' ? 30 : 0;
-    return reviews.filter((r) => {
+    const matched = reviews.filter((r) => {
       if (business !== 'All' && r.business !== business) return false;
       if (project !== 'All' && r.project_name !== project) return false;
       if (task !== 'All' && r.task_title !== task) return false;
@@ -131,7 +133,9 @@ export default function TaskQAInbox() {
       ].filter(Boolean).join(' ').toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [reviews, business, project, task, subtask, developer, taskStatus, qaStatus, period, search]);
+    const [key, dir] = dateSort.split('-') as ['queued' | 'tested', 'asc' | 'desc'];
+    return [...matched].sort((a, b) => compareDates(key === 'queued' ? a.triggered_at : a.tested_at, key === 'queued' ? b.triggered_at : b.tested_at, dir));
+  }, [reviews, business, project, task, subtask, developer, taskStatus, qaStatus, period, search, dateSort]);
 
   const awaiting = reviews.filter((r) => r.qa_status === 'Awaiting QA' && r.qa_in_trigger).length;
   const failed = reviews.filter((r) => r.qa_status === 'Failed').length;
@@ -139,7 +143,7 @@ export default function TaskQAInbox() {
   const resetFilters = () => {
     setBusiness('All'); setProject('All'); setTask('All'); setSubtask('All');
     setDeveloper('All'); setTaskStatus('All'); setQaStatus('Awaiting QA');
-    setPeriod('All dates'); setSearch('');
+    setPeriod('All dates'); setSearch(''); setDateSort('queued-desc');
   };
 
   const startReview = (review: TaskReview, nextResult: Result) => {
@@ -241,6 +245,12 @@ export default function TaskQAInbox() {
           <select className={input} value={taskStatus} onChange={(e) => setTaskStatus(e.target.value)}><option>All Taskmandu statuses</option><option>Completed</option><option>Review</option>{Array.from(new Set(reviews.map((r) => r.task_status))).filter((v) => !['Completed', 'Review'].includes(v)).sort().map((v) => <option key={v}>{v}</option>)}</select>
           <select className={input} value={qaStatus} onChange={(e) => setQaStatus(e.target.value)}><option value="All">All QA results</option><option>Awaiting QA</option><option>Passed</option><option>Failed</option></select>
           <select className={input} value={period} onChange={(e) => setPeriod(e.target.value)}><option>All dates</option><option>This week</option><option>This month</option></select>
+          <SortSelect className={input} value={dateSort} onChange={setDateSort} options={[
+            { value: 'queued-desc', label: 'Queued: newest first' },
+            { value: 'queued-asc', label: 'Queued: oldest first' },
+            { value: 'tested-desc', label: 'Last tested: newest first' },
+            { value: 'tested-asc', label: 'Last tested: oldest first' },
+          ]} />
         </div>
       </section>
 

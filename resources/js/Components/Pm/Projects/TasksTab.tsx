@@ -4,6 +4,7 @@ import { pmApi } from '../../../lib/pmApi';
 import type { Employee, NewTaskInput, Project, ProjectTask, TaskPriority, TaskStatus } from '../../../types/pm';
 import { TASK_PRIORITIES, TASK_STATUSES } from '../../../types/pm';
 import TaskDetail from './TaskDetail';
+import { SortSelect, compareDates, type SortOption } from '../ui/kit';
 import {
   AssigneePicker,
   Avatar,
@@ -31,6 +32,15 @@ const COLUMNS: { title: string; statuses: TaskStatus[]; accent: string }[] = [
   { title: 'Done', statuses: ['Completed', 'Cancelled'], accent: 'border-t-green-500' },
 ];
 
+type TaskSort = 'default' | 'due-asc' | 'due-desc' | 'created-desc' | 'created-asc';
+const TASK_SORTS: SortOption<TaskSort>[] = [
+  { value: 'default', label: 'Sort: default order' },
+  { value: 'due-asc', label: 'Due date: soonest first' },
+  { value: 'due-desc', label: 'Due date: latest first' },
+  { value: 'created-desc', label: 'Created: newest first' },
+  { value: 'created-asc', label: 'Created: oldest first' },
+];
+
 export default function TasksTab({
   project,
   employees,
@@ -43,6 +53,7 @@ export default function TasksTab({
   onChanged: (p: Project) => void;
 }) {
   const [view, setView] = useState<'board' | 'list'>('board');
+  const [sort, setSort] = useState<TaskSort>('default');
   // The open task is in the URL (?task=<id>) so it survives reload / Back.
   const openTaskId = useUrlParam('task');
   const setOpenTaskId = (id: string | null) => setUrlParams({ task: id, sub: null });
@@ -52,6 +63,12 @@ export default function TasksTab({
   const [error, setError] = useState<string | null>(null);
 
   const openTask = project.tasks.find((t) => t._id === openTaskId) ?? null;
+  const sortedTasks = sort === 'default'
+    ? project.tasks
+    : [...project.tasks].sort((a, b) => {
+        const [key, dir] = sort.split('-') as ['due' | 'created', 'asc' | 'desc'];
+        return compareDates(key === 'due' ? a.dueDate : a.createdAt, key === 'due' ? b.dueDate : b.createdAt, dir);
+      });
 
   if (openTask) {
     return (
@@ -107,7 +124,10 @@ export default function TasksTab({
             </button>
           ))}
         </div>
-        <button onClick={() => setCreateStatus('Assigned')} className={primaryBtn}>Add task</button>
+        <div className="flex items-center gap-2">
+          <SortSelect value={sort} onChange={setSort} options={TASK_SORTS} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-600" />
+          <button onClick={() => setCreateStatus('Assigned')} className={primaryBtn}>Add task</button>
+        </div>
       </div>
 
       <ErrorNote message={error} />
@@ -115,7 +135,7 @@ export default function TasksTab({
       {view === 'board' ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => {
-            const tasks = project.tasks.filter((t) => col.statuses.includes(t.status));
+            const tasks = sortedTasks.filter((t) => col.statuses.includes(t.status));
             const isOver = dragOver === col.title && dragId !== null;
             return (
               <div
@@ -156,7 +176,7 @@ export default function TasksTab({
           })}
         </div>
       ) : (
-        <TaskList project={project} nameFor={nameFor} onOpen={setOpenTaskId} onMove={moveTask} />
+        <TaskList project={{ ...project, tasks: sortedTasks }} nameFor={nameFor} onOpen={setOpenTaskId} onMove={moveTask} />
       )}
 
       {createStatus && (

@@ -5,7 +5,7 @@ import TasksPage from './TasksPage';
 import type { AllTask } from './AllTasksPanel';
 import { setUrlParams, useUrlParam } from '../../lib/urlState';
 import { PROJECT_STATUSES } from '../../types/pm';
-import { EmptyState, JumpNav, PageHeader, Pill, Section, StatTile, btnChip, btnPrimary, btnSecondary } from './ui/kit';
+import { EmptyState, JumpNav, PageHeader, Pill, Section, SortSelect, StatTile, btnChip, btnPrimary, btnSecondary, compareDates, type SortOption } from './ui/kit';
 import ProjectWorkspace, { ColorPicker } from './Projects/ProjectWorkspace';
 import {
   Badge,
@@ -30,6 +30,18 @@ import {
  * sub-tasks and comments) / Documents / Secrets / Members views.
  * Everything is fetched from and written to Taskmandu via /pm/projects/*.
  */
+type ProjectSort = 'attention' | 'end-asc' | 'end-desc' | 'start-desc' | 'start-asc' | 'created-desc' | 'created-asc' | 'updated-desc';
+const PROJECT_SORTS: SortOption<ProjectSort>[] = [
+  { value: 'attention', label: 'Sort: needs attention first' },
+  { value: 'end-asc', label: 'End date: soonest first' },
+  { value: 'end-desc', label: 'End date: latest first' },
+  { value: 'start-desc', label: 'Start date: newest first' },
+  { value: 'start-asc', label: 'Start date: oldest first' },
+  { value: 'created-desc', label: 'Created: newest first' },
+  { value: 'created-asc', label: 'Created: oldest first' },
+  { value: 'updated-desc', label: 'Recently updated' },
+];
+
 export default function ProjectsPanel({
   seedProjects = [],
   onProjectsChange,
@@ -59,6 +71,7 @@ export default function ProjectsPanel({
   useEffect(() => { if (quickTaskParam || legacyTasksPath) setWorkspaceView('tasks'); }, [quickTaskParam, legacyTasksPath]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'All'>('All');
+  const [sort, setSort] = useState<ProjectSort>('attention');
   // Quick filter driven by the overview tiles.
   const [risk, setRisk] = useState<'all' | 'overdue' | 'blocked'>('all');
   const [health, setHealth] = useState<Record<string, any>>({});
@@ -161,6 +174,11 @@ export default function ProjectsPanel({
   });
   // In the default portfolio view, surface projects needing attention before healthy projects.
   const sortedFiltered = [...filtered].sort((a, b) => {
+    if (sort !== 'attention') {
+      const [key, dir] = sort.split('-') as ['end' | 'start' | 'created' | 'updated', 'asc' | 'desc'];
+      const get = (p: Project) => ({ end: p.endDate, start: p.startDate, created: p.createdAt, updated: p.updatedAt }[key]);
+      return compareDates(get(a), get(b), dir) || a.name.localeCompare(b.name);
+    }
     const sa = stats(a), sb = stats(b);
     const scoreA = sa.overdue * 3 + sa.blocked * 2;
     const scoreB = sb.overdue * 3 + sb.blocked * 2;
@@ -296,6 +314,7 @@ export default function ProjectsPanel({
               </button>
             ))}
           </div>
+          <SortSelect value={sort} onChange={setSort} options={PROJECT_SORTS} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
         </div>
 
         {loading && <p className="text-sm text-slate-500">Loading projects…</p>}
