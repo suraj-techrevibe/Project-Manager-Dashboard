@@ -199,3 +199,33 @@ export type AssistantEngine = 'gemini' | 'claude' | 'groq' | 'openrouter';
 export interface AssistantReply { reply: string; actions: AssistantAction[]; tools: string[]; suggestions?: string[]; engine?: AssistantEngine; model?: string | null; }
 export interface AssistantStatus { driver: string; provider: string; ai_ready: boolean; label: string; }
 export interface AssistantActionResult { ok: boolean; message: string; status: 'done' | 'failed' | 'cancelled'; }
+
+
+export type PmOperationPriority = 'auto' | 'urgent' | 'high' | 'medium' | 'low';
+export type PmOperationGoalType = 'business_goal' | 'event' | 'launch' | 'marketing' | 'deadline' | 'decision' | 'opportunity' | 'other';
+export interface PmOperationGoal {
+  id:number; business_id:number|null; business:{id:number;name:string;slug:string}|null; title:string; description:string|null;
+  goal_type:PmOperationGoalType; target_date:string|null; start_date:string|null; priority:PmOperationPriority;
+  effective_priority:string; status:'active'|'completed'|'cancelled'; source_notes:string|null; created_at:string|null; updated_at:string|null;
+}
+export interface PmOperationGoalInput {
+  title:string; business_id:number|null; description?:string|null; goal_type:PmOperationGoalType; target_date:string|null;
+  start_date:string|null; priority:PmOperationPriority; status:'active'|'completed'|'cancelled'; source_notes?:string|null;
+}
+export interface PmOperationTask {
+  title:string; description?:string|null; responsible?:string|null; due_date?:string|null; dependencies?:string|null;
+  priority?:PmOperationPriority; notes?:string|null;
+}
+export interface PmOperationMilestone { milestone:string; date?:string|null; notes?:string|null; }
+export interface PmOperationRevision { id:number; revision_number:number; event:string; change_reason:string|null; snapshot:Record<string,unknown>; created_at:string|null; }
+export interface PmOperationPlan {
+  id:number; business_id:number|null; business:{id:number;name:string;slug:string}|null; goal_id:number|null;
+  goal:{id:number;title:string;target_date:string|null}|null; title:string; priority:PmOperationPriority; effective_priority:string;
+  status:'draft'|'submitted_for_approval'|'changes_requested'|'approved'|'rejected'|'in_progress'|'completed'|'archived';
+  objective:string|null; background:string|null; proposed_approach:string|null; proposed_tasks:PmOperationTask[];
+  timeline:PmOperationMilestone[]; resource_requirements:string|null; expected_outcomes:string|null; risks:string|null;
+  boss_comments:string|null; approval_notes:string|null; additional_notes:string|null; submitted_at:string|null;
+  reviewed_at:string|null; archived_at:string|null; revision_count:number; revisions:PmOperationRevision[];
+  created_at:string|null; updated_at:string|null;
+}
+export type PmOperationPlanInput = Omit<PmOperationPlan, 'id'|'business'|'goal'|'status'|'effective_priority'|'submitted_at'|'reviewed_at'|'archived_at'|'revision_count'|'revisions'|'created_at'|'updated_at'>;

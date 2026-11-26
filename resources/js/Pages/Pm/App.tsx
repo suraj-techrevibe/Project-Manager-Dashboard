@@ -12,7 +12,7 @@ import MeetingMinutesPanel from '@/Components/Pm/StructuredMeetingMinutesPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
-import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
+import BossOperationsWorkspace from '@/Components/Pm/BossOperationsWorkspace';
 import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
 import DailyChecklistPanel from '@/Components/Pm/DailyChecklistPanel';
 import MyActionListPanel from '@/Components/Pm/MyActionListPanel';
@@ -403,7 +403,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           </Pane>
         )}
 
-        {mounted('operations') && <Pane show={page === 'operations'}><RequestsIdeasPanel key={gen.operations ?? 0} /></Pane>}
+        {mounted('operations') && <Pane show={page === 'operations'}><BossOperationsWorkspace key={gen.operations ?? 0} /></Pane>}
         {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} tasks={today ? allTasks : null} tasksLoading={todayLoading} tasksError={todayError} onRetryTasks={() => void loadToday()} onOpenTask={openTask} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
