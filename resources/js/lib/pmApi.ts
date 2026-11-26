@@ -30,7 +30,7 @@ import type {
   MinutesInput,
   PmIntake,
   PmIntakeInput,
-  PmIntakeKind,
+  PmIntakeKind,\n  PmBusiness,
   AssistantReply,
   AssistantStatus,
   AssistantActionResult,

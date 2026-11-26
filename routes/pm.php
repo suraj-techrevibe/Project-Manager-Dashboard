@@ -5,7 +5,7 @@ use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\PmDictionaryController;
 use App\Http\Controllers\PmPageController;
-use App\Http\Controllers\PmOperationsController;
+use App\Http\Controllers\PmOperationsController;\nuse App\Http\Controllers\PmOperationWorkspaceController;
 use App\Http\Controllers\PmAssistantController;
 use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmDraftController;
@@ -77,6 +77,18 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::get('brief/pushes', [PmController::class, 'recentPushes'])->name('brief.pushes');
     Route::post('brief/pushes/{activity}/undo', [PmController::class, 'undoPush'])->name('brief.pushes.undo');
     Route::get('automation/health', [PmAutomationController::class, 'health'])->name('automation.health');
+    Route::prefix('operation')->name('operation.')->group(function () {
+        Route::get('goals', [PmOperationWorkspaceController::class, 'goals'])->name('goals.index');
+        Route::post('goals', [PmOperationWorkspaceController::class, 'storeGoal'])->name('goals.store');
+        Route::patch('goals/{goal}', [PmOperationWorkspaceController::class, 'updateGoal'])->name('goals.update');
+        Route::delete('goals/{goal}', [PmOperationWorkspaceController::class, 'deleteGoal'])->name('goals.destroy');
+        Route::get('plans', [PmOperationWorkspaceController::class, 'plans'])->name('plans.index');
+        Route::post('plans', [PmOperationWorkspaceController::class, 'storePlan'])->name('plans.store');
+        Route::patch('plans/{plan}', [PmOperationWorkspaceController::class, 'updatePlan'])->name('plans.update');
+        Route::post('plans/{plan}/transition', [PmOperationWorkspaceController::class, 'transitionPlan'])->name('plans.transition');
+        Route::post('plans/{plan}/duplicate', [PmOperationWorkspaceController::class, 'duplicatePlan'])->name('plans.duplicate');
+        Route::delete('plans/{plan}', [PmOperationWorkspaceController::class, 'deletePlan'])->name('plans.destroy');
+    });
     Route::get('businesses', [PmOperationsController::class, 'businesses'])->name('businesses.index');
     Route::post('businesses', [PmOperationsController::class, 'storeBusiness'])->name('businesses.store');
     Route::patch('businesses/{business}', [PmOperationsController::class, 'updateBusiness'])->name('businesses.update');
