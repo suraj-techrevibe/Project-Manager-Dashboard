@@ -30,7 +30,12 @@ import type {
   MinutesInput,
   PmIntake,
   PmIntakeInput,
-  PmIntakeKind,\n  PmBusiness,
+  PmIntakeKind,
+  PmBusiness,
+  PmOperationGoal,
+  PmOperationGoalInput,
+  PmOperationPlan,
+  PmOperationPlanInput,
   AssistantReply,
   AssistantStatus,
   AssistantActionResult,
@@ -124,6 +129,19 @@ export const pmApi = {
   projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
 
   // Requests and ideas are local records; Taskmandu projects are their business identity.
+
+  // Boss & business operations workspace records are local to this PM app.
+  businesses: () => api.get<{ businesses: PmBusiness[] }>('/businesses'),
+  operationGoals: (params: Record<string, string> = {}) => api.get<{ goals: PmOperationGoal[] }>('/operation/goals', { params }),
+  createOperationGoal: (data: PmOperationGoalInput) => api.post<{ goal: PmOperationGoal }>('/operation/goals', data),
+  updateOperationGoal: (id: number, data: Partial<PmOperationGoalInput>) => api.patch<{ goal: PmOperationGoal }>(`/operation/goals/${id}`, data),
+  deleteOperationGoal: (id: number) => api.delete<{ deleted: true }>(`/operation/goals/${id}`),
+  operationPlans: (params: Record<string, string> = {}) => api.get<{ plans: PmOperationPlan[] }>('/operation/plans', { params }),
+  createOperationPlan: (data: PmOperationPlanInput) => api.post<{ plan: PmOperationPlan }>('/operation/plans', data),
+  updateOperationPlan: (id: number, data: Partial<PmOperationPlanInput>) => api.patch<{ plan: PmOperationPlan }>(`/operation/plans/${id}`, data),
+  transitionOperationPlan: (id: number, data: { status: string; boss_feedback?: string; approval_notes?: string }) => api.post<{ plan: PmOperationPlan }>(`/operation/plans/${id}/transition`, data),
+  duplicateOperationPlan: (id: number) => api.post<{ plan: PmOperationPlan }>(`/operation/plans/${id}/duplicate`),
+  deleteOperationPlan: (id: number) => api.delete<{ deleted: true }>(`/operation/plans/${id}`),
 
   intakes: (kind?: PmIntakeKind) =>
     api.get<{ intakes: PmIntake[] }>('/intakes', { params: kind ? { kind } : undefined }),
