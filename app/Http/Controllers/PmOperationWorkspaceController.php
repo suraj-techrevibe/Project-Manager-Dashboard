@@ -319,8 +319,10 @@ class PmOperationWorkspaceController extends Controller
         $target = Carbon::parse($date)->startOfDay();
         if ($target->lt($today)) return 'urgent';
         $days = $today->diffInDays($target);
-        if ($days <= 3) return 'high';
-        if ($days <= 7) return 'medium';
+        $highDays = max(0, (int) config('pm_operations.priority_high_within_days', 3));
+        $mediumDays = max($highDays, (int) config('pm_operations.priority_medium_within_days', 7));
+        if ($days <= $highDays) return 'high';
+        if ($days <= $mediumDays) return 'medium';
         return 'normal';
     }
 }
