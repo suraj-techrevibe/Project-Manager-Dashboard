@@ -55,11 +55,6 @@ class PmPageController extends Controller
         return Inertia::render('Pm/App', ['page' => 'qa']);
     }
 
-    public function qaReports(): Response
-    {
-        return Inertia::render('Pm/App', ['page' => 'qa-reports']);
-    }
-
     public function checklist(): Response
     {
         return Inertia::render('Pm/App', ['page' => 'checklist']);
