@@ -5,6 +5,8 @@ import { CATEGORIES, CATEGORY_STYLE, emptyHours, fmtHours, addHours, sumHours } 
 import type { CategoryHours, TaskCategory, WorkloadProject, WorkloadRow } from '../../types/pm';
 import { CategoryBar } from './CategoryBadge';
 import { btnChip } from './ui/kit';
+import InvestigationPanel from './investigation/InvestigationPanel';
+import type { InvByDeveloper } from '../../types/pmInvestigation';
 
 type Level = 'none' | 'light' | 'balanced' | 'full' | 'over' | 'heavy';
 
@@ -59,7 +61,7 @@ const hoursOf = (w: WorkloadRow, mode: Mode): CategoryHours => (mode === 'week' 
  * Under it, a stacked bar splits the same estimated hours by task category (see the Dictionary tab).
  * These are Taskmandu estimates, not timesheets.
  */
-export default function TeamWorkload({
+function WorkloadView({
   workload,
   selected,
   onSelect,
@@ -419,6 +421,50 @@ export default function TeamWorkload({
             )}
           </p>
         </div>
+      )}
+    </div>
+  );
+}
+
+type WorkloadProps = React.ComponentProps<typeof WorkloadView>;
+
+/**
+ * Team workload with two subtabs. "Workload" is the existing view, unchanged. "Investigation" is where projects
+ * are assigned to developers for review. Investigations are not tasks: they never add to anyone's task count or hours.
+ */
+export default function TeamWorkload(props: WorkloadProps) {
+  const [tab, setTab] = useState<'workload' | 'investigation'>('workload');
+  const [inv, setInv] = useState<InvByDeveloper[]>([]);
+
+  // Compact note on the Workload tab: who currently has an investigation (kept separate from task numbers).
+  useEffect(() => {
+    if (tab !== 'workload') return;
+    let live = true;
+    pmApi.invByDeveloper().then((r) => live && setInv(r.data.developers)).catch(() => undefined);
+    return () => { live = false; };
+  }, [tab, props.workload]);
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-1.5" role="tablist" aria-label="Team workload views">
+        <button role="tab" aria-selected={tab === 'workload'} className={btnChip(tab === 'workload')} onClick={() => setTab('workload')}>Workload</button>
+        <button role="tab" aria-selected={tab === 'investigation'} className={btnChip(tab === 'investigation')} onClick={() => setTab('investigation')}>Investigation</button>
+      </div>
+      {tab === 'workload' ? (
+        <>
+          <WorkloadView {...props} />
+          {inv.length > 0 && (
+            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <span className="font-medium text-slate-700">Active investigations</span> (not counted as task hours):{' '}
+              {inv.map((d, i) => (
+                <span key={d.name} title={d.projects.join(', ')}>{i > 0 && ' · '}{d.name} {d.active}{d.awaiting_review ? ` (${d.awaiting_review} awaiting review)` : ''}</span>
+              ))}
+              {' · '}<button className="text-indigo-600 hover:underline" onClick={() => setTab('investigation')}>Open</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <InvestigationPanel />
       )}
     </div>
   );

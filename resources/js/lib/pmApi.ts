@@ -1,3 +1,4 @@
+import type { InvAction, InvAssignInput, InvByDeveloper, InvCoverage, InvFilters, InvFindingsInput, InvListResponse, InvOptions, InvestigationFull } from '../types/pmInvestigation';
 import axios from 'axios';
 import type {
   DraftTicket,
@@ -53,6 +54,9 @@ import { normalizeProject } from './normalizeProject';
 // Assumes Laravel's default bootstrap.js already configured axios with
 // withCredentials + X-CSRF-TOKEN (standard Breeze/Jetstream setup).
 const api = axios.create({ baseURL: '/pm/api' });
+
+/** Drop empty filter values so they are not sent as "". */
+const cleanParams = (p?: object) => (p ? Object.fromEntries(Object.entries(p).filter(([, v]) => v !== '' && v !== undefined && v !== null)) : undefined);
 
 // Normalise every project payload once, here, so components never see a
 // missing array (see normalizeProject.ts).
@@ -299,4 +303,20 @@ export const pmApi = {
 
   /** Unfinished Work Items from the last meeting plus overdue / blocked / stuck board tasks. */
   minutesCarryOver: () => api.get<CarryOver>('/minutes/carry-over'),
+
+  // ---- Team Workload → Investigation (local only; never writes to Taskmandu) ----
+  invList: (params?: InvFilters) => api.get<InvListResponse>('/investigations', { params: cleanParams(params) }),
+  invOptions: () => api.get<InvOptions>('/investigations/options'),
+  invCoverage: () => api.get<InvCoverage>('/investigations/coverage'),
+  invByDeveloper: () => api.get<{ developers: InvByDeveloper[] }>('/investigations/by-developer'),
+  invShow: (id: number) => api.get<{ investigation: InvestigationFull }>(`/investigations/${id}`),
+  invCreate: (data: InvAssignInput) => api.post<{ investigation: InvestigationFull }>('/investigations', data),
+  invUpdate: (id: number, data: Partial<InvAssignInput>) => api.patch<{ investigation: InvestigationFull }>(`/investigations/${id}`, data),
+  invReassign: (id: number, data: { developer_name: string; developer_employee_id?: string | null; note?: string }) =>
+    api.post<{ investigation: InvestigationFull }>(`/investigations/${id}/reassign`, data),
+  invFindings: (id: number, data: InvFindingsInput) => api.patch<{ investigation: InvestigationFull }>(`/investigations/${id}/findings`, data),
+  invReview: (id: number, data: { review_comments?: string | null; followups?: { uid: string; convert?: boolean; reference?: string }[] }) =>
+    api.patch<{ investigation: InvestigationFull }>(`/investigations/${id}/review`, data),
+  invTransition: (id: number, action: InvAction, comments?: string) =>
+    api.post<{ investigation: InvestigationFull }>(`/investigations/${id}/transition`, { action, comments }),
 };

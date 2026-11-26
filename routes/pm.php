@@ -5,6 +5,7 @@ use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
 use App\Http\Controllers\PmDictionaryController;
 use App\Http\Controllers\PmPageController;
+use App\Http\Controllers\PmInvestigationController;
 use App\Http\Controllers\PmOperationsController;
 use App\Http\Controllers\PmOperationWorkspaceController;
 use App\Http\Controllers\PmAssistantController;
@@ -78,6 +79,21 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::get('brief/pushes', [PmController::class, 'recentPushes'])->name('brief.pushes');
     Route::post('brief/pushes/{activity}/undo', [PmController::class, 'undoPush'])->name('brief.pushes.undo');
     Route::get('automation/health', [PmAutomationController::class, 'health'])->name('automation.health');
+    // Team Workload → Investigation: project investigation assignments, findings, review and coverage.
+    Route::prefix('investigations')->name('investigations.')->where(['investigation' => '[0-9]+'])->group(function () {
+        Route::get('/', [PmInvestigationController::class, 'index'])->name('index');
+        Route::post('/', [PmInvestigationController::class, 'store'])->name('store');
+        Route::get('options', [PmInvestigationController::class, 'options'])->name('options');
+        Route::get('coverage', [PmInvestigationController::class, 'coverage'])->name('coverage');
+        Route::get('by-developer', [PmInvestigationController::class, 'byDeveloper'])->name('by-developer');
+        Route::get('{investigation}', [PmInvestigationController::class, 'show'])->name('show');
+        Route::patch('{investigation}', [PmInvestigationController::class, 'update'])->name('update');
+        Route::post('{investigation}/reassign', [PmInvestigationController::class, 'reassign'])->name('reassign');
+        Route::patch('{investigation}/findings', [PmInvestigationController::class, 'findings'])->name('findings');
+        Route::patch('{investigation}/review', [PmInvestigationController::class, 'review'])->name('review');
+        Route::post('{investigation}/transition', [PmInvestigationController::class, 'transition'])->name('transition');
+    });
+
     Route::prefix('operation')->name('operation.')->group(function () {
         Route::get('goals', [PmOperationWorkspaceController::class, 'goals'])->name('goals.index');
         Route::post('goals', [PmOperationWorkspaceController::class, 'storeGoal'])->name('goals.store');

@@ -6,6 +6,10 @@ return [
         'provider' => env('PM_AI_PROVIDER', 'groq'),
         'fallback_provider' => env('PM_AI_FALLBACK_PROVIDER', 'openrouter'),
     ],
+    'investigation' => [
+        // A project counts as "due for investigation" when it has none active and its last one is older than this.
+        'review_every_days' => (int) env('PM_INVESTIGATION_EVERY_DAYS', 90),
+    ],
     'routine' => [
         'timezone' => env('PM_ROUTINE_TIMEZONE', 'Australia/Sydney'),
         'nudge_time' => env('PM_ROUTINE_NUDGE_TIME', '17:30'),
