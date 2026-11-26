@@ -77,6 +77,14 @@ function CategoryCard({ label, terms, openTasks, onChanged }: { label: RuleLabel
     }
   }
 
+  async function saveEdit() {
+    if (!editing) return;
+    await run(async () => {
+      await pmApi.updateDictionaryTerm(editing.id, { term: editing.value });
+      setEditing(null);
+    }, "Couldn't save that keyword.");
+  }
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white">
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
@@ -87,63 +95,69 @@ function CategoryCard({ label, terms, openTasks, onChanged }: { label: RuleLabel
         <span className="text-xs text-slate-400">{terms.filter((t) => t.enabled).length} of {terms.length} on</span>
       </div>
 
-      <ul className="max-h-80 divide-y divide-slate-100 overflow-y-auto">
-        {terms.map((t) => (
-          <li key={t.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+      <div className="p-3">
+        {editing && (
+          <div className="mb-2 flex items-center gap-1.5">
             <input
-              type="checkbox"
-              checked={t.enabled}
-              onChange={(e) => void run(() => pmApi.updateDictionaryTerm(t.id, { enabled: e.target.checked }), "Couldn't change that keyword.")}
-              className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
-              aria-label={`${t.enabled ? 'Turn off' : 'Turn on'} ${t.term}`}
+              autoFocus
+              value={editing.value}
+              onChange={(e) => setEditing({ id: editing.id, value: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void saveEdit();
+                if (e.key === 'Escape') { setEditing(null); setPreview(null); }
+              }}
+              className={inputCls}
+              aria-label="Edit keyword"
             />
-            {editing?.id === t.id ? (
-              <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <input
-                  autoFocus
-                  value={editing.value}
-                  onChange={(e) => setEditing({ id: t.id, value: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void run(async () => { await pmApi.updateDictionaryTerm(t.id, { term: editing.value }); setEditing(null); }, "Couldn't save that keyword.");
-                    if (e.key === 'Escape') setEditing(null);
-                  }}
-                  className={inputCls}
-                />
-                <button className="text-xs text-slate-500 underline" onClick={() => void showPreview({ op: 'edit', id: t.id, term: editing.value })}>
-                  Preview
-                </button>
-                <button
-                  className="text-xs font-medium text-indigo-700 underline"
-                  onClick={() => void run(async () => { await pmApi.updateDictionaryTerm(t.id, { term: editing.value }); setEditing(null); }, "Couldn't save that keyword.")}
-                >
-                  Save
-                </button>
-                <button className="text-xs text-slate-400 underline" onClick={() => { setEditing(null); setPreview(null); }}>
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <>
-                <button onClick={() => setEditing({ id: t.id, value: t.term })} className={`min-w-0 flex-1 truncate text-left ${t.enabled ? 'text-slate-800' : 'text-slate-400 line-through'}`} title="Click to edit">
-                  {t.term}
-                </button>
-                <span className="shrink-0 text-[11px] text-slate-400" title="Open tasks this keyword matches">
-                  {t.matches === null ? 'off' : `${t.matches} task${t.matches === 1 ? '' : 's'}`}
+            <button className="text-xs text-slate-500 underline" onClick={() => void showPreview({ op: 'edit', id: editing.id, term: editing.value })}>
+              Preview
+            </button>
+            <button className="text-xs font-medium text-indigo-700 underline" onClick={() => void saveEdit()}>
+              Save
+            </button>
+            <button className="text-xs text-slate-400 underline" onClick={() => { setEditing(null); setPreview(null); }}>
+              Cancel
+            </button>
+          </div>
+        )}
+        <ul className="flex max-h-60 flex-wrap gap-1.5 overflow-y-auto">
+          {terms.map((t) => (
+            <li
+              key={t.id}
+              className={`group inline-flex items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 text-xs ${
+                t.enabled ? `${style.chip} ring-0 border-transparent` : 'border-dashed border-slate-300 bg-white text-slate-400'
+              } ${editing?.id === t.id ? 'outline outline-1 outline-indigo-400' : ''}`}
+            >
+              <button
+                onClick={() => void run(() => pmApi.updateDictionaryTerm(t.id, { enabled: !t.enabled }), "Couldn't change that keyword.")}
+                className={t.enabled ? '' : 'line-through'}
+                title={t.enabled ? 'On — click to turn off' : 'Off — click to turn on'}
+                aria-pressed={t.enabled}
+              >
+                {t.term}
+              </button>
+              {t.matches !== null && t.matches > 0 && (
+                <span className="rounded-full bg-white/70 px-1.5 text-[10px] font-medium" title={`Matches ${t.matches} open task${t.matches === 1 ? '' : 's'}`}>
+                  {t.matches}
                 </span>
-                <button
-                  onClick={() => void run(() => pmApi.deleteDictionaryTerm(t.id), "Couldn't delete that keyword.")}
-                  className="shrink-0 text-xs text-slate-300 hover:text-red-600"
-                  aria-label={`Delete ${t.term}`}
-                  title="Delete keyword"
-                >
-                  ✕
-                </button>
-              </>
-            )}
-          </li>
-        ))}
-        {terms.length === 0 && <li className="px-3 py-3 text-xs text-slate-400">No keywords yet.</li>}
-      </ul>
+              )}
+              <button onClick={() => setEditing({ id: t.id, value: t.term })} className="rounded-full px-1 opacity-40 hover:opacity-100" aria-label={`Edit ${t.term}`} title="Edit">
+                ✎
+              </button>
+              <button
+                onClick={() => void run(() => pmApi.deleteDictionaryTerm(t.id), "Couldn't delete that keyword.")}
+                className="rounded-full px-1 opacity-40 hover:text-red-600 hover:opacity-100"
+                aria-label={`Delete ${t.term}`}
+                title="Delete"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+          {terms.length === 0 && <li className="text-xs text-slate-400">No keywords yet.</li>}
+        </ul>
+        <p className="mt-2 text-[11px] text-slate-400">Click a tag to turn it on or off. The number is how many open tasks it matches.</p>
+      </div>
 
       <div className="border-t border-slate-100 p-3">
         <div className="flex items-center gap-1.5">
