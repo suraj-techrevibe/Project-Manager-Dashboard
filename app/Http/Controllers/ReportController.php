@@ -215,34 +215,89 @@ class ReportController extends Controller
     }
 
     /** Generate three saved report snapshots for a selected daily, weekly or custom period. */
+    /** Generate exactly one source report for the selected period. */
     public function storePack(Request $request): JsonResponse
     {
         $data = $request->validate([
             'period_type' => ['required', Rule::in(['daily', 'weekly', 'date_range'])],
+            'report_type' => ['required', Rule::in(['qa', 'minutes', 'performance'])],
             'date' => 'nullable|date_format:Y-m-d|before_or_equal:today',
             'from' => 'nullable|date_format:Y-m-d|required_if:period_type,date_range',
             'to' => 'nullable|date_format:Y-m-d|required_if:period_type,date_range|after_or_equal:from|before_or_equal:today',
             'sync' => 'nullable|boolean',
         ]);
+
         $type = $data['period_type'];
-        if ($type === 'daily') { $from = Carbon::parse($data['date'] ?? today())->startOfDay(); $to = $from->copy()->endOfDay(); }
-        elseif ($type === 'weekly') { $from = Carbon::parse($data['date'] ?? today())->startOfWeek(Carbon::MONDAY); $to = $from->copy()->endOfWeek(Carbon::SUNDAY)->endOfDay(); if ($to->gt(now()->endOfDay())) $to = now()->endOfDay(); }
-        else { $from = Carbon::parse($data['from'])->startOfDay(); $to = Carbon::parse($data['to'])->endOfDay(); }
-        $warning = null;
-        if (($data['sync'] ?? true) && $this->taskmandu->configured()) { try { $this->taskmandu->run(); } catch (Throwable $e) { $warning = 'Taskmandu refresh failed; using latest synced data. '.$e->getMessage(); } }
-        $sourceRequest = Request::create('/pm/api/reports/period', 'GET', ['from' => $from->toDateString(), 'to' => $to->toDateString()]);
-        $source = $this->period($sourceRequest)->getData(true);
-        $definitions = ['qa' => ['title' => 'QA Report', 'data' => $source['qa']], 'minutes' => ['title' => 'Meeting Minutes', 'data' => $source['minutes']], 'performance' => ['title' => 'Tasks & Performance', 'data' => $source['performance']]];
-        $saved = [];
-        foreach ($definitions as $reportType => $definition) {
-            $content = ['kind' => 'pack', 'report_type' => $reportType, 'title' => $definition['title'], 'period_type' => $type, 'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()], 'generated_at' => now()->toIso8601String(), 'data' => $definition['data']];
-            $content['summary'] = $reportType === 'qa' ? ['reports' => count($definition['data']['reports'] ?? []), 'findings' => collect($definition['data']['reports'] ?? [])->sum(fn ($row) => count($row['findings'] ?? []))] : ($reportType === 'minutes' ? ['meetings' => count($definition['data']['meetings'] ?? [])] : ($definition['data']['summary'] ?? []));
-            $body = $this->formatPackBody($definition['title'], $content);
-            $report = PmReport::updateOrCreate(['kind' => $reportType, 'report_date' => $from->toDateString()], ['period_type' => $type, 'period_end' => $to->toDateString(), 'content' => $content, 'body' => $body, 'notes' => null, 'generated_by' => (string) ($request->user()?->name ?? 'PM'), 'auto' => false]);
-            $saved[] = $this->present($report);
+        if ($type === 'daily') {
+            $from = Carbon::parse($data['date'] ?? today())->startOfDay();
+            $to = $from->copy()->endOfDay();
+        } elseif ($type === 'weekly') {
+            $from = Carbon::parse($data['date'] ?? today())->startOfWeek(Carbon::MONDAY);
+            $to = $from->copy()->endOfWeek(Carbon::SUNDAY)->endOfDay();
+            if ($to->gt(now()->endOfDay())) $to = now()->endOfDay();
+        } else {
+            $from = Carbon::parse($data['from'])->startOfDay();
+            $to = Carbon::parse($data['to'])->endOfDay();
         }
-        return response()->json(['reports' => $saved, 'warning' => $warning, 'period' => ['type' => $type, 'from' => $from->toDateString(), 'to' => $to->toDateString()]], 201);
+
+        $reportType = $data['report_type'];
+        $warning = null;
+        // QA and meeting minutes are already saved by their own tabs. Only the
+        // performance report needs a fresh Taskmandu sync.
+        if ($reportType === 'performance' && ($data['sync'] ?? true) && $this->taskmandu->configured()) {
+            try {
+                $this->taskmandu->run();
+            } catch (Throwable $e) {
+                $warning = 'Taskmandu refresh failed; using latest synced data. '.$e->getMessage();
+            }
+        }
+
+        $sourceRequest = Request::create('/pm/api/reports/period', 'GET', [
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+        ]);
+        $source = $this->period($sourceRequest)->getData(true);
+        $definitions = [
+            'qa' => ['title' => 'QA Report', 'data' => $source['qa']],
+            'minutes' => ['title' => 'Meeting Minutes', 'data' => $source['minutes']],
+            'performance' => ['title' => 'Tasks & Performance', 'data' => $source['performance']],
+        ];
+        $definition = $definitions[$reportType];
+        $content = [
+            'kind' => 'pack',
+            'report_type' => $reportType,
+            'title' => $definition['title'],
+            'period_type' => $type,
+            'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+            'generated_at' => now()->toIso8601String(),
+            'data' => $definition['data'],
+        ];
+        $content['summary'] = $reportType === 'qa'
+            ? ['reports' => count($definition['data']['reports'] ?? []), 'findings' => collect($definition['data']['reports'] ?? [])->sum(fn ($row) => count($row['findings'] ?? []))]
+            : ($reportType === 'minutes'
+                ? ['meetings' => count($definition['data']['meetings'] ?? [])]
+                : ($definition['data']['summary'] ?? []));
+
+        $report = PmReport::updateOrCreate(
+            ['kind' => $reportType, 'report_date' => $from->toDateString()],
+            [
+                'period_type' => $type,
+                'period_end' => $to->toDateString(),
+                'content' => $content,
+                'body' => $this->formatPackBody($definition['title'], $content),
+                'notes' => null,
+                'generated_by' => (string) ($request->user()?->name ?? 'PM'),
+                'auto' => false,
+            ]
+        );
+
+        return response()->json([
+            'report' => $this->present($report),
+            'warning' => $warning,
+            'period' => ['type' => $type, 'from' => $from->toDateString(), 'to' => $to->toDateString()],
+        ], 201);
     }
+
     /** Current operational snapshot grouped by Taskmandu project (the dashboard's business scope). */
     public function overview(): JsonResponse
     {
