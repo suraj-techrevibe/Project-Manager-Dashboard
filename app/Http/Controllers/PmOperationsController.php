@@ -33,9 +33,68 @@ class PmOperationsController extends Controller
         'planned',
     ];
 
-    public function businesses(): JsonResponse
+    public function businesses(\\App\\Services\\Pm\\TaskmanduSync $taskmanduSync): JsonResponse
     {
+        // Taskmandu projects are the source of truth for business options.
+        // Do not filter by status: active, completed and archived projects all belong here.
+        $projects = $taskmanduSync->listProjects();
+        $projectIds = [];
+
+        DB::transaction(function () use ($projects, &$projectIds) {
+            foreach ($projects as $project) {
+                $projectId = (string) ($project['_id'] ?? '');
+                $projectName = trim((string) ($project['name'] ?? ''));
+
+                if (! preg_match('/^[0-9a-fA-F]{24}$/', $projectId) || $projectName === '') {
+                    continue;
+                }
+
+                $projectIds[] = $projectId;
+                $link = PmBusinessProjectLink::query()
+                    ->where('taskmandu_project_id', $projectId)
+                    ->first();
+
+                if ($link) {
+                    // Keep the existing business ID so Goals, Plans and historical
+                    // records retain their foreign-key relationships.
+                    $link->update(['taskmandu_project_name' => $projectName]);
+                    continue;
+                }
+
+                $baseName = mb_substr($projectName, 0, 160);
+                $businessName = $baseName;
+                $suffix = 2;
+                while (PmBusiness::query()->where('name', $businessName)->exists()) {
+                    $tail = ' ('.$suffix++.')';
+                    $businessName = mb_substr($baseName, 0, 160 - mb_strlen($tail)).$tail;
+                }
+
+                $baseSlug = Str::slug($projectName) ?: 'project';
+                $slug = mb_substr($baseSlug, 0, 180);
+                $slugSuffix = 2;
+                while (PmBusiness::query()->where('slug', $slug)->exists()) {
+                    $tail = '-'.$slugSuffix++;
+                    $slug = mb_substr($baseSlug, 0, 180 - mb_strlen($tail)).$tail;
+                }
+
+                $business = PmBusiness::create([
+                    'name' => $businessName,
+                    'slug' => $slug,
+                    'description' => null,
+                    'status' => 'active',
+                ]);
+
+                $business->projectLinks()->create([
+                    'taskmandu_project_id' => $projectId,
+                    'taskmandu_project_name' => $projectName,
+                    'is_primary' => true,
+                ]);
+            }
+        });
+
+        $projectIds = array_values(array_unique($projectIds));
         $businesses = PmBusiness::query()
+            ->whereHas('projectLinks', fn ($query) => $query->whereIn('taskmandu_project_id', $projectIds ?: ['__none__']))
             ->with('projectLinks')
             ->orderBy('name')
             ->get()
