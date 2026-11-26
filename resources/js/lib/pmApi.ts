@@ -34,6 +34,14 @@ import type {
   AssistantReply,
   AssistantStatus,
   AssistantActionResult,
+  WorkloadResponse,
+  DictionaryData,
+  DictionaryTerm,
+  DictionaryChange,
+  DictionaryPreview,
+  ClassifyResult,
+  CategoryReview,
+  TaskCategory,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
 
@@ -68,6 +76,20 @@ export const pmApi = {
 
   /** Current Today data without a page reload. */
   today: () => api.get<TodayData>('/today'),
+
+  /** Team workload narrowed to a business (Taskmandu project) and/or a task category. */
+  workload: (filters: { project_id?: string; category?: string } = {}) => api.get<WorkloadResponse>('/workload', { params: filters }),
+
+  /** Private keyword dictionary that sorts tasks into categories. */
+  dictionary: () => api.get<DictionaryData>('/dictionary'),
+  addDictionaryTerm: (label: string, term: string) => api.post<{ term: DictionaryTerm }>('/dictionary/terms', { label, term }),
+  updateDictionaryTerm: (id: number, patch: { term?: string; enabled?: boolean }) => api.patch<{ term: DictionaryTerm }>(`/dictionary/terms/${id}`, patch),
+  deleteDictionaryTerm: (id: number) => api.delete<{ ok: boolean }>(`/dictionary/terms/${id}`),
+  previewDictionary: (changes: DictionaryChange[]) => api.post<DictionaryPreview>('/dictionary/preview', { changes }),
+  testClassification: (title: string, description?: string) => api.post<ClassifyResult>('/dictionary/test', { title, description }),
+  categoryReview: () => api.get<CategoryReview>('/dictionary/review'),
+  setTaskCategory: (cardId: number, category: TaskCategory) => api.put<{ card_id: number; category: TaskCategory; override: TaskCategory | null }>(`/dictionary/cards/${cardId}/category`, { category }),
+  resetTaskCategory: (cardId: number) => api.delete<{ card_id: number; category: TaskCategory; override: null }>(`/dictionary/cards/${cardId}/category`),
 
   /** Pull from Taskmandu now (can take a while), then return fresh Today data. */
   sync: () => api.post<TodayData & { synced: number }>('/sync', undefined, { timeout: 180_000 }),

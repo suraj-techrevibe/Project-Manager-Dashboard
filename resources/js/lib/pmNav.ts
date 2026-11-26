@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
  * sub-task, selected meeting…) lives in that tab's query string, e.g.
  * /pm/projects?project=<id>&ptab=tasks&task=<id>&sub=<id>.
  */
-export type PmPage = 'today' | 'tasks' | 'operations' | 'projects' | 'minutes' | 'brief' | 'reports' | 'scope' | 'git' | 'qa' | 'qa-reports' | 'checklist' | 'action-list';
+export type PmPage = 'today' | 'tasks' | 'operations' | 'projects' | 'minutes' | 'brief' | 'reports' | 'scope' | 'git' | 'qa' | 'qa-reports' | 'checklist' | 'action-list' | 'dictionary';
 
 export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'today', label: 'Command center', href: '/pm' },
@@ -23,6 +23,7 @@ export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'qa', label: 'QA Center', href: '/pm/qa' },
   { key: 'checklist', label: 'Daily Checklist', href: '/pm/checklist' },
   { key: 'action-list', label: 'My Action List', href: '/pm/action-list' },
+  { key: 'dictionary', label: 'Dictionary', href: '/pm/dictionary' },
 ];
 
 export const isPmPage = (v: string): v is PmPage => PM_PAGES.some((p) => p.key === v);

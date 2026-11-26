@@ -69,4 +69,9 @@ class PmPageController extends Controller
     {
         return Inertia::render('Pm/App', ['page' => 'action-list']);
     }
+
+    public function dictionary(): Response
+    {
+        return Inertia::render('Pm/App', ['page' => 'dictionary']);
+    }
 }

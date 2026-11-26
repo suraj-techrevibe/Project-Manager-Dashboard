@@ -16,6 +16,7 @@ import RequestsIdeasPanel from '@/Components/Pm/RequestsIdeasPanel';
 import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
 import DailyChecklistPanel from '@/Components/Pm/DailyChecklistPanel';
 import MyActionListPanel from '@/Components/Pm/MyActionListPanel';
+import DictionaryPanel from '@/Components/Pm/DictionaryPanel';
 import QACenter from '@/Components/Pm/QACenter';
 import QAReportsPanel from '@/Components/Pm/QAReportsPanel';
 import { pmApi } from '@/lib/pmApi';
@@ -24,7 +25,7 @@ import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { PmFlag, TaskFocus, TodayData, Project } from '@/types/pm';
 
 /** Tabs whose data is loaded on mount; they are re-mounted every time you come back so they never show stale data. Their place (open project / meeting) lives in the URL, so nothing is lost. */
-const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'reports', 'qa-reports'];
+const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'reports', 'qa-reports', 'dictionary'];
 
 /** A tab's panel, mounted the first time you open it and then only hidden — so coming back is instant. */
 function Pane({ show, children }: { show: boolean; children: ReactNode }) {
@@ -413,6 +414,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
         {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} taskCounts={{ overdue: counts.overdue, blocked: counts.blocked, no_owner: counts.unassigned }} scopeLabel={business.selected?.name ?? null} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
         {mounted('action-list') && <Pane show={page === 'action-list'}><MyActionListPanel /></Pane>}
+        {mounted('dictionary') && <Pane show={page === 'dictionary'}><DictionaryPanel key={gen.dictionary ?? 0} /></Pane>}
       </div>
     </PmShell>
   );

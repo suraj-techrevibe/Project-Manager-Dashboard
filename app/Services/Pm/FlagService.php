@@ -5,6 +5,7 @@ namespace App\Services\Pm;
 use App\Models\PmActivity;
 use App\Models\PmCard;
 use App\Models\PmSubtask;
+use App\Services\Pm\Dictionary\TaskCategoryService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -15,6 +16,8 @@ class FlagService
 
     /** card_id => ISO time of the last nudge, filled by all() for flag(). */
     private array $nudged = [];
+
+    public function __construct(private TaskCategoryService $categories) {}
 
     public function all(): Collection
     {
@@ -180,15 +183,27 @@ class FlagService
      *  - week_hours = open work due by the end of this week (overdue included)
      * Pass the Taskmandu staff list to also get people with no open tasks at all.
      *
+     * Each row also carries the same hours split by task category (Development, Research,
+     * QA, Maintenance, Unclassified): category_hours sums to `hours`, category_week_hours
+     * sums to `week_hours`, using exactly the same inclusion and per-assignee split.
+     * Sub-tasks carry no hours of their own, so they never add to those totals.
+     *
+     * $filters narrows the cards counted: ['project_id' => string, 'category' => string].
+     * A sub-task follows its parent task's project and category.
+     *
      * @param  array<int, array{name: string, designation?: ?string}>  $staff
+     * @param  array{project_id?: ?string, category?: ?string}  $filters
      * @return array<int, array<string, mixed>>
      */
-    public function workload(array $staff = []): array
+    public function workload(array $staff = [], array $filters = []): array
     {
         $today = now()->startOfDay();
         $weekEnd = now()->endOfWeek()->startOfDay();
         $capacity = (float) config('pm.weekly_capacity_hours', 40);
         $rows = [];
+        $zero = array_fill_keys(TaskCategoryService::all(), 0.0);
+        $projectFilter = $filters['project_id'] ?? null;
+        $categoryFilter = $filters['category'] ?? null;
 
         $blank = fn (string $name, ?string $designation = null) => [
             'name' => $name,
@@ -202,26 +217,42 @@ class FlagService
             'no_estimate' => 0,
             'subtasks' => 0,
             'capacity' => $capacity,
+            'category_hours' => $zero,
+            'category_week_hours' => $zero,
+            'category_tasks' => array_fill_keys(TaskCategoryService::all(), 0),
         ];
 
-        PmCard::query()
+        $cards = PmCard::query()
             ->whereNotIn('status', ['Completed', 'Cancelled'])
             ->whereNotNull('assignee')
-            ->get()
-            ->each(function ($c) use (&$rows, $today, $weekEnd, $blank) {
+            ->when($projectFilter, fn ($q) => $q->where('project_id', $projectFilter))
+            ->get();
+
+        // One cached lookup for the whole list; only new or edited tasks are classified here.
+        $category = $this->categories->categoryMap($cards);
+        if ($categoryFilter) {
+            $cards = $cards->filter(fn ($c) => ($category[$c->id] ?? TaskCategoryService::UNCLASSIFIED) === $categoryFilter);
+        }
+        $cardCategory = $cards->mapWithKeys(fn ($c) => [($c->project_id ?? '').'|'.($c->task_id ?? '') => $category[$c->id] ?? TaskCategoryService::UNCLASSIFIED]);
+
+        $cards->each(function ($c) use (&$rows, $today, $weekEnd, $blank, $category) {
                 $names = array_values(array_filter(array_map('trim', explode(',', $c->assignee))));
                 $share = $names ? ((float) $c->estimated_hours) / count($names) : 0.0;
+                $cat = $category[$c->id] ?? TaskCategoryService::UNCLASSIFIED;
 
                 foreach ($names as $name) {
                     $rows[$name] ??= $blank($name);
                     $rows[$name]['open']++;
                     $rows[$name]['hours'] += $share;
+                    $rows[$name]['category_hours'][$cat] += $share;
+                    $rows[$name]['category_tasks'][$cat]++;
 
                     if (! $c->estimated_hours) {
                         $rows[$name]['no_estimate']++;
                     }
                     if ($c->due_at && $c->due_at->lte($weekEnd)) {
                         $rows[$name]['week_hours'] += $share;
+                        $rows[$name]['category_week_hours'][$cat] += $share;
                     }
                     if ($c->due_at && $c->due_at->lt($today)) {
                         $rows[$name]['overdue']++;
@@ -238,7 +269,10 @@ class FlagService
         PmSubtask::query()
             ->whereNotIn('status', ['Completed', 'Cancelled'])
             ->whereNotNull('assignee')
+            ->when($projectFilter, fn ($q) => $q->where('project_id', $projectFilter))
             ->get()
+            // With a category filter, keep only sub-tasks whose parent task is in that category.
+            ->when($categoryFilter, fn ($subs) => $subs->filter(fn ($s) => ($cardCategory[($s->project_id ?? '').'|'.($s->task_id ?? '')] ?? null) === $categoryFilter))
             ->each(function ($s) use (&$rows, $blank) {
                 foreach (array_filter(array_map('trim', explode(',', $s->assignee))) as $name) {
                     $rows[$name] ??= $blank($name);
@@ -263,6 +297,8 @@ class FlagService
             ->map(fn ($r) => array_merge($r, [
                 'hours' => round($r['hours'], 1),
                 'week_hours' => round($r['week_hours'], 1),
+                'category_hours' => array_map(fn ($h) => round($h, 1), $r['category_hours']),
+                'category_week_hours' => array_map(fn ($h) => round($h, 1), $r['category_week_hours']),
             ]))
             ->sort(fn ($a, $b) => [$b['week_hours'], $b['open']] <=> [$a['week_hours'], $a['open']])
             ->values()

@@ -14,6 +14,7 @@ use App\Services\Pm\MeetingFollowUpService;
 use App\Services\Pm\FlagService;
 use App\Services\Pm\GitHubService;
 use App\Services\Pm\GitService;
+use App\Services\Pm\Dictionary\TaskCategoryService;
 use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -34,6 +35,7 @@ class PmController extends Controller
         private GitHubService $github,
         private DigestService $digest,
         private MeetingFollowUpService $followUp,
+        private TaskCategoryService $categories,
     ) {}
 
     /** Pages that used to be tabs inside this one page, now at /pm/{page}. */
@@ -164,6 +166,24 @@ class PmController extends Controller
         PmActivity::record('nudge', $card, ['template' => true]);
 
         return response()->json(['at' => now()->toIso8601String()]);
+    }
+
+    /**
+     * Team workload, optionally narrowed to one business (Taskmandu project) and/or one task
+     * category. Same calculation as the Today payload; filters only choose which tasks count.
+     */
+    public function workload(Request $r): JsonResponse
+    {
+        $data = $r->validate([
+            'project_id' => 'nullable|string|max:64',
+            'category' => 'nullable|string|in:'.implode(',', TaskCategoryService::all()),
+        ]);
+
+        return response()->json([
+            'workload' => $this->flags->workload($this->staff(), array_filter($data)),
+            'projects' => $this->categories->projectBreakdown(),
+            'review_count' => collect($this->categories->review()['unclassified'])->count(),
+        ]);
     }
 
     private function todayPayload(): array

@@ -3,7 +3,18 @@ export interface PmFlag { card_id:number; title:string; assignee:string|null; ty
 export interface TaskFocus { projectId:string; taskId:string; subId?:string; }
 export interface SubtaskFlag { id:number; issues:('unassigned'|'blocked')[]; title:string; status:string; assignee:string|null; assigned_by:string|null; comments_count:number; project_id:string; project_name:string; task_id:string; subtask_id:string; parent_title:string; parent_assignee:string|null; parent_due_at:string|null; parent_overdue:boolean; age_days:number|null; }
 export interface PmMetrics { overdue:number; stuck:number; blocked:number; unverified:number; unassigned:number; due_today:number; due_soon:number; subtasks_incomplete:number; }
-export interface WorkloadRow { name:string; designation?:string|null; open:number; overdue:number; blocked:number; due_today?:number; hours?:number; week_hours?:number; subtasks?:number; no_estimate?:number; capacity?:number; }
+export type TaskCategory = 'Development' | 'Research' | 'QA' | 'Maintenance' | 'Unclassified';
+export type CategoryHours = Record<TaskCategory, number>;
+export interface WorkloadRow { name:string; designation?:string|null; open:number; overdue:number; blocked:number; due_today?:number; hours?:number; week_hours?:number; subtasks?:number; no_estimate?:number; capacity?:number; /** Same hours as `hours`, split by task category. */ category_hours?:CategoryHours; /** Same hours as `week_hours`, split by task category. */ category_week_hours?:CategoryHours; /** Open task counts per category (tasks only, not sub-tasks). */ category_tasks?:CategoryHours; }
+export interface WorkloadProject { id:string; name:string; tasks:number; hours:CategoryHours; }
+export interface WorkloadResponse { workload:WorkloadRow[]; projects:WorkloadProject[]; review_count:number; }
+export interface DictionaryTerm { id:number; term:string; enabled:boolean; /** Open tasks matching this term; null while disabled. */ matches:number|null; }
+export interface DictionaryData { scope:string; categories:Exclude<TaskCategory,'Unclassified'>[]; terms:Record<string,DictionaryTerm[]>; open_tasks:number; }
+export type DictionaryChange = { op:'add'; label:string; term:string } | { op:'remove'; id:number } | { op:'toggle'; id:number; enabled:boolean } | { op:'edit'; id:number; term:string };
+export interface DictionaryPreview { total:number; before:CategoryHours; after:CategoryHours; changed_count:number; changed:{ card_id:number; title:string; assignee:string|null; project_name:string|null; from:TaskCategory; to:TaskCategory }[]; }
+export interface ClassifyResult { category:TaskCategory; confidence:number; suggested:TaskCategory|null; reason:string|null; matches:{ label:string; term:string; in:'title'|'description'; points:number }[]; }
+export interface CategoryReviewTask { card_id:number; title:string; description:string|null; assignee:string|null; project_id:string|null; project_name:string|null; status:string; url:string|null; category:TaskCategory; auto_category:TaskCategory; suggested:TaskCategory|null; confidence:number; reason:string|null; override:TaskCategory|null; }
+export interface CategoryReview { unclassified:CategoryReviewTask[]; overrides:CategoryReviewTask[]; }
 export interface SinceItem { card_id:number; title:string; assignee:string|null; project_id:string|null; project_name:string|null; task_id:string|null; url:string|null; at:string|null; }
 export interface SinceGroup { count:number; items:SinceItem[]; }
 export interface SinceSummary { since:string; label:string; tracked:boolean; completed:SinceGroup; blocked:SinceGroup; created:SinceGroup; overdue:SinceGroup; idle:string[]; }

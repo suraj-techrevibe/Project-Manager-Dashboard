@@ -1,5 +1,10 @@
-import { useMemo, useState } from 'react';
-import type { WorkloadRow } from '../../types/pm';
+import { useEffect, useMemo, useState } from 'react';
+import { pmApi } from '@/lib/pmApi';
+import { visitPm } from '@/lib/pmNav';
+import { CATEGORIES, CATEGORY_STYLE, emptyHours, fmtHours, addHours, sumHours } from '@/lib/taskCategories';
+import type { CategoryHours, TaskCategory, WorkloadProject, WorkloadRow } from '../../types/pm';
+import { CategoryBar } from './CategoryBadge';
+import { btnChip } from './ui/kit';
 
 type Level = 'none' | 'light' | 'balanced' | 'full' | 'over' | 'heavy';
 
@@ -43,9 +48,16 @@ export function overloadThreshold(workload: WorkloadRow[]): number {
   return Math.max(5, Math.ceil(avg * 1.5));
 }
 
+type Mode = 'week' | 'all';
+
+/** Category hours for a row in the chosen mode (this week's work, or everything open). */
+const hoursOf = (w: WorkloadRow, mode: Mode): CategoryHours => (mode === 'week' ? w.category_week_hours : w.category_hours) ?? emptyHours();
+
 /**
  * Who has too much, who has nothing — so work can be divided evenly.
- * Bars are estimated hours due this week (overdue included) against weekly capacity.
+ * The capacity bar is estimated hours due this week (overdue included) against weekly capacity.
+ * Under it, a stacked bar splits the same estimated hours by task category (see the Dictionary tab).
+ * These are Taskmandu estimates, not timesheets.
  */
 export default function TeamWorkload({
   workload,
@@ -65,11 +77,59 @@ export default function TeamWorkload({
   const [hidden, setHidden] = useState<string[]>(loadHidden);
   const [showHidden, setShowHidden] = useState(false);
 
-  const overloadAt = useMemo(() => overloadThreshold(workload), [workload]);
+  const [mode, setMode] = useState<Mode>('week');
+  const [project, setProject] = useState('');
+  const [category, setCategory] = useState<TaskCategory | ''>('');
+  const [projects, setProjects] = useState<WorkloadProject[]>([]);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [filtered, setFiltered] = useState<WorkloadRow[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const narrowed = Boolean(project || category);
+
+  // Business list + "needs review" count (once, and again whenever Today refreshes the workload).
+  useEffect(() => {
+    let live = true;
+    pmApi
+      .workload()
+      .then(({ data }) => {
+        if (!live) return;
+        setProjects(data.projects);
+        setReviewCount(data.review_count);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [workload]);
+
+  // Business / category filters are calculated by the server with the same workload rules.
+  useEffect(() => {
+    if (!narrowed) {
+      setFiltered(null);
+      setError(null);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    setError(null);
+    pmApi
+      .workload({ project_id: project || undefined, category: category || undefined })
+      .then(({ data }) => live && setFiltered(data.workload))
+      .catch(() => live && setError("Couldn't apply the filter."))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [project, category, narrowed, workload]);
+
+  const data = narrowed && filtered ? filtered : workload;
+  const overloadAt = useMemo(() => overloadThreshold(data), [data]);
 
   // Visible rows: idle people can be hidden (e.g. HR/admin accounts that are in Taskmandu but not on your team).
-  const rows = workload.filter((w) => showHidden || w.open > 0 || !hidden.includes(w.name));
-  const hiddenCount = workload.filter((w) => w.open === 0 && hidden.includes(w.name)).length;
+  const rows = data.filter((w) => showHidden || w.open > 0 || !hidden.includes(w.name));
+  const hiddenCount = data.filter((w) => w.open === 0 && hidden.includes(w.name)).length;
 
   const levels = new Map(rows.map((w) => [w.name, levelOf(w, overloadAt)]));
   const free = rows.filter((w) => levels.get(w.name) === 'none');
@@ -86,7 +146,33 @@ export default function TeamWorkload({
     const hours = Math.max(1, Math.round(Math.min(excess, room(to))));
     return { from: from.name, to: to.name, hours };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workload, hidden, showHidden]);
+  }, [data, hidden, showHidden]);
+
+  // Where the estimated hours go, across everyone shown.
+  const totals = useMemo(() => rows.reduce((t, w) => addHours(t, hoursOf(w, mode)), emptyHours()), [rows, mode]);
+  const totalHours = sumHours(totals);
+
+  const insights = useMemo(() => {
+    const out: string[] = [];
+    const pct = (n: number, d: number) => Math.round((n / d) * 100);
+
+    rows.forEach((w) => {
+      const h = hoursOf(w, mode);
+      const t = sumHours(h);
+      if (t < 6) return;
+      const top = (['Development', 'Research', 'QA', 'Maintenance'] as TaskCategory[]).sort((a, b) => h[b] - h[a])[0];
+      if (h[top] / t >= 0.5 && top !== 'Development') out.push(`${w.name} has ${pct(h[top], t)}% of their estimated hours in ${top}.`);
+    });
+    if (totals.QA > totals.Development && totals.QA > 0) out.push(`QA hours (${fmtHours(totals.QA)}h) exceed Development (${fmtHours(totals.Development)}h).`);
+    if (!project && !category) {
+      projects.filter((p) => p.tasks > 0 && p.hours.Research === 0).slice(0, 3).forEach((p) => out.push(`${p.name} has no research work planned.`));
+    }
+    rows
+      .filter((w) => w.open > 0 && (w.capacity ?? 40) - (w.week_hours ?? 0) >= 20)
+      .slice(0, 2)
+      .forEach((w) => out.push(`${w.name} has about ${Math.round((w.capacity ?? 40) - (w.week_hours ?? 0))}h of spare capacity this week.`));
+    return out.slice(0, 6);
+  }, [rows, mode, totals, projects, project, category]);
 
   function hide(name: string) {
     const next = [...hidden, name];
@@ -117,7 +203,10 @@ export default function TeamWorkload({
   }
 
   const capacity = workload[0].capacity ?? 40;
-  const unknown = workload.reduce((n, w) => n + (w.no_estimate ?? 0), 0);
+  const unknown = data.reduce((n, w) => n + (w.no_estimate ?? 0), 0);
+  const openTasks = data.reduce((n, w) => n + w.open, 0);
+  const openHours = data.reduce((n, w) => n + (w.hours ?? 0), 0);
+  const selectCls = 'rounded-lg border border-slate-200 bg-white py-1.5 pl-2.5 pr-7 text-xs text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400';
 
   return (
     <div className={bare ? '' : 'mb-3 rounded-lg border border-slate-200 bg-white'} key={forceOpen}>
@@ -133,6 +222,82 @@ export default function TeamWorkload({
 
       {(bare || open) && (
         <div className={bare ? '' : 'border-t border-slate-100 px-3 pb-3 pt-2'}>
+          {/* Summary numbers */}
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { label: 'Open tasks', value: String(openTasks) },
+              { label: 'Estimated hours', value: `${fmtHours(openHours)}h` },
+              { label: 'Missing estimates', value: String(unknown) },
+              { label: 'Need category review', value: String(reviewCount), onClick: reviewCount > 0 ? () => visitPm('dictionary') : undefined },
+            ].map((m) => (
+              <div key={m.label} className="rounded-lg bg-slate-50 px-3 py-2">
+                <div className="text-[11px] text-slate-500">{m.label}</div>
+                {m.onClick ? (
+                  <button onClick={m.onClick} className="text-lg font-semibold text-indigo-700 hover:underline" title="Open the Dictionary tab to review these tasks">
+                    {m.value}
+                  </button>
+                ) : (
+                  <div className="text-lg font-semibold text-slate-900">{m.value}</div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Filters */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <select value={selected} onChange={(e) => onSelect(e.target.value)} className={selectCls} aria-label="Developer">
+              <option value="">All developers</option>
+              {[...workload].sort((a, b) => a.name.localeCompare(b.name)).map((w) => (
+                <option key={w.name} value={w.name}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+            <select value={project} onChange={(e) => setProject(e.target.value)} className={selectCls} aria-label="Business or project">
+              <option value="">All businesses</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <select value={category} onChange={(e) => setCategory(e.target.value as TaskCategory | '')} className={selectCls} aria-label="Category">
+              <option value="">All categories</option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            {(narrowed || selected) && (
+              <button
+                onClick={() => {
+                  setProject('');
+                  setCategory('');
+                  onSelect('');
+                }}
+                className="text-xs text-slate-500 underline hover:text-slate-800"
+              >
+                Clear filters
+              </button>
+            )}
+            <span className="ml-auto flex items-center gap-1.5">
+              <button onClick={() => setMode('week')} className={btnChip(mode === 'week')}>
+                This week
+              </button>
+              <button onClick={() => setMode('all')} className={btnChip(mode === 'all')}>
+                All open
+              </button>
+            </span>
+          </div>
+
+          {narrowed && (
+            <p className="mb-2 text-[11px] text-slate-500">
+              {loading ? 'Applying filter…' : `Showing only ${category ? `${category} tasks` : 'tasks'}${project ? ` in ${projects.find((p) => p.id === project)?.name ?? 'this business'}` : ''}. Capacity bars count just these tasks.`}
+            </p>
+          )}
+          {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
+
           {suggestion && (
             <div className="mb-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
               Rebalance: move about <b>{suggestion.hours}h</b> of this week's work from <b>{suggestion.from}</b> to{' '}
@@ -140,7 +305,7 @@ export default function TeamWorkload({
             </div>
           )}
 
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-1.5">
             {rows.map((w) => {
               const level = levels.get(w.name) ?? 'balanced';
               const style = LEVELS[level];
@@ -148,65 +313,96 @@ export default function TeamWorkload({
               const pct = Math.min(150, Math.round(((w.week_hours ?? 0) / cap) * 100));
               const on = selected === w.name;
               const hasHours = (w.hours ?? 0) > 0;
+              const catHours = hoursOf(w, mode);
 
               return (
-                <li key={w.name} className="group flex items-center gap-2">
-                  <button
-                    onClick={() => onSelect(on ? '' : w.name)}
-                    className={`flex min-w-0 flex-1 items-center gap-3 rounded-md border px-2.5 py-1.5 text-left transition ${
-                      on ? 'border-indigo-600 bg-slate-50' : 'border-transparent hover:bg-slate-50'
-                    }`}
-                    title="Click to show only this person's tasks"
-                  >
-                    <span className="w-36 shrink-0 truncate text-sm text-slate-800">
-                      {w.name}
-                      {w.designation && <span className="block truncate text-[11px] text-slate-400">{w.designation}</span>}
-                    </span>
-
-                    <span className="hidden min-w-0 flex-1 sm:block">
-                      <span className="block h-2 overflow-hidden rounded-full bg-slate-100">
-                        <span className={`block h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-slate-500">
-                        {hasHours ? (
-                          <>
-                            {w.week_hours ?? 0}h of {cap}h this week · {w.hours}h open in total
-                          </>
-                        ) : w.open > 0 ? (
-                          'No hour estimates on their tasks'
-                        ) : (
-                          'Nothing open — available for new work'
-                        )}
-                      </span>
-                    </span>
-
-                    <span className="shrink-0 text-right text-[11px] text-slate-500">
-                      {w.open} open
-                      {w.overdue > 0 && <span className="text-red-600"> · {w.overdue} overdue</span>}
-                      {w.blocked > 0 && <span className="text-amber-600"> · {w.blocked} blocked</span>}
-                    </span>
-
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${style.pill}`}>{style.label}</span>
-                  </button>
-
-                  {w.open === 0 && (
+                <li key={w.name} className={`group rounded-lg border px-1 py-1 transition ${on ? 'border-indigo-600 bg-slate-50' : 'border-transparent hover:bg-slate-50'}`}>
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => hide(w.name)}
-                      className="shrink-0 text-xs text-slate-300 opacity-0 hover:text-slate-600 group-hover:opacity-100"
-                      title="Not on my team — hide"
-                      aria-label={`Hide ${w.name}`}
+                      onClick={() => onSelect(on ? '' : w.name)}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-1.5 py-1 text-left"
+                      title="Click to show only this person's tasks"
                     >
-                      ✕
+                      <span className="w-36 shrink-0 truncate text-sm text-slate-800">
+                        {w.name}
+                        {w.designation && <span className="block truncate text-[11px] text-slate-400">{w.designation}</span>}
+                      </span>
+
+                      <span className="hidden min-w-0 flex-1 sm:block">
+                        <span className="block h-2 overflow-hidden rounded-full bg-slate-100">
+                          <span className={`block h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-slate-500">
+                          {hasHours ? (
+                            <>
+                              {w.week_hours ?? 0}h of {cap}h this week · {w.hours}h open in total
+                            </>
+                          ) : w.open > 0 ? (
+                            'No hour estimates on their tasks'
+                          ) : narrowed ? (
+                            'No matching tasks'
+                          ) : (
+                            'Nothing open — available for new work'
+                          )}
+                        </span>
+                      </span>
+
+                      <span className="shrink-0 text-right text-[11px] text-slate-500">
+                        {w.open} open
+                        {w.overdue > 0 && <span className="text-red-600"> · {w.overdue} overdue</span>}
+                        {w.blocked > 0 && <span className="text-amber-600"> · {w.blocked} blocked</span>}
+                        {(w.no_estimate ?? 0) > 0 && <span className="text-slate-400"> · {w.no_estimate} no estimate</span>}
+                      </span>
+
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${style.pill}`}>{style.label}</span>
                     </button>
+
+                    {w.open === 0 && (
+                      <button
+                        onClick={() => hide(w.name)}
+                        className="shrink-0 text-xs text-slate-300 opacity-0 hover:text-slate-600 group-hover:opacity-100"
+                        title="Not on my team — hide"
+                        aria-label={`Hide ${w.name}`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {sumHours(catHours) > 0 && (
+                    <div className="px-1.5 pb-1 pt-0.5 sm:pl-[10.5rem]">
+                      <CategoryBar hours={catHours} />
+                    </div>
                   )}
                 </li>
               );
             })}
           </ul>
 
+          {/* Insights from the same estimated hours */}
+          {totalHours > 0 && (
+            <div className="mt-3 border-t border-slate-100 pt-2.5">
+              <div className="mb-1 text-xs font-medium text-slate-700">Insights from estimated hours</div>
+              <p className="mb-1 text-xs text-slate-500">
+                {CATEGORIES.filter((c) => totals[c] > 0)
+                  .map((c) => `${CATEGORY_STYLE[c].label} ${Math.round((totals[c] / totalHours) * 100)}%`)
+                  .join(' · ')}
+              </p>
+              {insights.length > 0 ? (
+                <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-600">
+                  {insights.map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-500">Nothing stands out in this view.</p>
+              )}
+            </div>
+          )}
+
           <p className="mt-2 text-[11px] text-slate-400">
             Hours are Taskmandu estimates for tasks due by the end of this week (overdue included); capacity is {capacity}h/week
-            (set PM_WEEKLY_CAPACITY_HOURS).
+            (set PM_WEEKLY_CAPACITY_HOURS). Categories come from the Dictionary tab and are a guide, not timesheets.
             {unknown > 0 && ` ${unknown} open task${unknown === 1 ? ' has' : 's have'} no estimate, so loads may be understated.`}
             {hiddenCount > 0 && (
               <>

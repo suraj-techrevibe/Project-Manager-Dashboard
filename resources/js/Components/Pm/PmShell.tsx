@@ -22,12 +22,13 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   qa: { icon: 'target', blurb: 'Verify completed Taskmandu tasks and retest fixes' },
   checklist: { icon: 'check-square', blurb: 'Your repeatable daily PM routine' },
   'action-list': { icon: 'clipboard-list', blurb: 'Your personal follow-ups, rough notes and unresolved items' },
+  dictionary: { icon: 'book', blurb: 'Keyword rules that sort tasks into Development, Research, QA and Maintenance' },
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
   { title: '1 · Daily workflow', keys: ['today', 'minutes', 'projects', 'operations', 'brief', 'reports'] },
   { title: '2 · Quality assurance', keys: ['qa-reports', 'qa'] },
-  { title: '3 · Project controls', keys: ['scope', 'git'] },
+  { title: '3 · Project controls', keys: ['scope', 'git', 'dictionary'] },
   // Daily Checklist and My Action List now open from the bottom dock (they keep their own /pm/... pages).
 ];
 

@@ -3,6 +3,7 @@
 use App\Http\Controllers\EmailController;
 use App\Http\Controllers\MeetingMinutesController;
 use App\Http\Controllers\PmController;
+use App\Http\Controllers\PmDictionaryController;
 use App\Http\Controllers\PmPageController;
 use App\Http\Controllers\PmOperationsController;
 use App\Http\Controllers\PmAssistantController;
@@ -33,6 +34,7 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('qa-reports', [PmPageController::class, 'qaReports'])->name('page.qa-reports');
     Route::get('checklist', [PmPageController::class, 'checklist'])->name('page.checklist');
     Route::get('action-list', [PmPageController::class, 'actionList'])->name('page.action-list');
+    Route::get('dictionary', [PmPageController::class, 'dictionary'])->name('page.dictionary');
 });
 
 // JSON API used by those pages.
@@ -44,6 +46,19 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::post('assistant/actions/{action}/confirm', [PmAssistantController::class, 'confirm'])->whereUuid('action')->name('assistant.confirm');
     Route::post('assistant/actions/{action}/cancel', [PmAssistantController::class, 'cancel'])->whereUuid('action')->name('assistant.cancel');
     Route::get('today', [PmController::class, 'today'])->name('today');
+    Route::get('workload', [PmController::class, 'workload'])->name('workload');
+    // Private dictionary of keywords that sort tasks into categories (and can serve other features later).
+    Route::prefix('dictionary')->name('dictionary.')->group(function () {
+        Route::get('/', [PmDictionaryController::class, 'index'])->name('index');
+        Route::post('terms', [PmDictionaryController::class, 'store'])->name('terms.store');
+        Route::patch('terms/{term}', [PmDictionaryController::class, 'update'])->name('terms.update');
+        Route::delete('terms/{term}', [PmDictionaryController::class, 'destroy'])->name('terms.destroy');
+        Route::post('preview', [PmDictionaryController::class, 'preview'])->name('preview');
+        Route::post('test', [PmDictionaryController::class, 'test'])->name('test');
+        Route::get('review', [PmDictionaryController::class, 'review'])->name('review');
+        Route::put('cards/{card}/category', [PmDictionaryController::class, 'setOverride'])->name('override.set');
+        Route::delete('cards/{card}/category', [PmDictionaryController::class, 'clearOverride'])->name('override.clear');
+    });
     Route::get('routine', [PmRoutineController::class, 'show'])->name('routine.show');
     Route::put('routine', [PmRoutineController::class, 'save'])->name('routine.save');
     Route::post('routine/{day}/catch-up', [PmRoutineController::class, 'catchUp'])->where('day', '\\d{4}-\\d{2}-\\d{2}')->name('routine.catch-up');
