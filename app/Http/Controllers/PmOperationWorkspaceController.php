@@ -260,7 +260,7 @@ class PmOperationWorkspaceController extends Controller
             'proposed_approach', 'proposed_tasks', 'timeline', 'resource_requirements',
             'expected_outcomes', 'risks', 'boss_comments', 'approval_notes', 'additional_notes',
         ]);
-        $next = ((int) $plan->revisions()->max('revision_number')) + 1;
+        $next = ((int) PmOperationPlanRevision::query()->where('plan_id', $plan->id)->max('revision_number')) + 1;
         PmOperationPlanRevision::create([
             'plan_id' => $plan->id,
             'revision_number' => $next,

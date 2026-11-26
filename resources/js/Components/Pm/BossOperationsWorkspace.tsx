@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { pmApi } from '../../lib/pmApi';
+import { visitPm } from '../../lib/pmNav';
 import RequestsIdeasPanel from './RequestsIdeasPanel';
 import type { PmBusiness, PmOperationGoal, PmOperationGoalInput, PmOperationPlan, PmOperationPlanInput, PmOperationTask } from '../../types/pm';
 
@@ -57,6 +58,16 @@ export default function BossOperationsWorkspace() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [goalFrom, setGoalFrom] = useState('');
+  const [goalSort, setGoalSort] = useState('deadline');
+  const [recordsSearch, setRecordsSearch] = useState('');
+  const [goalTo, setGoalTo] = useState('');
+  const [unscheduledOnly, setUnscheduledOnly] = useState(false);
+  const [planBusinessFilter, setPlanBusinessFilter] = useState('all');
+  const [planStatusFilter, setPlanStatusFilter] = useState('all');
+  const [planPriorityFilter, setPlanPriorityFilter] = useState('all');
+  const [planFrom, setPlanFrom] = useState('');
+  const [planTo, setPlanTo] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -76,14 +87,36 @@ export default function BossOperationsWorkspace() {
       && (businessFilter === 'all' || String(g.business_id ?? '') === businessFilter)
       && (typeFilter === 'all' || g.goal_type === typeFilter)
       && (priorityFilter === 'all' || g.effective_priority === priorityFilter || g.priority === priorityFilter)
-      && (statusFilter === 'all' || g.status === statusFilter);
-  }), [goals, search, businessFilter, typeFilter, priorityFilter, statusFilter]);
+      && (statusFilter === 'all' || g.status === statusFilter)
+      && (!unscheduledOnly || !g.target_date)
+      && (!goalFrom || Boolean(g.target_date && g.target_date >= goalFrom))
+      && (!goalTo || Boolean(g.target_date && g.target_date <= goalTo));
+  }), [goals, search, businessFilter, typeFilter, priorityFilter, statusFilter, unscheduledOnly, goalFrom, goalTo]);
+  const orderedGoals = [...filteredGoals].sort((a, b) => {
+    if (goalSort === 'created') return (b.created_at || '').localeCompare(a.created_at || '');
+    if (goalSort === 'priority') {
+      const rank: Record<string, number> = { urgent: 6, high: 5, medium: 4, normal: 3, low: 2, unscheduled: 1 };
+      return (rank[b.effective_priority] || 0) - (rank[a.effective_priority] || 0);
+    }
+    return (a.target_date || '9999-12-31').localeCompare(b.target_date || '9999-12-31');
+  });
+  const historicalGoals = goals.filter((g) => (g.status !== 'active' || g.goal_type === 'decision') && (!recordsSearch || [g.title, g.description, g.source_notes, g.business?.name].join(' ').toLowerCase().includes(recordsSearch.toLowerCase())));
+  const historicalPlans = plans.filter((p) => ['approved', 'in_progress', 'completed', 'rejected', 'archived'].includes(p.status) && (!recordsSearch || [p.title, p.objective, p.business?.name].join(' ').toLowerCase().includes(recordsSearch.toLowerCase())));
   const upcoming = goals.filter((g) => g.status === 'active' && g.target_date).sort((a, b) => (a.target_date || '').localeCompare(b.target_date || '')).slice(0, 6);
   const urgent = goals.filter((g) => g.status === 'active' && g.effective_priority === 'urgent');
+  const highPriority = goals.filter((g) => g.status === 'active' && g.effective_priority === 'high');
+  const decisions = goals.filter((g) => g.goal_type === 'decision').sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 5);
   const noDate = goals.filter((g) => g.status === 'active' && !g.target_date);
   const awaiting = plans.filter((p) => p.status === 'submitted_for_approval');
   const changes = plans.filter((p) => p.status === 'changes_requested');
   const recentPlans = [...plans].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 5);
+  const filteredPlans = plans.filter((p) =>
+    (!search || [p.title, p.business?.name, p.objective].join(' ').toLowerCase().includes(search.toLowerCase()))
+    && (planBusinessFilter === 'all' || String(p.business_id ?? '') === planBusinessFilter)
+    && (planStatusFilter === 'all' || p.status === planStatusFilter)
+    && (planPriorityFilter === 'all' || p.priority === planPriorityFilter || p.effective_priority === planPriorityFilter)
+    && (!planFrom || Boolean(p.updated_at && p.updated_at.slice(0, 10) >= planFrom))
+    && (!planTo || Boolean(p.updated_at && p.updated_at.slice(0, 10) <= planTo)));
 
   function openNewGoal() { setGoalEditId(null); setGoalForm(blankGoal()); setGoalOpen(true); setError(''); }
   function openEditGoal(g: PmOperationGoal) {
@@ -161,11 +194,11 @@ export default function BossOperationsWorkspace() {
     <nav className="flex gap-1 overflow-x-auto border-b border-slate-200">{tabs.map((t) => <button key={t.id} type="button" onClick={() => { setTab(t.id); setNotice(''); }} className={buttonTab(t.id)}>{t.label}{t.id === 'plans' && awaiting.length > 0 ? <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px]">{awaiting.length}</span> : null}</button>)}</nav>
     {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading operations workspace…</p> : <>
     {tab === 'overview' && <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
         {[
-          ['Upcoming deadlines', upcoming.length, 'goals'], ['Urgent', urgent.length, 'urgent'], ['Goals without dates', noDate.length, 'nodate'],
+          ['Upcoming deadlines', upcoming.length, 'goals'], ['Urgent', urgent.length, 'urgent'], ['High priority', highPriority.length, 'high'], ['Goals without dates', noDate.length, 'nodate'],
           ['Awaiting approval', awaiting.length, 'awaiting'], ['Changes requested', changes.length, 'changes'], ['Active goals', goals.filter((g) => g.status === 'active').length, 'active'],
-        ].map(([name, count, key]) => <button key={String(key)} onClick={() => { setTab(key === 'awaiting' || key === 'changes' ? 'plans' : 'goals'); if (key === 'urgent') setPriorityFilter('urgent'); if (key === 'nodate') setStatusFilter('active'); }} className="rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm hover:border-indigo-300"><div className="text-xs text-slate-500">{name}</div><div className="mt-1 text-2xl font-semibold text-slate-900">{count}</div></button>)}
+        ].map(([name, count, key]) => <button key={String(key)} onClick={() => { setTab(key === 'awaiting' || key === 'changes' ? 'plans' : 'goals'); if (key === 'urgent') setPriorityFilter('urgent'); if (key === 'high') setPriorityFilter('high'); if (key === 'nodate') { setStatusFilter('active'); setUnscheduledOnly(true); } }} className="rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm hover:border-indigo-300"><div className="text-xs text-slate-500">{name}</div><div className="mt-1 text-2xl font-semibold text-slate-900">{count}</div></button>)}
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-xl border border-slate-200 bg-white p-4">{sectionTitle('Upcoming commitments', 'Closest target dates first')}
@@ -175,6 +208,9 @@ export default function BossOperationsWorkspace() {
           <div className="mt-3 divide-y divide-slate-100">{[...awaiting, ...changes].length ? [...awaiting, ...changes].map((p) => <button key={p.id} onClick={() => { setTab('plans'); setSelectedPlan(p.id); }} className="flex w-full items-center justify-between gap-3 py-3 text-left"><span className="min-w-0"><span className="block truncate text-sm font-medium text-slate-800">{p.title}</span><span className="text-xs text-slate-500">{p.business?.name ?? 'No business'}</span></span><Pill value={p.status}/></button>) : <p className="py-5 text-sm text-slate-500">No plans waiting for review.</p>}</div>
         </section>
       </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-4">{sectionTitle('Recently recorded decisions', 'Boss decisions captured as records')}
+        <div className="mt-3 divide-y divide-slate-100">{decisions.length ? decisions.map((g) => <button key={g.id} onClick={() => { setTab('goals'); openEditGoal(g); }} className="flex w-full items-center justify-between gap-3 py-2 text-left"><span className="truncate text-sm font-medium text-slate-800">{g.title}</span><span className="shrink-0 text-xs text-slate-500">{g.updated_at?.slice(0, 10)}</span></button>) : <p className="py-4 text-sm text-slate-500">No decisions recorded yet.</p>}</div>
+      </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4">{sectionTitle('Recently updated plans')}
         <div className="mt-3 divide-y divide-slate-100">{recentPlans.length ? recentPlans.map((p) => <button key={p.id} onClick={() => { setTab('plans'); setSelectedPlan(p.id); }} className="flex w-full items-center justify-between gap-3 py-2.5 text-left"><span className="truncate text-sm font-medium text-slate-800">{p.title}</span><Pill value={p.status}/></button>) : <p className="py-4 text-sm text-slate-500">No plans created yet.</p>}</div>
       </section>
@@ -187,30 +223,44 @@ export default function BossOperationsWorkspace() {
         <select className={field} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="all">All types</option>{goalTypes.map((v) => <option key={v} value={v}>{goalTypeLabel(v)}</option>)}</select>
         <select className={field} value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}><option value="all">All priorities</option>{['urgent','high','medium','normal','low','unscheduled'].map((v) => <option key={v} value={v}>{statusLabel(v)}</option>)}</select>
         <select className={field} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">All statuses</option>{goalStatuses.map((v) => <option key={v} value={v}>{statusLabel(v)}</option>)}</select>
+        <select className={field} value={goalSort} onChange={(e) => setGoalSort(e.target.value)}><option value="deadline">Sort: closest deadline</option><option value="priority">Sort: priority</option><option value="created">Sort: recently created</option></select>
+        <input type="date" aria-label="Target date from" className={field} value={goalFrom} onChange={(e) => setGoalFrom(e.target.value)} />
+        <input type="date" aria-label="Target date to" className={field} value={goalTo} onChange={(e) => setGoalTo(e.target.value)} />
+        <label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={unscheduledOnly} onChange={(e) => setUnscheduledOnly(e.target.checked)} /> No target date</label>
       </div>
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">{filteredGoals.length ? filteredGoals.map((g) => <div key={g.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-3 last:border-0"><button className="min-w-0 flex-1 text-left" onClick={() => openEditGoal(g)}><span className="block truncate text-sm font-semibold text-slate-900">{g.title}</span><span className="mt-1 block text-xs text-slate-500">{g.business?.name ?? 'No business'} · {goalTypeLabel(g.goal_type)} · {g.target_date || 'No target date'}</span><span className="mt-1 flex flex-wrap gap-1.5"><Pill value={g.status}/><Pill value={g.effective_priority}/></span></button><div className="flex gap-2"><button className={secondary} onClick={() => openNewPlan(g)}>Create plan</button><button className={secondary} onClick={() => openEditGoal(g)}>Edit</button><button className="px-2 text-sm text-rose-600" onClick={() => void deleteGoal(g)}>Delete</button></div></div>) : <p className="p-8 text-center text-sm text-slate-500">No goals match these filters. Record a boss discussion, goal or commitment to get started.</p>}</div>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">{orderedGoals.length ? orderedGoals.map((g) => <div key={g.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-3 last:border-0"><button className="min-w-0 flex-1 text-left" onClick={() => openEditGoal(g)}><span className="block truncate text-sm font-semibold text-slate-900">{g.title}</span><span className="mt-1 block text-xs text-slate-500">{g.business?.name ?? 'No business'} · {goalTypeLabel(g.goal_type)} · {g.target_date || 'No target date'}</span><span className="mt-1 flex flex-wrap gap-1.5"><Pill value={g.status}/><Pill value={g.effective_priority}/></span></button><div className="flex gap-2"><button className={secondary} onClick={() => openNewPlan(g)}>Create plan</button><button className={secondary} onClick={() => openEditGoal(g)}>Edit</button><button className="px-2 text-sm text-rose-600" onClick={() => void deleteGoal(g)}>Delete</button></div></div>) : <p className="p-8 text-center text-sm text-slate-500">No goals match these filters. Record a boss discussion, goal or commitment to get started.</p>}</div>
     </div>}
     {tab === 'plans' && <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">{sectionTitle('Planning documents', 'Prepare a proposal, submit it for review, and record the decision')}<button onClick={() => openNewPlan()} className={primary}>+ Create plan</button></div>
-      {!planOpen && <div className="grid gap-3 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.5fr)]">
+      {!planOpen && <div className="flex flex-col gap-3">
+        <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-5">
+          <input className={field} placeholder="Search plans…" value={search} onChange={(e) => setSearch(e.target.value)}/>
+          <select className={field} value={planBusinessFilter} onChange={(e) => setPlanBusinessFilter(e.target.value)}><option value="all">All businesses</option>{businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+          <select className={field} value={planStatusFilter} onChange={(e) => setPlanStatusFilter(e.target.value)}><option value="all">All statuses</option>{planStatuses.map((v) => <option key={v} value={v}>{statusLabel(v)}</option>)}</select>
+          <select className={field} value={planPriorityFilter} onChange={(e) => setPlanPriorityFilter(e.target.value)}><option value="all">All priorities</option>{['urgent', 'high', 'medium', 'normal', 'low', 'unscheduled'].map((v) => <option key={v} value={v}>{statusLabel(v)}</option>)}</select>
+          <div className="flex gap-1"><input type="date" aria-label="Updated from" className={field} value={planFrom} onChange={(e) => setPlanFrom(e.target.value)} /><input type="date" aria-label="Updated to" className={field} value={planTo} onChange={(e) => setPlanTo(e.target.value)} /></div>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.5fr)]">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 p-3"><input className={field} placeholder="Search plans…" value={search} onChange={(e) => setSearch(e.target.value)}/></div>
-          <div className="max-h-[720px] overflow-y-auto">{plans.filter((p) => !search || [p.title,p.business?.name,p.objective].join(' ').toLowerCase().includes(search.toLowerCase())).map((p) => <button key={p.id} onClick={() => setSelectedPlan(p.id)} className={`block w-full border-b border-slate-100 p-3 text-left hover:bg-slate-50 ${selectedPlan === p.id ? 'bg-indigo-50' : ''}`}><span className="block text-sm font-semibold text-slate-800">{p.title}</span><span className="mt-1 block text-xs text-slate-500">{p.business?.name ?? 'No business'} · {p.updated_at?.slice(0,10)}</span><span className="mt-1 inline-flex"><Pill value={p.status}/></span></button>)}{plans.length === 0 && <p className="p-6 text-sm text-slate-500">No plans yet. Create a draft or start from a goal.</p>}</div>
+          <div className="max-h-[720px] overflow-y-auto">{filteredPlans.map((p) => <button key={p.id} onClick={() => setSelectedPlan(p.id)} className={`block w-full border-b border-slate-100 p-3 text-left hover:bg-slate-50 ${selectedPlan === p.id ? 'bg-indigo-50' : ''}`}><span className="block text-sm font-semibold text-slate-800">{p.title}</span><span className="mt-1 block text-xs text-slate-500">{p.business?.name ?? 'No business'} · {p.updated_at?.slice(0,10)}</span><span className="mt-1 inline-flex"><Pill value={p.status}/></span></button>)}{plans.length === 0 && <p className="p-6 text-sm text-slate-500">No plans yet. Create a draft or start from a goal.</p>}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           {selected ? <><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-semibold text-slate-900">{selected.title}</h3><p className="mt-1 text-sm text-slate-500">{selected.business?.name ?? 'No business'}{selected.goal ? ` · ${selected.goal.title}` : ''}</p><div className="mt-2 flex gap-2"><Pill value={selected.status}/><Pill value={selected.effective_priority}/></div></div><div className="flex flex-wrap gap-2"><button className={secondary} onClick={() => openEditPlan(selected)}>Edit document</button><button className={secondary} onClick={() => void duplicatePlan(selected)}>Duplicate</button></div></div>
+            <div className="mt-2 text-xs text-slate-500">Submitted: {selected.submitted_at?.slice(0, 16).replace('T', ' ') || 'Not submitted'} · Last reviewed: {selected.reviewed_at?.slice(0, 16).replace('T', ' ') || 'Not reviewed'}</div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">{[['Objective',selected.objective],['Background',selected.background],['Proposed approach',selected.proposed_approach],['Resources',selected.resource_requirements],['Expected outcomes',selected.expected_outcomes],['Risks',selected.risks],['Boss feedback',selected.boss_comments],['Approval notes',selected.approval_notes]].map(([k,v]) => <div key={k}><div className="text-xs font-semibold text-slate-500">{k}</div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{v || '—'}</p></div>)}</div>
             <div className="mt-4 border-t border-slate-100 pt-3"><h4 className="text-sm font-semibold">Proposed tasks ({selected.proposed_tasks.length})</h4>{selected.proposed_tasks.map((t,i) => <div key={i} className="mt-2 rounded-lg bg-slate-50 p-3"><div className="text-sm font-medium">{t.title}</div><div className="text-xs text-slate-500">{t.responsible || 'Unassigned role'} · {t.due_date || 'No proposed date'} · {priorityLabel(t.priority || 'auto')}</div></div>)}</div>
             <div className="mt-4 border-t border-slate-100 pt-3"><h4 className="text-sm font-semibold">Review history ({selected.revisions.length})</h4>{selected.revisions.map((r) => <div key={r.id} className="mt-2 text-xs text-slate-600">Revision {r.revision_number} · {statusLabel(r.event)} · {r.created_at?.slice(0,16).replace('T',' ')}{r.change_reason ? ` — ${r.change_reason}` : ''}</div>)}</div>
             <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
               {selected.status === 'draft' || selected.status === 'changes_requested' ? <button className={primary} onClick={() => void transition(selected,'submitted_for_approval')}>Submit for boss review</button> : null}
               {selected.status === 'submitted_for_approval' ? <><button className={primary} onClick={() => void transition(selected,'approved')}>Record approval</button><button className={secondary} onClick={() => void transition(selected,'changes_requested')}>Request changes</button><button className={secondary} onClick={() => void transition(selected,'rejected')}>Record rejection</button></> : null}
+              {['approved', 'in_progress'].includes(selected.status) && selected.proposed_tasks.length > 0 ? <button className={secondary} onClick={async () => { const text = selected.proposed_tasks.map((t) => 'Task: ' + t.title + '\nDescription: ' + (t.description || '') + '\nResponsible: ' + (t.responsible || '') + '\nDue: ' + (t.due_date || '') + '\nPriority: ' + (t.priority || 'auto') + '\nDependencies: ' + (t.dependencies || '')).join('\n\n'); try { await navigator.clipboard.writeText(text); visitPm('brief'); setNotice('Approved task proposals copied. Paste them into Brief to tickets to prepare the existing Taskmandu workflow.'); } catch { setError('Could not copy the task proposals.'); } }}>Copy tasks to Brief workflow</button> : null}
               {selected.status === 'approved' ? <button className={primary} onClick={() => void transition(selected,'in_progress')}>Start execution</button> : null}
               {selected.status === 'in_progress' ? <button className={primary} onClick={() => void transition(selected,'completed')}>Mark completed</button> : null}
               {selected.status !== 'archived' && <button className={secondary} onClick={() => void transition(selected,'archived')}>Archive</button>}
               <button className="px-2 text-sm text-rose-600" onClick={() => void deletePlan(selected)}>Delete</button>
             </div>
           </> : <p className="py-12 text-center text-sm text-slate-500">Select a plan to view the document and approval history.</p>}
+        </div>
         </div>
       </div>}
       {planOpen && <form onSubmit={savePlan} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -234,9 +284,10 @@ export default function BossOperationsWorkspace() {
     </div>}
     {tab === 'records' && <div className="flex flex-col gap-5">
       <section className="rounded-xl border border-slate-200 bg-white p-4">{sectionTitle('Historical records', 'Completed commitments, decisions and past planning documents')}
-        <div className="mt-3 divide-y divide-slate-100">{goals.filter((g)=>g.status!=='active').map((g)=><div key={g.id} className="flex items-center justify-between gap-3 py-2"><span className="text-sm">{g.title}<span className="ml-2 text-xs text-slate-500">{g.business?.name??'No business'}</span></span><Pill value={g.status}/></div>)}
-          {plans.filter((p)=>['completed','rejected','archived'].includes(p.status)).map((p)=><button key={p.id} onClick={()=>{setTab('plans');setSelectedPlan(p.id);}} className="flex w-full items-center justify-between gap-3 py-2 text-left"><span className="text-sm">{p.title}<span className="ml-2 text-xs text-slate-500">{p.business?.name??'No business'}</span></span><Pill value={p.status}/></button>)}
-          {goals.every((g)=>g.status==='active') && plans.every((p)=>!['completed','rejected','archived'].includes(p.status)) && <p className="py-4 text-sm text-slate-500">Historical records will appear here as goals and plans are completed, cancelled, rejected or archived.</p>}
+        <input className={field + ' mt-3'} placeholder="Search historical records…" value={recordsSearch} onChange={(e) => setRecordsSearch(e.target.value)} />
+        <div className="mt-3 divide-y divide-slate-100">{historicalGoals.map((g)=><div key={g.id} className="flex items-center justify-between gap-3 py-2"><span className="text-sm">{g.title}<span className="ml-2 text-xs text-slate-500">{g.business?.name??'No business'}</span></span><Pill value={g.status}/></div>)}
+          {historicalPlans.map((p)=><button key={p.id} onClick={()=>{setTab('plans');setSelectedPlan(p.id);}} className="flex w-full items-center justify-between gap-3 py-2 text-left"><span className="text-sm">{p.title}<span className="ml-2 text-xs text-slate-500">{p.business?.name??'No business'}</span></span><Pill value={p.status}/></button>)}
+          {historicalGoals.length === 0 && historicalPlans.length === 0 && <p className="py-4 text-sm text-slate-500">Historical records will appear here as goals and plans are completed, cancelled, rejected or archived.</p>}
         </div>
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="mb-3 text-base font-semibold">Existing boss requests & ideas</h3><RequestsIdeasPanel/></section>
