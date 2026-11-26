@@ -19,6 +19,8 @@ class TaskmanduSync
     private array $seenExternalIds = [];
     public function __construct(private TaskmanduClient $client, private TaskQaInboxService $taskQaInbox) {}
     public function configured(): bool { return $this->client->configured(); }
+    /** Return every Taskmandu project, across all Taskmandu API pages. */
+    public function listProjects(): array { return $this->client->paginate('/projects'); }
     public function run(): int { try { $employees=$this->employeeMap(); $count=0; $this->baseline=PmCard::query()->exists(); $this->seenExternalIds=[]; Cache::forget('pm.last_sync_warning'); $count+=$this->syncStandaloneTasks($employees); $count+=$this->syncProjectBoards($employees); $this->reconcileMissingRemoteCards(); Cache::forever('pm.last_synced_at',now()->toIso8601String()); Cache::forget('pm.last_sync_error'); return $count; } catch (\Throwable $e) { Cache::forever('pm.last_sync_error',['message'=>$e->getMessage(),'at'=>now()->toIso8601String()]); throw new RuntimeException('Taskmandu sync failed: '.$e->getMessage(), 0, $e); } }
     public function employeeMap(): array { $map=[]; foreach($this->client->paginate('/employees') as $e){$name=trim(($e['firstName']??'').' '.($e['lastName']??''));foreach(['employeeId','_id','userId'] as $key)if(!empty($e[$key])&&is_string($e[$key]))$map[$e[$key]]=$name;} return $map; }
     private ?array $employeeRows = null;
