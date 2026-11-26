@@ -621,6 +621,7 @@ export default function ReportsPanel() {
   const [warning, setWarning] = useState<string | null>(null);
   const [copied, setCopied] = useState<{ id: number; part: 'update' | 'full' } | null>(null);
   const [reportType,setReportType]=useState<'daily'|'weekly'|'range'>('daily');
+  const [reportCategory,setReportCategory]=useState<'qa'|'minutes'|'performance'>('performance');
   const [savedSearch,setSavedSearch]=useState('');
   const [savedPeriodFilter,setSavedPeriodFilter]=useState<'all'|'daily'|'weekly'|'date_range'>('all');
   const [savedFilter,setSavedFilter]=useState<'all'|'daily'|'weekly'|'qa'|'minutes'|'performance'>('all');
@@ -710,15 +711,16 @@ export default function ReportsPanel() {
     setGenError(null); setWarning(null); setGenerating(true);
     try {
       const payload = reportType === 'range'
-        ? { period_type: 'date_range' as const, from: periodFrom, to: periodTo, sync }
-        : { period_type: reportType, date, sync };
+        ? { period_type: 'date_range' as const, from: periodFrom, to: periodTo, report_type: reportCategory, sync }
+        : { period_type: reportType, date, report_type: reportCategory, sync };
       const { data } = await pmApi.generateReportPack(payload);
-      setReports(prev => sorted([...data.reports, ...prev.filter(old => !data.reports.some((fresh: Report) => fresh.id === old.id))]));
-      setOpenIds(prev => new Set([...prev, ...data.reports.map((r: Report) => r.id)]));
+      const report = data.report;
+      setReports(prev => sorted([report, ...prev.filter(old => old.id !== report.id && !(old.kind === report.kind && old.report_date === report.report_date))]));
+      setOpenIds(prev => new Set(prev).add(report.id));
       setSavedFilter('all');
       setWarning(data.warning);
     } catch (e) {
-      setGenError(errorText(e, "Couldn't generate the report pack."));
+      setGenError(errorText(e, "Couldn't generate this report."));
     } finally { setGenerating(false); }
   }
 
@@ -1026,11 +1028,15 @@ export default function ReportsPanel() {
       </UiSection>
 
 
-      <UiSection id="report-new" title="Generate report pack" subtitle="Choose a period. One click creates three separate saved reports." tone="brand">
-        <div className="flex flex-wrap gap-2">{(['daily','weekly','range'] as const).map(k=><button key={k} onClick={()=>setReportType(k)} className={btnChip(reportType===k)}>{k==='range'?'Date range':k==='daily'?'Daily':'Weekly'}</button>)}</div>
+      <UiSection id="report-new" title="Generate an individual report" subtitle="Choose one report type and a period. Only that report will be generated and saved." tone="brand">
+        <div className="flex flex-wrap gap-2">
+          {(['qa','minutes','performance'] as const).map(k => <button key={k} onClick={() => setReportCategory(k)} className={btnChip(reportCategory === k)}>{k === 'qa' ? 'QA report' : k === 'minutes' ? 'Meeting minutes' : 'Tasks & performance'}</button>)}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">{(['daily','weekly','range'] as const).map(k=><button key={k} onClick={()=>setReportType(k)} className={btnChip(reportType===k)}>{k==='range'?'Date range':k==='daily'?'Daily':'Weekly'}</button>)}</div>
         {reportType !== 'range' ? <label className="mt-3 block text-xs text-slate-500">{reportType === 'weekly' ? 'Choose any date in the week' : 'Report date'}<input type="date" max={todayStr()} value={date} onChange={e=>setDate(e.target.value||todayStr())} className={inputCls+' mt-1 block'}/></label> : <div className="mt-3 flex flex-wrap gap-3"><label className="text-xs text-slate-500">From<input type="date" value={periodFrom} max={periodTo} onChange={e=>setPeriodFrom(e.target.value)} className={inputCls+' mt-1 block'}/></label><label className="text-xs text-slate-500">To<input type="date" value={periodTo} min={periodFrom} max={todayStr()} onChange={e=>setPeriodTo(e.target.value)} className={inputCls+' mt-1 block'}/></label></div>}
-        <div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-lg border p-3"><strong className="text-sm">QA Report</strong><p className="text-xs text-slate-500">Findings, severity, pass/fail and fixes.</p></div><div className="rounded-lg border p-3"><strong className="text-sm">Meeting Minutes</strong><p className="text-xs text-slate-500">Meetings, decisions, actions and follow-ups.</p></div><div className="rounded-lg border p-3"><strong className="text-sm">Tasks &amp; Performance</strong><p className="text-xs text-slate-500">Task progress, business, project and team activity.</p></div></div>
-        <div className="mt-3 flex flex-wrap items-center gap-3"><label className="flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={sync} onChange={e=>setSync(e.target.checked)}/>Sync Taskmandu first</label><button onClick={()=>void generatePack()} disabled={generating} className={btnPrimary}>{generating?'Generating three reports…':'Generate report pack'}</button></div>
+        <p className="mt-3 text-xs text-slate-500">{reportCategory === 'qa' ? 'Uses saved QA Center reports and findings.' : reportCategory === 'minutes' ? 'Uses saved meeting records, decisions and action items.' : 'Uses Taskmandu task, project and team activity.'}</p>
+        {reportCategory === 'performance' && <label className="mt-3 flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={sync} onChange={e=>setSync(e.target.checked)}/>Sync Taskmandu before generating</label>}
+        <div className="mt-3 flex flex-wrap items-center gap-3"><button onClick={()=>void generatePack()} disabled={generating} className={btnPrimary}>{generating ? 'Generating…' : 'Generate ' + (reportCategory === 'qa' ? 'QA report' : reportCategory === 'minutes' ? 'meeting minutes report' : 'performance report')}</button></div>
         {genError&&<Notice tone="danger">{genError}</Notice>}{warning&&<Notice tone="warn">{warning}</Notice>}
       </UiSection>
 
@@ -1087,7 +1093,7 @@ export default function ReportsPanel() {
                   {open && <>
                     <div className="flex flex-wrap gap-2 px-4 pt-3">
                       <button onClick={()=>{setEditId(r.id);setEditContent(JSON.parse(JSON.stringify(r.content || {})));setEditNotes(r.notes||'');}} className={btnSecondary}>Edit report inline</button>
-                      <button onClick={()=>window.location.href='/pm/api/reports/'+r.id+'/docx'} className={btnSecondary}>Export DOCX</button>
+                      <button onClick={()=>window.location.href='/pm/api/reports/'+r.id+'/docx'} className={btnSecondary}>Download DOCX</button>
                     </div>
                     {editId===r.id && <div className="mx-4 mt-3 rounded-lg border border-indigo-200 bg-white p-3">
                       {r.content?.kind === 'pack' ? <>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import ReviewPanel from './QA/ReviewPanel';
 import SummaryTable from './QA/SummaryTable';
+import QAReportsPanel from './QAReportsPanel';
 import { ItemPanel, ProjectPanel, SitePanel } from './QA/AddPanels';
 import { button, dateTime, errorMessage, input, primary, SOURCES, STAGES, stageClass, type Payload, type QAItem, type Source, type Stage } from './QA/types';
 
@@ -25,6 +26,7 @@ export default function QACenter() {
   const [assignee, setAssignee] = useState('');
   const [stage, setStage] = useState<'' | Stage>('');
   const [sort, setSort] = useState<Sort>('newest');
+  const [showReportGenerator, setShowReportGenerator] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async (quiet = false) => {
@@ -87,6 +89,14 @@ export default function QACenter() {
           onCreated={item => { setData(d => ({ ...d, items: [item, ...d.items] })); setSelectedKey(item.key); setPanel('none'); void load(true); }}/>
       : null;
 
+  if (showReportGenerator) return <div className="space-y-4">
+    <div className="flex items-center justify-between gap-3">
+      <div><h2 className="text-lg font-semibold text-slate-900">QA report</h2><p className="text-sm text-slate-500">Create a handover report from the current QA Center records.</p></div>
+      <button className={button} onClick={() => setShowReportGenerator(false)}>← Back to QA Center</button>
+    </div>
+    <QAReportsPanel />
+  </div>;
+
   return <div ref={rootRef} className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="text-lg font-semibold text-slate-900">QA Center</h2><p className="text-sm text-slate-500">Queue, test, then pass or send back.</p></div>
@@ -95,6 +105,7 @@ export default function QACenter() {
         <button className={tab(panel === 'site')} aria-pressed={panel === 'site'} onClick={() => toggle('site')}>+ Site or app</button>
         <button className={tab(panel === 'item')} aria-pressed={panel === 'item'} onClick={() => toggle('item')}>+ QA item</button>
         <button className={tab(panel === 'summary')} aria-pressed={panel === 'summary'} onClick={() => toggle('summary')}>Summary</button>
+        <button className={button} onClick={() => setShowReportGenerator(true)}>QA report</button>
         <button className={button} onClick={() => void load()}>Refresh</button>
       </div>
     </div>

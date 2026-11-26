@@ -169,8 +169,8 @@ export const pmApi = {
   reports: () => api.get<{ reports: Report[] }>('/reports'),
 
   /** date = YYYY-MM-DD (defaults to today server-side); notes = custom text to split into the template. */
-  generateReportPack: (payload: { period_type: 'daily' | 'weekly' | 'date_range'; date?: string; from?: string; to?: string; sync?: boolean }) =>
-    api.post<{ reports: Report[]; warning: string | null }>('/reports/pack', payload),
+  generateReportPack: (payload: { period_type: 'daily' | 'weekly' | 'date_range'; report_type: 'qa' | 'minutes' | 'performance'; date?: string; from?: string; to?: string; sync?: boolean }) =>
+    api.post<{ report: Report; warning: string | null }>('/reports/pack', payload),
 
   generateReport: (date: string, notes: string, sync: boolean, kind: 'daily' | 'weekly' = 'daily') =>
     api.post<{ report: Report; warning: string | null }>('/reports', { date, notes: notes || null, sync, kind }),
