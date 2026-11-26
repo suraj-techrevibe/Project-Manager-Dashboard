@@ -6,6 +6,7 @@ use App\Models\PmBusiness;
 use App\Models\PmBusinessProjectLink;
 use App\Models\PmIntake;
 use App\Models\PmIntakeTaskLink;
+use App\Services\Pm\TaskmanduSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +34,7 @@ class PmOperationsController extends Controller
         'planned',
     ];
 
-    public function businesses(\\App\\Services\\Pm\\TaskmanduSync $taskmanduSync): JsonResponse
+    public function businesses(TaskmanduSync $taskmanduSync): JsonResponse
     {
         // Taskmandu projects are the source of truth for business options.
         // Do not filter by status: active, completed and archived projects all belong here.
