@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { pmApi } from '../../lib/pmApi';
 import { TASK_PRIORITIES } from '../../types/pm';
-import type { BriefContext, Project, WeeklyPlan, WeeklyPlanInput, WeeklyPlanTicket, WeeklyPlanTicketInput } from '../../types/pm';
+import type { BriefContext, Project, WeeklyPlan, WeeklyPlanInput, WeeklyPlanTicket, WeeklyPlanTicketInput, WorkloadRow } from '../../types/pm';
 import { EmptyState, PageHeader, Section, btnPrimary, btnSecondary } from './ui/kit';
+import { visitPm } from '../../lib/pmNav';
 
 const inputCls = 'w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
 
@@ -87,6 +88,8 @@ export default function WeeklyAssignmentPlanner() {
   const [selected, setSelected] = useState<WeeklyPlan | null>(null);
   const [ctx, setCtx] = useState<BriefContext | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [workloadRows, setWorkloadRows] = useState<WorkloadRow[]>([]);
+  const [workloadReviewCount, setWorkloadReviewCount] = useState(0);
   const [title, setTitle] = useState('');
   const [weekStart, setWeekStart] = useState(initialWeek.start);
   const [weekEnd, setWeekEnd] = useState(initialWeek.end);
@@ -101,7 +104,12 @@ export default function WeeklyAssignmentPlanner() {
 
   const employees = ctx?.employees ?? [];
   const editable = !selected || ['draft', 'changes_requested'].includes(selected.status);
-  const teamCapacity = employees.reduce((sum, employee) => sum + (employee.capacity ?? 0), 0);
+  const teamCapacity = workloadRows.reduce((sum, employee) => sum + (employee.capacity ?? 0), 0);
+  const proposedHoursByMember = new Map<string, number>();
+  tickets.forEach((ticket) => {
+    const name = employees.find((employee) => employee.employeeId === ticket.assignee_employee_id)?.name;
+    if (name) proposedHoursByMember.set(name, (proposedHoursByMember.get(name) ?? 0) + (Number(ticket.estimate_hours) || 0));
+  });
   const plannedHours = tickets.reduce((sum, ticket) => sum + (Number(ticket.estimate_hours) || 0), 0);
 
   async function loadPlans(selectId?: number) {
@@ -146,6 +154,14 @@ export default function WeeklyAssignmentPlanner() {
       })
       .catch((e) => { if (alive) setError(errorText(e, 'Could not load weekly planning data. Check Taskmandu access and try again.')); })
       .finally(() => { if (alive) setLoading(false); });
+    pmApi.workload().then(({ data }) => {
+      if (alive) {
+        setWorkloadRows(data.workload ?? []);
+        setWorkloadReviewCount(data.review_count ?? 0);
+      }
+    }).catch(() => {
+      // Keep the planner usable when the workload endpoint is temporarily unavailable.
+    });
     return () => { alive = false; };
     // The page is re-mounted when opened, so this initial load is intentional.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -482,14 +498,27 @@ export default function WeeklyAssignmentPlanner() {
       </div>
 
       <aside className="space-y-4">
-        <Section id="weekly-plan-capacity" title="Team capacity" subtitle="Employee names and current capacity are loaded from Taskmandu." >
-          {employees.length ? <div className="space-y-2">
-            {employees.map((employee) => <div key={employee.employeeId} className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 text-sm last:border-0">
-              <span className="min-w-0 truncate font-medium text-slate-800">{employee.name}</span>
-              <span className="shrink-0 text-xs text-slate-500">{employee.open ?? 0} open · {employee.week_hours ?? employee.hours ?? 0}h this week</span>
+        <Section id="weekly-plan-capacity" title="Current workload" subtitle="Live snapshot from the existing Team Workload data, not a second tracker.">
+          {workloadRows.length ? <div className="space-y-2">
+            {workloadRows.map((member) => <div key={member.name} className="border-b border-slate-100 pb-2 last:border-0">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate font-medium text-slate-800">{member.name}</span>
+                <span className="shrink-0 text-xs text-slate-500">{(proposedHoursByMember.get(member.name) ?? 0)}h proposed</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
+                <span>{member.open} open</span><span>{member.overdue} overdue</span><span>{member.blocked} blocked</span>
+                <span>{member.week_hours ?? 0}h scheduled this week</span>
+                {member.capacity !== undefined && <span>{member.capacity}h capacity</span>}
+              </div>
             </div>)}
-            {teamCapacity > 0 && <p className="text-xs text-slate-500">Reported weekly team capacity: {teamCapacity}h. Compare with estimates before approval.</p>}
-          </div> : <p className="text-sm text-slate-500">{loading ? 'Loading team…' : 'No Taskmandu employees returned. Check the PM service account permissions.'}</p>}
+            {teamCapacity > 0 && <p className="text-xs text-slate-500">Reported combined capacity: {teamCapacity}h. Check task size and QA obligations before approving.</p>}
+            <p className="text-xs text-slate-500">QA items awaiting review: {workloadReviewCount}. Review the QA Center before releasing new work.</p>
+          </div> : <p className="text-sm text-slate-500">{loading ? 'Loading workload…' : 'Workload snapshot unavailable. Open Team Workload and refresh the source data.'}</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className={btnSecondary} onClick={() => visitPm('projects', { ptab: 'tasks' })}>Open All Tasks</button>
+            <button type="button" className={btnSecondary} onClick={() => visitPm('qa')}>Open QA Center</button>
+            <button type="button" className={btnSecondary} onClick={() => visitPm('today')}>Open Command Center</button>
+          </div>
         </Section>
         <Section id="weekly-plan-summary" title="Batch summary" subtitle="Based on the assignments currently shown.">
           <div className="grid grid-cols-2 gap-2">
