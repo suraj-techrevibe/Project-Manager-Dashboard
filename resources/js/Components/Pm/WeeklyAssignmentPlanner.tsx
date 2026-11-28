@@ -7,17 +7,23 @@ import { EmptyState, PageHeader, Section, btnPrimary, btnSecondary } from './ui/
 const inputCls = 'w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
 
 function dateValue(date: Date): string {
-  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return shifted.toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
 }
 
 function defaultWeek(): { start: string; end: string } {
-  const start = new Date();
-  start.setHours(12, 0, 0, 0);
-  const daysUntilSunday = (7 - start.getDay()) % 7;
-  start.setDate(start.getDate() + daysUntilSunday);
+  // Base the planning week on Nepal's calendar even when the PM is in Sydney.
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kathmandu',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  const start = new Date(Date.UTC(Number(get('year')), Number(get('month')) - 1, Number(get('day'))));
+  const daysUntilSunday = (7 - start.getUTCDay()) % 7;
+  start.setUTCDate(start.getUTCDate() + daysUntilSunday);
   const end = new Date(start);
-  end.setDate(end.getDate() + 5);
+  end.setUTCDate(end.getUTCDate() + 5);
   return { start: dateValue(start), end: dateValue(end) };
 }
 
@@ -324,7 +330,7 @@ export default function WeeklyAssignmentPlanner() {
     <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm text-indigo-950">
       <div className="font-semibold">Team schedule · Nepal time</div>
       <div className="mt-1">Sunday–Friday, 12:00 pm–6:00 pm NPT · Saturday off · 36 scheduled hours per week before breaks.</div>
-      <div className="mt-1 text-indigo-800">Your Sydney availability: 7:00 am–10:00 pm. Live overlap is normally 5:15 pm–10:00 pm Sydney time during Sydney daylight saving. Use asynchronous Taskmandu handovers after your availability ends.</div>
+      <div className="mt-1 text-indigo-800">Your Sydney availability: 7:00 am–10:00 pm. Live overlap depends on Sydney daylight saving (Sydney is 4h15 or 5h15 ahead of Nepal). Use asynchronous Taskmandu handovers after your availability ends.</div>
     </div>
 
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
