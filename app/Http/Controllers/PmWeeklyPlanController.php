@@ -49,7 +49,7 @@ class PmWeeklyPlanController extends Controller
                 'created_by_id' => $request->user()?->id,
             ]);
         } catch (QueryException $e) {
-            if (str_contains($e->getMessage(), 'unique') || str_contains($e->getMessage(), 'duplicate')) {
+            if (str_contains(strtolower($e->getMessage()), 'unique') || str_contains(strtolower($e->getMessage()), 'duplicate')) {
                 return response()->json(['message' => 'A weekly plan already exists for this Sunday. Open that plan instead of creating a duplicate.'], 409);
             }
             throw $e;
@@ -127,6 +127,14 @@ class PmWeeklyPlanController extends Controller
 
             return $locked->fresh();
         });
+
+        $readyCount = collect($plan->tickets ?? [])->where('push_state', 'ready')->count();
+        if ($readyCount === 0) {
+            return response()->json([
+                'plan' => $this->present($plan),
+                'release' => ['released' => 0, 'queued' => collect($plan->tickets ?? [])->where('push_state', 'queued')->count(), 'failed' => 0],
+            ]);
+        }
 
         return $this->releaseTickets($request, $plan, $publisher, $sync, ['ready']);
     }
