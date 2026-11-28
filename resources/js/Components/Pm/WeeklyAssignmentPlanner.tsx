@@ -177,6 +177,21 @@ export default function WeeklyAssignmentPlanner() {
     });
   }
 
+  function changeWeekStart(value: string) {
+    setWeekStart(value);
+    if (!value) return;
+    const start = new Date(`${value}T00:00:00Z`);
+    if (Number.isNaN(start.getTime())) return;
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 5);
+    const endValue = dateValue(end);
+    setWeekEnd(endValue);
+    setTickets((current) => current.map((ticket) => ({
+      ...ticket,
+      due_date: ticket.due_date < value || ticket.due_date > endValue ? endValue : ticket.due_date,
+    })));
+  }
+
   function addTicket() {
     setTickets((current) => [...current, blankTicket(weekEnd)]);
   }
@@ -205,6 +220,15 @@ export default function WeeklyAssignmentPlanner() {
 
   function validateDraft(): string | null {
     if (!weekStart || !weekEnd || weekEnd < weekStart) return 'Choose a valid Sunday–Friday planning range.';
+    const startDate = new Date(`${weekStart}T00:00:00Z`);
+    const endDate = new Date(`${weekEnd}T00:00:00Z`);
+    const spanDays = (endDate.getTime() - startDate.getTime()) / 86_400_000;
+    if (startDate.getUTCDay() !== 0 || endDate.getUTCDay() !== 5 || spanDays !== 5) {
+      return 'The weekly plan must start Sunday and end Friday (Nepal time).';
+    }
+    if (tickets.some((ticket) => ticket.due_date < weekStart || ticket.due_date > weekEnd)) {
+      return 'Every assignment due date must fall within this Sunday–Friday week.';
+    }
     if (tickets.length === 0) return 'Add at least one assignment.';
     if (tickets.some((ticket) => !ticket.title.trim())) return 'Every assignment needs a clear task title.';
     if (tickets.some((ticket) => !ticket.assignee_employee_id)) return 'Choose an assignee for every assignment.';
@@ -359,7 +383,7 @@ export default function WeeklyAssignmentPlanner() {
               <input className={inputCls} value={title} disabled={!editable} onChange={(e) => setTitle(e.target.value)} placeholder="Weekly assignments" />
             </label>
             <label className="text-xs font-medium text-slate-600">Week starts · Sunday
-              <input type="date" className={inputCls} value={weekStart} disabled={!editable} onChange={(e) => setWeekStart(e.target.value)} />
+              <input type="date" className={inputCls} value={weekStart} disabled={!editable} onChange={(e) => changeWeekStart(e.target.value)} />
             </label>
             <label className="text-xs font-medium text-slate-600">Week ends · Friday
               <input type="date" className={inputCls} value={weekEnd} disabled={!editable} onChange={(e) => setWeekEnd(e.target.value)} />
