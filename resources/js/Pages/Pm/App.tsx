@@ -6,7 +6,7 @@ import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import { countQuick, liveFlagCounts, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
-import BriefDrafter from '@/Components/Pm/BriefDrafter';
+import BriefDrafter from '@/Components/Pm/BriefDrafter';\nimport WeeklyAssignmentPlanner from '@/Components/Pm/WeeklyAssignmentPlanner';
 import GitPanel from '@/Components/Pm/GitPanel';
 import MeetingMinutesPanel from '@/Components/Pm/StructuredMeetingMinutesPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
@@ -25,7 +25,7 @@ import { PM_PAGES, usePmPage, visitPm, type PmPage } from '@/lib/pmNav';
 import type { PmFlag, TaskFocus, TodayData, Project } from '@/types/pm';
 
 /** Tabs whose data is loaded on mount; they are re-mounted every time you come back so they never show stale data. Their place (open project / meeting) lives in the URL, so nothing is lost. */
-const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'reports', 'qa-reports', 'dictionary'];
+const REFETCH_ON_OPEN: PmPage[] = ['operations', 'projects', 'minutes', 'weekly-plan', 'reports', 'qa-reports', 'dictionary'];
 
 /** A tab's panel, mounted the first time you open it and then only hidden — so coming back is instant. */
 function Pane({ show, children }: { show: boolean; children: ReactNode }) {
@@ -406,7 +406,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('operations') && <Pane show={page === 'operations'}><BossOperationsWorkspace key={gen.operations ?? 0} /></Pane>}
         {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} tasks={today ? allTasks : null} tasksLoading={todayLoading} tasksError={todayError} onRetryTasks={() => void loadToday()} onOpenTask={openTask} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
-        {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
+        {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}\n        {mounted('weekly-plan') && <Pane show={page === 'weekly-plan'}><WeeklyAssignmentPlanner key={gen['weekly-plan'] ?? 0} /></Pane>}
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
