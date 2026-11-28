@@ -51,6 +51,7 @@ Every tab is its own page, so it opens on its own and Back / Forward / bookmarks
 | Projects | `/pm/projects` (open one with `?project=<id>&ptab=tasks&task=<id>&sub=<id>`) |
 | Meeting minutes | `/pm/minutes` |
 | Brief to tickets | `/pm/brief` |
+| Weekly assignment plan | `/pm/weekly-plan` |
 | Reports | `/pm/reports` |
 | Scope check | `/pm/scope` |
 | Git | `/pm/git` |
@@ -95,6 +96,21 @@ project board (`POST /projects/{id}/tasks`).
 Level, estimate and priority are sent as real fields (`tags`, `estimatedHours`, `priority`). If Taskmandu
 rejects them on the standalone create call (400/422) the push is retried once without them and a
 `Level | Est | Priority` line is added to the description instead; the UI says when that happened.
+
+### Weekly assignment plan (v1)
+
+The **Weekly assignment plan** page (`/pm/weekly-plan`) keeps weekend planning separate from daily Meeting Minutes while using the same Taskmandu ticket publisher.
+
+- Create one weekly batch for a Sunday–Friday team week in **Asia/Kathmandu**. Assignment due dates must fall within that week.
+- Prepare one ticket per assignment with its Taskmandu project (or standalone destination), employee, priority, estimate, description and due date.
+- **Save draft** keeps the plan in the PM database. **Save & submit for approval** changes its status but does not create Taskmandu tickets.
+- **Approve & automatically release batch** records the approver and creates all assignments marked **Release with this batch** in Taskmandu immediately.
+- Unchecked **Release with this batch** assignments remain in the approved next-task queue. **Release queued assignments** publishes them later.
+- Every result is stored against the weekly plan with the Taskmandu task ID, local PM card ID, link, timestamp and any error. Failed releases can be retried without re-sending tickets already marked released.
+- Before publishing, the app syncs Taskmandu. Weekly release refuses to update an existing matching task; it reports a duplicate instead. This is intentionally safer than silently changing existing work.
+- Daily Meeting Minutes and Brief to tickets keep their existing behaviour and API.
+
+After pulling the change, run `php artisan migrate` to create `pm_weekly_plans`. No new Taskmandu credentials or external integration are required. Batch release runs synchronously when the approver clicks the approval button; it is not an unattended scheduled job.
 
 ### Meeting-notes mode (v6)
 
@@ -162,6 +178,7 @@ resources/js/
   Components/Pm/
     FlagsPanel.tsx          # Today tab: question buttons, workload, filters, flag list, nudge/snooze/verify
     BriefDrafter.tsx        # Brief to tickets tab
+    WeeklyAssignmentPlanner.tsx # Weekend planning, approval and Taskmandu batch release
     ReportsPanel.tsx        # Reports tab: generate + list daily reports
     ScopeCheck.tsx          # Scope check tab
     GitPanel.tsx            # Git tab
