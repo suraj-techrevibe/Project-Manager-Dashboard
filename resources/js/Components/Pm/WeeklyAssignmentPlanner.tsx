@@ -359,7 +359,7 @@ export default function WeeklyAssignmentPlanner() {
 
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="space-y-4">
-        <Section title="1 · Weekly batch" subtitle="One plan per Sunday start date. Keep daily Meeting Minutes separate." >
+        <Section id="weekly-plan-batch" title="1 · Weekly batch" subtitle="One plan per Sunday start date. Keep daily Meeting Minutes separate." >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm font-semibold text-slate-900">Saved weekly plans</div>
@@ -377,7 +377,7 @@ export default function WeeklyAssignmentPlanner() {
           {loading && <p className="mt-3 text-xs text-slate-500">Loading employees, projects and weekly plans…</p>}
         </Section>
 
-        <Section title="2 · Prepare assignments" subtitle="Choose the correct existing Taskmandu project, owner, hours, priority and due date. Each row becomes one Taskmandu ticket after approval.">
+        <Section id="weekly-plan-editor" title="2 · Prepare assignments" subtitle="Choose the correct existing Taskmandu project, owner, hours, priority and due date. Each row becomes one Taskmandu ticket after approval.">
           <div className="grid gap-3 md:grid-cols-3">
             <label className="text-xs font-medium text-slate-600">Plan title
               <input className={inputCls} value={title} disabled={!editable} onChange={(e) => setTitle(e.target.value)} placeholder="Weekly assignments" />
@@ -455,7 +455,7 @@ export default function WeeklyAssignmentPlanner() {
           </div>
         </Section>
 
-        {selected && <Section title="3 · Approval and automatic release" subtitle="Approval is the trigger. Once approved, the server creates each selected Taskmandu ticket and stores its returned ID.">
+        {selected && <Section id="weekly-plan-approval" title="3 · Approval and automatic release" subtitle="Approval is the trigger. Once approved, the server creates each selected Taskmandu ticket and stores its returned ID.">
           <div className="flex flex-wrap gap-2 text-xs text-slate-600">
             <span className="rounded-md bg-slate-100 px-2 py-1">Status: {statusLabel(selected.status)}</span>
             <span className="rounded-md bg-slate-100 px-2 py-1">Released: {selected.counts.released}</span>
@@ -482,7 +482,7 @@ export default function WeeklyAssignmentPlanner() {
       </div>
 
       <aside className="space-y-4">
-        <Section title="Team capacity" subtitle="Employee names and current capacity are loaded from Taskmandu." >
+        <Section id="weekly-plan-capacity" title="Team capacity" subtitle="Employee names and current capacity are loaded from Taskmandu." >
           {employees.length ? <div className="space-y-2">
             {employees.map((employee) => <div key={employee.employeeId} className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 text-sm last:border-0">
               <span className="min-w-0 truncate font-medium text-slate-800">{employee.name}</span>
@@ -491,7 +491,7 @@ export default function WeeklyAssignmentPlanner() {
             {teamCapacity > 0 && <p className="text-xs text-slate-500">Reported weekly team capacity: {teamCapacity}h. Compare with estimates before approval.</p>}
           </div> : <p className="text-sm text-slate-500">{loading ? 'Loading team…' : 'No Taskmandu employees returned. Check the PM service account permissions.'}</p>}
         </Section>
-        <Section title="Batch summary" subtitle="Based on the assignments currently shown.">
+        <Section id="weekly-plan-summary" title="Batch summary" subtitle="Based on the assignments currently shown.">
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Assignments</div><div className="text-xl font-semibold">{tickets.length}</div></div>
             <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Estimated hours</div><div className="text-xl font-semibold">{plannedHours}h</div></div>
