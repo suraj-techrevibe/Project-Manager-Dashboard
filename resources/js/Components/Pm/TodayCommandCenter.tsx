@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { Employee, PmFlag, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, WorkloadRow } from '../../types/pm';
 import SinceStrip from './SinceStrip';
 import CompletedSubtasksGrid, { useCompletedSubtasks } from './CompletedSubtasks';
-import TeamWorkload, { levelOf } from './TeamWorkload';
+import { levelOf } from './TeamWorkload';
 
 /* ------------------------------------------------------------------ */
 /* The top half of the Today tab: what a PM should look at, in order.   */
@@ -126,6 +126,28 @@ function CollapsibleSection({ id, title, sub, children }: { id?: string; title: 
       </button>
       {open && children}
     </section>
+  );
+}
+
+function GroupHeader({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <div className="px-1 pt-2">
+      <h2 className="text-base font-semibold tracking-tight text-slate-900">{title}</h2>
+      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+    </div>
+  );
+}
+
+function JumpNav({ items }: { items: { id: string; label: string; badge?: number }[] }) {
+  return (
+    <nav aria-label="Command center sections" className="sticky top-0 z-20 -mx-1 flex flex-wrap gap-1.5 bg-slate-50/90 px-1 py-2 backdrop-blur">
+      {items.map((i) => (
+        <button key={i.id} type="button" onClick={() => document.getElementById(i.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm hover:border-indigo-300 hover:text-indigo-700">
+          {i.label}{i.badge ? <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 text-[10px] font-semibold text-rose-700">{i.badge}</span> : null}
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -267,6 +289,9 @@ export interface CommandCenterProps {
   onNavigate?: (tab: string) => void;
   onOpenProject?: (projectId: string) => void;
   subtaskSummary: { total:number; completed:number; remaining:number; progress:number };
+  /** Pending requests/ideas panel and meeting follow-ups, shown in their own group. */
+  incoming?: ReactNode;
+  followups?: ReactNode;
 }
 
 export default function TodayCommandCenter(p: CommandCenterProps) {
@@ -287,6 +312,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   const free = p.workload.filter((w) => w.open === 0);
   const over = p.workload.filter((w) => levelOf(w, p.overloadAt) === 'over');
   const [glanceOpen, setGlanceOpen] = useState(true);
+  const busiest = [...p.workload].filter((w) => w.open > 0).sort((x, y) => (y.week_hours ?? 0) - (x.week_hours ?? 0)).slice(0, 6);
 
   // Completed nested subtasks come from the live project data, not parent-task counts.
   const completedSubtasks = useCompletedSubtasks(p.timelineProjects);
@@ -309,6 +335,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   ];
 
   const links: { label: string; tab: string }[] = [
+    { label: 'Team workload', tab: 'team' },
     { label: 'Projects', tab: 'projects' },
     { label: 'Meeting minutes', tab: 'minutes' },
     { label: 'Brief to tickets', tab: 'brief' },
@@ -319,7 +346,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
 
   return (
     <div className="space-y-6 rounded-[2rem] bg-slate-50/80 p-1 sm:p-2">
-      <div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">1 · Daily status</div>
+      <section id="grp-today" className="scroll-mt-24 space-y-3">
       {/* ===== 1. Hero ===== */}
       <section className="relative isolate overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-7 text-white shadow-xl shadow-slate-900/10 sm:p-9">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
@@ -427,26 +454,18 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </div>}
       </section>
 
-      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">2 · Priority attention</div>
-      {/* ===== 4. Act now ===== */}
-      <CollapsibleSection id="act-now" title="Act now" sub="Open the task list with the correct filter.">
-        <div className="grid gap-3 md:grid-cols-3">
-          {[
-            { title: 'Overdue', tone: 'red' as Tone, count: counts.overdue, text: 'Past the due date.', filter: 'overdue' },
-            { title: 'Blocked', tone: 'orange' as Tone, count: counts.blocked, text: 'Waiting on something before it can move.', filter: 'blocked' },
-            { title: 'Due today', tone: 'blue' as Tone, count: counts.due_today, text: 'Finish by end of day.', filter: 'due_today' },
-          ].map((item) => {
-            const t = TONES[item.tone];
-            return <button key={item.title} onClick={() => p.onShowTaskList(item.filter)} className={`rounded-xl border p-5 text-left transition hover:-translate-y-0.5 ${t.panel} hover:shadow-md`}>
-              <div className={`text-sm font-semibold ${t.head}`}>{item.title}</div>
-              <div className={`mt-1 text-4xl font-bold ${t.num}`}>{item.count}</div>
-              <div className="mt-1 text-sm text-slate-500">{item.text}</div>
-              <div className={`mt-3 text-xs font-semibold ${t.head}`}>View filtered tasks →</div>
-            </button>;
-          })}
-        </div>
-      </CollapsibleSection>
+      </section>
 
+      <JumpNav items={[
+        { id: 'grp-attention', label: 'Needs attention', badge: attention },
+        ...((p.incoming || p.followups) ? [{ id: 'grp-incoming', label: 'Incoming' }] : []),
+        { id: 'grp-delivery', label: 'Delivery' },
+        { id: 'grp-team', label: 'Team' },
+        { id: 'grp-activity', label: 'Progress & activity' },
+      ]} />
+
+      <section id="grp-attention" className="scroll-mt-24 space-y-3">
+      <GroupHeader title="Needs attention" sub="Things to act on today. Each one opens the matching list." />
       {/* ===== 5. Stalled + waiting on client ===== */}
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel
@@ -525,7 +544,18 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         </Panel>
       )}
 
-      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">3 · Delivery overview</div>
+      </section>
+
+      {(p.incoming || p.followups) && (
+        <section id="grp-incoming" className="scroll-mt-24 space-y-3">
+          <GroupHeader title="Incoming work & decisions" sub="Requests, ideas and meeting follow-ups waiting on you." />
+          {p.incoming}
+          {p.followups}
+        </section>
+      )}
+
+      <section id="grp-delivery" className="scroll-mt-24 space-y-3">
+      <GroupHeader title="Delivery" sub="How projects are tracking." />
       {/* ===== Completed subtasks QA ===== */}
       <Panel
         id="completed-subtasks"
@@ -585,8 +615,9 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
         )}
 
         {/* Timeline */}
-        <div className="mt-6 border-t border-indigo-100 pt-5">
-          <h4 className="mb-3 text-sm font-semibold text-slate-700">Timeline (project start → end, dashed line = today)</h4>
+        <details className="mt-6 border-t border-indigo-100 pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">Timeline <span className="font-normal text-slate-500">(project start → end, dashed line = today)</span></summary>
+          <div className="mt-3">
           {p.projectsLoading ? (
             <Empty>Loading projects…</Empty>
           ) : p.timelineProjects.length ? (
@@ -621,37 +652,54 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
           ) : (
             <Empty>No project dates or tasks available.</Empty>
           )}
-        </div>
+          </div>
+        </details>
       </Panel>
 
-      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">4 · Team workload</div>
-      {/* ===== 7. Capacity ===== */}
+      </section>
+
+      <section id="grp-team" className="scroll-mt-24 space-y-3">
+      <GroupHeader title="Team" sub="A quick look at capacity. The full breakdown has its own tab." />
+      {/* Overview only: the full workload, categories and investigations live on the Team workload tab. */}
       <Panel
         id="capacity"
         tone="emerald"
         title="Team capacity"
-        sub="Who is overloaded, and who can take more? Click a person to filter the list to them."
-        action={<LinkButton tone="emerald" onClick={() => p.onNavigate?.('projects')}>Open Projects →</LinkButton>}
+        sub="Who is overloaded, and who can take more?"
+        action={<LinkButton tone="emerald" onClick={() => p.onNavigate?.('team')}>Open Team workload →</LinkButton>}
       >
-        <div id="team-workload" className="scroll-mt-20">
-          <div className="mb-4 flex flex-wrap gap-2">
-            {free.map((w) => (
-              <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200">
-                {w.name} · free
-              </button>
-            ))}
-            {over.map((w) => (
-              <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-200">
-                {w.name} · overloaded ({w.open})
-              </button>
-            ))}
-            {!free.length && !over.length && <span className="text-sm text-slate-500">Nobody is idle and nobody is over capacity.</span>}
-          </div>
-          <TeamWorkload workload={p.workload} selected="" onSelect={p.onPickPerson} />
+        <div className="mb-3 flex flex-wrap gap-2">
+          {free.map((w) => (
+            <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200">
+              {w.name} · free
+            </button>
+          ))}
+          {over.map((w) => (
+            <button key={w.name} onClick={() => p.onPickPerson(w.name)} className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-200">
+              {w.name} · overloaded ({w.open})
+            </button>
+          ))}
+          {!free.length && !over.length && <span className="text-sm text-slate-500">Nobody is idle and nobody is over capacity.</span>}
         </div>
+        {busiest.length > 0 && (
+          <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+            {busiest.map((w) => {
+              const cap = w.capacity ?? p.overloadAt;
+              const pct = Math.min(100, Math.round(((w.week_hours ?? 0) / Math.max(1, cap)) * 100));
+              return (
+                <li key={w.name}>
+                  <div className="flex items-center justify-between text-xs"><span className="truncate font-medium text-slate-800">{w.name}</span><span className="text-slate-500">{w.open} open · {Math.round(w.week_hours ?? 0)}h / {cap}h</span></div>
+                  <div className="mt-1 h-1.5 rounded-full bg-slate-100"><div className={`h-1.5 rounded-full ${pct >= 100 ? 'bg-rose-500' : pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} /></div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Panel>
+      </section>
 
-      </div><div className="space-y-2"><div className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">7 · Reporting & monitoring</div>
+      <section id="grp-activity" className="scroll-mt-24 space-y-3">
+      <GroupHeader title="Progress & activity" sub="What moved, and a summary you can share." />
       {/* ===== 3. Sub-task progress ===== */}
       {p.subtaskSummary.total > 0 && (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -697,6 +745,7 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
       <Panel id="since-strip" tone="slate" title="What changed" sub="Movement on the board since the last working day.">
         {p.since ? <SinceStrip since={p.since} onOpenItem={p.onOpenSince} onShowFree={p.onShowFree} /> : <Empty>No change data yet.</Empty>}
       </Panel>
-      </div>    </div>
+      </section>
+    </div>
   );
 }

@@ -26,6 +26,7 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('/', [PmController::class, 'index'])->name('index');
     Route::get('assistant', [PmAssistantController::class, 'page'])->name('page.assistant');
     Route::get('tasks', [PmPageController::class, 'tasks'])->name('page.tasks');
+    Route::get('team', [PmPageController::class, 'team'])->name('page.team');
     Route::get('operations', [PmPageController::class, 'operations'])->name('page.operations');
     Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
     Route::get('minutes', [PmPageController::class, 'minutes'])->name('page.minutes');

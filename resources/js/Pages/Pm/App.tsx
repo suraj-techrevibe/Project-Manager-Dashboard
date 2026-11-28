@@ -5,6 +5,7 @@ import QuickSearch from '@/Components/Pm/QuickSearch';
 import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import { countQuick, liveFlagCounts, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
+import TeamWorkloadPage from '@/Components/Pm/TeamWorkloadPage';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
 import WeeklyAssignmentPlanner from '@/Components/Pm/WeeklyAssignmentPlanner';
@@ -92,8 +93,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
 
     if (seen.current.has(page)) {
       if (REFETCH_ON_OPEN.includes(page)) setGen((g) => ({ ...g, [page]: (g[page] ?? 0) + 1 }));
-      if (page === 'today' || page === 'tasks' || page === 'checklist') void loadToday();
-    } else if ((page === 'today' || page === 'tasks' || page === 'checklist') && !props.flags) {
+      if (page === 'today' || page === 'team' || page === 'tasks' || page === 'checklist') void loadToday();
+    } else if ((page === 'today' || page === 'team' || page === 'tasks' || page === 'checklist') && !props.flags) {
       void loadToday(); // /pm/projects etc. load without Today's payload
     }
     seen.current.add(page);
@@ -309,23 +310,6 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           <Pane show={page === 'today'}>
             {today ? (
               <div className="flex flex-col gap-4">
-                <div className="px-2 pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">5 · Pending decisions & incoming work</div>
-                <OperationsTodayPanel
-                  summary={today.operations_summary}
-                  onNavigate={(tab) => visitPm(tab as PmPage)}
-                  onCapture={(kind) => visitPm('operations', { new: kind })}
-                />
-                <details open className="group rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                  <summary className="cursor-pointer list-none px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
-                    <span className="flex items-center justify-between gap-3">
-                      <span>
-                        <span className="block text-sm font-semibold tracking-tight text-slate-900">Daily PM monitoring</span>
-                        <span className="block text-xs text-slate-500">Workload, task flags, blockers, verification and team activity</span>
-                      </span>
-                      <span className="text-slate-400 transition group-open:rotate-180">⌄</span>
-                    </span>
-                  </summary>
-                  <div className="border-t border-slate-100 bg-slate-50/60 p-3 sm:p-4">
                 <TodayCommandCenter
                   counts={counts}
                   workload={today.workload}
@@ -361,7 +345,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onClearAsk={() => setActiveKey(null)}
                   onShowTaskList={(filter) => {
                     if (filter === 'free' || filter === 'overloaded') {
-                      requestAnimationFrame(() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                      visitPm('team');
                       return;
                     }
                     // The full task list lives on the All tasks tab — open it with the matching quick filter.
@@ -373,7 +357,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   }}
                   onFilter={(type) => {
                     setActiveKey(type === 'blocked' ? 'blocking' : type === 'due_today' ? 'duesoon' : type);
-                    document.getElementById(type === 'stuck' ? 'stalled' : type === 'unassigned' ? 'no-owner' : 'act-now')?.scrollIntoView({ behavior: 'smooth' });
+                    document.getElementById(type === 'stuck' ? 'stalled' : type === 'unassigned' ? 'no-owner' : 'grp-attention')?.scrollIntoView({ behavior: 'smooth' });
                   }}
                   onOpenCard={(card) => card.task.project_id && card.task.task_id ? openTask({ projectId: card.task.project_id, taskId: card.task.task_id }) : undefined}
                   onNudgeCard={(card) => void handleNudge(card)}
@@ -384,17 +368,13 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   }}
                   onAssignSubtask={(id, employeeId) => void pmApi.assignSubtask(id, employeeId).then(() => loadToday())}
                   onOpenSince={(item) => item.project_id && item.task_id ? openTask({ projectId: item.project_id, taskId: item.task_id }) : undefined}
-                  onShowFree={() => document.getElementById('capacity')?.scrollIntoView({ behavior: 'smooth' })}
-                  onPickPerson={() => document.getElementById('team-workload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  onShowFree={() => visitPm('team')}
+                  onPickPerson={() => visitPm('team')}
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onOpenProject={(id) => visitPm('projects', { project: id })}
+                  incoming={<OperationsTodayPanel summary={today.operations_summary} onNavigate={(tab) => visitPm(tab as PmPage)} onCapture={(kind) => visitPm('operations', { new: kind })} />}
+                  followups={<details className="rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold tracking-tight text-slate-900">Meeting follow-ups</summary><div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div></details>}
                 />
-                  </div>
-                </details>
-                <details className="rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold tracking-tight text-slate-900">Meeting follow-ups</summary>
-                  <div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div>
-                </details>
               </div>
             ) : (
               <div className="rounded-xl border border-slate-200/80 bg-white p-6 text-sm text-slate-500">
@@ -404,6 +384,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
           </Pane>
         )}
 
+        {mounted('team') && <Pane show={page === 'team'}>{today ? <TeamWorkloadPage workload={today.workload} /> : <div className="rounded-xl border border-slate-200/80 bg-white p-6 text-sm text-slate-500">{todayError ?? 'Loading…'}</div>}</Pane>}
         {mounted('operations') && <Pane show={page === 'operations'}><BossOperationsWorkspace key={gen.operations ?? 0} /></Pane>}
         {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} tasks={today ? allTasks : null} tasksLoading={todayLoading} tasksError={todayError} onRetryTasks={() => void loadToday()} onOpenTask={openTask} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}

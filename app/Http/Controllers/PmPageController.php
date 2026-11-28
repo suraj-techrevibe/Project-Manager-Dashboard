@@ -15,6 +15,11 @@ class PmPageController extends Controller
         return Inertia::render('Pm/App', ['page' => 'tasks']);
     }
 
+    public function team(): Response
+    {
+        return Inertia::render('Pm/App', ['page' => 'team']);
+    }
+
     public function operations(): Response
     {
         return Inertia::render('Pm/App', ['page' => 'operations']);

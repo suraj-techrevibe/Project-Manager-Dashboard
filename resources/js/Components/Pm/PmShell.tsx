@@ -12,6 +12,7 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
   today: { icon: 'grid', blurb: 'What needs your attention right now' },
   tasks: { icon: 'list', blurb: 'Every task and completed subtask across projects' },
   operations: { icon: 'inbox', blurb: 'Capture, review and organise incoming requests' },
+  team: { icon: 'users', blurb: 'Who is loaded, what kind of work, and who is investigating which project' },
   projects: { icon: 'folder', blurb: 'Projects, tasks, members and documents' },
   minutes: { icon: 'clock', blurb: 'Capture meetings and turn them into work' },
   brief: { icon: 'notes', blurb: 'Draft a brief and push it to Taskmandu as tickets' },
@@ -27,10 +28,12 @@ export const PM_LOOK: Record<PmPage, { icon: string; blurb: string }> = {
 };
 
 const GROUPS: { title: string; keys: PmPage[] }[] = [
-  { title: '1 · Daily workflow', keys: ['today', 'minutes', 'projects', 'operations', 'brief', 'weekly-plan', 'reports'] },
-  { title: '2 · Quality assurance', keys: ['qa-reports', 'qa'] },
-  { title: '3 · Project controls', keys: ['scope', 'git', 'dictionary'] },
-  // Daily Checklist and My Action List now open from the bottom dock (they keep their own /pm/... pages).
+  { title: 'Overview', keys: ['today'] },
+  { title: 'Team', keys: ['team', 'weekly-plan'] },
+  { title: 'Work', keys: ['projects', 'operations', 'minutes', 'brief'] },
+  { title: 'Quality & delivery', keys: ['qa', 'qa-reports', 'scope', 'git'] },
+  { title: 'Insights & setup', keys: ['reports', 'dictionary'] },
+  // Daily Checklist and My Action List open from the bottom dock (they keep their own /pm/... pages).
 ];
 
 interface Props {
