@@ -38,18 +38,9 @@ class PmMeetingTicketController extends Controller
             }
         }
 
-        // Taskmandu identifies people by database id, not by the EMP-### code.
-        $data['tickets'] = array_map(function ($t) {
-            $t['assignee_employee_id'] = $this->taskmandu->mongoIdFor($t['assignee_employee_id']);
-            foreach ($t['subtasks'] ?? [] as $k => $s) {
-                $t['subtasks'][$k]['assignee_employee_id'] = $this->taskmandu->mongoIdFor($s['assignee_employee_id']);
-            }
-            return $t;
-        }, $data['tickets']);
-
-        $employees=$this->taskmandu->employeeMap(); $results=[];
-        foreach($data['tickets'] as $i=>$ticket){try{$results[]=['index'=>$i]+$this->pushOne($ticket,$employees,(string)$request->user()?->name);}catch(RuntimeException $e){$results[]=['index'=>$i,'ok'=>false,'error'=>$e->getMessage()];}}
-        $ok=collect($results)->where('ok',true);
+        $publication = $this->publishTickets($data['tickets'], (string) $request->user()?->name, true);
+        $results = $publication['results'];
+        $ok = collect($results)->where('ok', true);
 
         if ($intake && $ok->isNotEmpty()) {
             foreach ($ok as $result) {
@@ -96,7 +87,43 @@ class PmMeetingTicketController extends Controller
         ]);
     }
 
-    private function pushOne(array $ticket,array $employees,string $assignedBy):array
+    /**
+     * Shared Taskmandu publisher used by Brief to tickets and approved weekly batches.
+     * Weekly batches pass $updateExisting=false so an existing task is never silently overwritten.
+     */
+    public function publishTickets(array $tickets, string $assignedBy, bool $updateExisting = true): array
+    {
+        // Taskmandu identifies people by database id, not by the EMP-### code.
+        $tickets = array_map(function ($ticket) {
+            $ticket['assignee_employee_id'] = $this->taskmandu->mongoIdFor((string) $ticket['assignee_employee_id']);
+            foreach ($ticket['subtasks'] ?? [] as $index => $subtask) {
+                $ticket['subtasks'][$index]['assignee_employee_id'] = $this->taskmandu->mongoIdFor((string) $subtask['assignee_employee_id']);
+            }
+            return $ticket;
+        }, $tickets);
+
+        $employees = $this->taskmandu->employeeMap();
+        $results = [];
+        foreach ($tickets as $index => $ticket) {
+            try {
+                $results[] = ['index' => $index] + $this->pushOne($ticket, $employees, $assignedBy, $updateExisting);
+            } catch (\\Throwable $error) {
+                $results[] = ['index' => $index, 'ok' => false, 'error' => $error->getMessage()];
+            }
+        }
+
+        $ok = collect($results)->where('ok', true);
+
+        return [
+            'results' => $results,
+            'created' => $ok->count(),
+            'newly_created' => $ok->where('action', 'created')->count(),
+            'updated' => $ok->where('action', 'updated')->count(),
+            'failed' => count($results) - $ok->count(),
+        ];
+    }
+
+    private function pushOne(array $ticket,array $employees,string $assignedBy,bool $updateExisting = true):array
     {
         $projectId=$ticket['project_id']??null; $subtasks=$ticket['subtasks']??[];
         if(!$projectId && $subtasks) throw new RuntimeException('A meeting Work Item with Action Items must have a confirmed project so its Subtasks can be created.');
@@ -106,6 +133,10 @@ class PmMeetingTicketController extends Controller
         $existing=$projectId
             ? PmCard::query()->where('project_id',$projectId)->where('title',$ticket['title'])->whereNotNull('task_id')->first()
             : PmCard::query()->whereNull('project_id')->where('title',$ticket['title'])->whereNotNull('task_id')->first();
+
+        if ($existing && ! $updateExisting) {
+            throw new RuntimeException('A matching Taskmandu task already exists in this project. No duplicate was created.');
+        }
 
         if($existing){
             // No date on the ticket (e.g. an overdue item whose past date was blanked): keep the task's own due date
