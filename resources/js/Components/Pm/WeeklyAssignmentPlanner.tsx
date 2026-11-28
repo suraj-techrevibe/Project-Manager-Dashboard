@@ -192,7 +192,7 @@ export default function WeeklyAssignmentPlanner() {
         project_name: ticket.project_name || null,
         project_id: ticket.project_id || null,
         project_confirmed: Boolean(ticket.project_id && ticket.project_confirmed),
-        estimate_hours: ticket.estimate_hours === null || ticket.estimate_hours === ('' as any) ? null : Number(ticket.estimate_hours),
+        estimate_hours: ticket.estimate_hours === null ? null : Number(ticket.estimate_hours),
       })),
     };
   }
@@ -310,11 +310,8 @@ export default function WeeklyAssignmentPlanner() {
     finally { setActing(false); }
   }
 
-  const selectedStatus = selected?.status ?? 'draft';
-  const hasReady = selected?.tickets.some((ticket) => ticket.push_state === 'ready') ?? false;
   const hasQueue = selected?.tickets.some((ticket) => ticket.push_state === 'queued') ?? false;
   const hasFailed = selected?.tickets.some((ticket) => ticket.push_state === 'failed') ?? false;
-  const hasRelease = selected?.tickets.some((ticket) => ticket.push_state === 'released') ?? false;
 
   return <div className="flex flex-col gap-4">
     <PageHeader
