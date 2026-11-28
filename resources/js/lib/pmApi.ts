@@ -142,6 +142,7 @@ export const pmApi = {
   approveReleaseWeeklyPlan: (id: number, approval_notes?: string) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/approve-release`, { approval_notes }, { timeout: 240_000 }),
   releaseQueuedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/release-queued`, undefined, { timeout: 240_000 }),
   retryFailedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/retry-failed`, undefined, { timeout: 240_000 }),
+  recoverWeeklyPlanRelease: (id: number) => api.post<{ plan: WeeklyPlan }>(`/weekly-plans/${id}/recover-release`),
   deleteWeeklyPlan: (id: number) => api.delete<{ deleted: boolean }>(`/weekly-plans/${id}`),
 
   projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
