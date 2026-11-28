@@ -48,6 +48,8 @@ import type {
   ClassifyResult,
   CategoryReview,
   TaskCategory,
+  WeeklyPlan,
+  WeeklyPlanInput,
 } from '../types/pm';
 import { normalizeProject } from './normalizeProject';
 
