@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\PmCard;
 use App\Models\PmWeeklyPlan;
 use App\Services\Pm\TaskmanduSync;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Throwable;
@@ -65,7 +65,7 @@ class PmWeeklyPlanController extends Controller
         $data = $this->validated($request);
         $weekConflict = PmWeeklyPlan::query()
             ->where('week_start', $data['week_start'])
-            ->whereKeyNot($plan->id)
+            ->where('id', '!=', $plan->id)
             ->exists();
         abort_if($weekConflict, 409, 'A weekly plan already exists for this Sunday. Open that plan instead of creating a duplicate.');
 
