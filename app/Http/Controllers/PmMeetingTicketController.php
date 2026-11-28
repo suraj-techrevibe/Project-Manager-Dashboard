@@ -107,7 +107,7 @@ class PmMeetingTicketController extends Controller
         foreach ($tickets as $index => $ticket) {
             try {
                 $results[] = ['index' => $index] + $this->pushOne($ticket, $employees, $assignedBy, $updateExisting);
-            } catch (\\Throwable $error) {
+            } catch (\Throwable $error) {
                 $results[] = ['index' => $index, 'ok' => false, 'error' => $error->getMessage()];
             }
         }
