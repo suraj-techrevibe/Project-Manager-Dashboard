@@ -18,11 +18,11 @@ return new class extends Migration
             $table->text('notes')->nullable();
             $table->json('tickets');
             $table->string('created_by')->nullable();
-            $table->unsignedBigInteger('created_by_id')->nullable();
+            $table->string('created_by_id', 100)->nullable();
             $table->string('submitted_by')->nullable();
             $table->timestamp('submitted_at')->nullable();
             $table->string('approved_by')->nullable();
-            $table->unsignedBigInteger('approved_by_id')->nullable();
+            $table->string('approved_by_id', 100)->nullable();
             $table->timestamp('approved_at')->nullable();
             $table->text('approval_notes')->nullable();
             $table->timestamp('release_started_at')->nullable();
