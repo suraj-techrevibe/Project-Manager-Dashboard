@@ -63,6 +63,12 @@ class PmWeeklyPlanController extends Controller
         abort_unless(in_array($plan->status, ['draft', 'changes_requested'], true), 422, 'This plan can only be edited while it is a draft or changes have been requested.');
 
         $data = $this->validated($request);
+        $weekConflict = PmWeeklyPlan::query()
+            ->where('week_start', $data['week_start'])
+            ->whereKeyNot($plan->id)
+            ->exists();
+        abort_if($weekConflict, 409, 'A weekly plan already exists for this Sunday. Open that plan instead of creating a duplicate.');
+
         $plan->update([
             'title' => $data['title'] ?: 'Weekly assignments · '.$data['week_start'],
             'week_start' => $data['week_start'],
@@ -190,7 +196,22 @@ class PmWeeklyPlanController extends Controller
             'tickets.*.release_now' => 'required|boolean',
         ]);
 
+        $weekStart = Carbon::createFromFormat('Y-m-d', $data['week_start'], 'Asia/Kathmandu')->startOfDay();
+        $weekEnd = Carbon::createFromFormat('Y-m-d', $data['week_end'], 'Asia/Kathmandu')->startOfDay();
+        abort_unless(
+            $weekStart->dayOfWeek === Carbon::SUNDAY
+                && $weekEnd->dayOfWeek === Carbon::FRIDAY
+                && $weekStart->copy()->addDays(5)->isSameDay($weekEnd),
+            422,
+            'A weekly plan must run Sunday to Friday in Nepal time.',
+        );
+
         foreach ($data['tickets'] as $index => $ticket) {
+            abort_unless(
+                $ticket['due_date'] >= $data['week_start'] && $ticket['due_date'] <= $data['week_end'],
+                422,
+                'Assignment #'.($index + 1).' due date must fall within the selected Sunday–Friday week.',
+            );
             if (! empty($ticket['project_id']) && empty($ticket['project_confirmed'])) {
                 abort(422, 'Confirm the Taskmandu project for assignment #'.($index + 1).'.');
             }
@@ -262,18 +283,6 @@ class PmWeeklyPlanController extends Controller
         $payload = [];
         foreach ($tickets as $index => $ticket) {
             if (($ticket['push_state'] ?? '') !== 'processing') {
-                continue;
-            }
-
-            $existing = PmCard::query()
-                ->where('title', $ticket['title'])
-                ->where('project_id', $ticket['project_id'] ?? null)
-                ->whereNotNull('task_id')
-                ->first();
-
-            if ($existing) {
-                $tickets[$index]['push_state'] = 'failed';
-                $tickets[$index]['push_error'] = 'A matching Taskmandu task already exists. Review the existing task or rename this assignment; no duplicate was created.';
                 continue;
             }
 
