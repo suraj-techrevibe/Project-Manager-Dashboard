@@ -52,6 +52,7 @@ Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->gr
     Route::post('weekly-plans/{plan}/approve-release', [PmWeeklyPlanController::class, 'approveAndRelease'])->name('weekly-plans.approve-release');
     Route::post('weekly-plans/{plan}/release-queued', [PmWeeklyPlanController::class, 'releaseQueued'])->name('weekly-plans.release-queued');
     Route::post('weekly-plans/{plan}/retry-failed', [PmWeeklyPlanController::class, 'retryFailed'])->name('weekly-plans.retry-failed');
+    Route::post('weekly-plans/{plan}/recover-release', [PmWeeklyPlanController::class, 'recoverInterruptedRelease'])->name('weekly-plans.recover-release');
     Route::delete('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'destroy'])->name('weekly-plans.destroy');
     Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
