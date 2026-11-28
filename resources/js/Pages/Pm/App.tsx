@@ -6,7 +6,8 @@ import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import { countQuick, liveFlagCounts, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
-import BriefDrafter from '@/Components/Pm/BriefDrafter';\nimport WeeklyAssignmentPlanner from '@/Components/Pm/WeeklyAssignmentPlanner';
+import BriefDrafter from '@/Components/Pm/BriefDrafter';
+import WeeklyAssignmentPlanner from '@/Components/Pm/WeeklyAssignmentPlanner';
 import GitPanel from '@/Components/Pm/GitPanel';
 import MeetingMinutesPanel from '@/Components/Pm/StructuredMeetingMinutesPanel';
 import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
@@ -189,7 +190,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
       'PM stand-up',
       m ? `Overdue: ${m.overdue} · Blocked: ${m.blocked} · Due today: ${m.due_today} · No owner: ${m.unassigned}` : '',
       today?.since ? `Since ${today.since.label}: ${today.since.completed.count} completed · ${today.since.created.count} created · ${today.since.blocked.count} blocked` : '',
-    ].filter(Boolean).join('\n');
+    ].filter(Boolean).join('
+');
     try { await navigator.clipboard.writeText(text); } catch {}
   };
 
@@ -406,7 +408,8 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('operations') && <Pane show={page === 'operations'}><BossOperationsWorkspace key={gen.operations ?? 0} /></Pane>}
         {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} tasks={today ? allTasks : null} tasksLoading={todayLoading} tasksError={todayError} onRetryTasks={() => void loadToday()} onOpenTask={openTask} /></Pane>}
         {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
-        {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}\n        {mounted('weekly-plan') && <Pane show={page === 'weekly-plan'}><WeeklyAssignmentPlanner key={gen['weekly-plan'] ?? 0} /></Pane>}
+        {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
+        {mounted('weekly-plan') && <Pane show={page === 'weekly-plan'}><WeeklyAssignmentPlanner key={gen['weekly-plan'] ?? 0} /></Pane>}
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
