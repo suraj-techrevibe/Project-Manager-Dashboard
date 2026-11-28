@@ -130,6 +130,18 @@ export const pmApi = {
 
   undoPush: (activityId: number) => api.post(`/brief/pushes/${activityId}/undo`),
 
+  // ---- Weekly assignment plans (local PM records; approved tickets publish through the shared Taskmandu ticket publisher) ----
+  weeklyPlans: () => api.get<{ plans: WeeklyPlan[] }>('/weekly-plans'),
+  weeklyPlan: (id: number) => api.get<{ plan: WeeklyPlan }>(`/weekly-plans/${id}`),
+  createWeeklyPlan: (data: WeeklyPlanInput) => api.post<{ plan: WeeklyPlan }>('/weekly-plans', data),
+  updateWeeklyPlan: (id: number, data: WeeklyPlanInput) => api.patch<{ plan: WeeklyPlan }>(`/weekly-plans/${id}`, data),
+  submitWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan }>(`/weekly-plans/${id}/submit`),
+  requestWeeklyPlanChanges: (id: number, approval_notes: string) => api.post<{ plan: WeeklyPlan }>(`/weekly-plans/${id}/request-changes`, { approval_notes }),
+  approveReleaseWeeklyPlan: (id: number, approval_notes?: string) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/approve-release`, { approval_notes }),
+  releaseQueuedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/release-queued`),
+  retryFailedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/retry-failed`),
+  deleteWeeklyPlan: (id: number) => api.delete<{ deleted: boolean }>(`/weekly-plans/${id}`),
+
   projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
 
   // Requests and ideas are local records; Taskmandu projects are their business identity.
