@@ -535,6 +535,7 @@ export default function WeeklyAssignmentPlanner() {
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className={btnSecondary} onClick={() => visitPm('projects', { ptab: 'tasks' })}>Open All Tasks</button>
             <button type="button" className={btnSecondary} onClick={() => visitPm('qa')}>Open QA Center</button>
+            <button type="button" className={btnSecondary} onClick={() => visitPm('operations')}>Open Operations</button>
             <button type="button" className={btnSecondary} onClick={() => visitPm('today')}>Open Command Center</button>
           </div>
         </Section>
