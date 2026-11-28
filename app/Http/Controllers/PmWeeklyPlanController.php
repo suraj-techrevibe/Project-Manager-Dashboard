@@ -167,6 +167,39 @@ class PmWeeklyPlanController extends Controller
         return $this->releaseTickets($request, $plan, $publisher, $sync, ['failed']);
     }
 
+    public function recoverInterruptedRelease(PmWeeklyPlan $plan): JsonResponse
+    {
+        $plan = DB::transaction(function () use ($plan) {
+            $locked = PmWeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+            abort_unless($locked->status === 'releasing', 422, 'This weekly plan is not currently marked as releasing.');
+            abort_if(
+                $locked->release_started_at && $locked->release_started_at->gt(now()->subMinutes(5)),
+                409,
+                'The release started less than five minutes ago. Wait for the current release attempt before recovering it.',
+            );
+
+            $tickets = $locked->tickets ?? [];
+            $recovered = 0;
+            foreach ($tickets as $index => $ticket) {
+                if (($ticket['push_state'] ?? '') === 'processing') {
+                    $tickets[$index]['push_state'] = 'failed';
+                    $tickets[$index]['push_error'] = 'Release was interrupted. Retry is safe: the system syncs Taskmandu first and checks for an existing task before creating another.';
+                    $recovered++;
+                }
+            }
+
+            abort_if($recovered === 0, 422, 'There are no interrupted ticket releases to recover.');
+            $locked->update([
+                'tickets' => $tickets,
+                'status' => 'partially_released',
+            ]);
+
+            return $locked->fresh();
+        });
+
+        return response()->json(['plan' => $this->present($plan)]);
+    }
+
     public function destroy(PmWeeklyPlan $plan): JsonResponse
     {
         abort_unless($plan->status === 'draft' || $plan->status === 'changes_requested', 422, 'Only an unreleased draft can be deleted.');
@@ -397,6 +430,7 @@ class PmWeeklyPlanController extends Controller
             'approved_at' => $plan->approved_at?->toIso8601String(),
             'approval_notes' => $plan->approval_notes,
             'released_at' => $plan->released_at?->toIso8601String(),
+            'release_started_at' => $plan->release_started_at?->toIso8601String(),
             'updated_at' => $plan->updated_at?->toIso8601String(),
         ];
     }
