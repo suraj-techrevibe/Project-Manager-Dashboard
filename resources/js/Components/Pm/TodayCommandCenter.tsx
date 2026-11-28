@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Employee, PmFlag, Project, Severity, SinceItem, SinceSummary, SubtaskFlag, TaskFocus, WorkloadRow } from '../../types/pm';
 import SinceStrip from './SinceStrip';
-import CompletedSubtasksGrid, { useCompletedSubtasks } from './CompletedSubtasks';
 import { levelOf } from './TeamWorkload';
 
 /* ------------------------------------------------------------------ */
@@ -289,9 +288,8 @@ export interface CommandCenterProps {
   onNavigate?: (tab: string) => void;
   onOpenProject?: (projectId: string) => void;
   subtaskSummary: { total:number; completed:number; remaining:number; progress:number };
-  /** Pending requests/ideas panel and meeting follow-ups, shown in their own group. */
+  /** One-line summary of requests and ideas waiting on you. */
   incoming?: ReactNode;
-  followups?: ReactNode;
 }
 
 export default function TodayCommandCenter(p: CommandCenterProps) {
@@ -314,8 +312,6 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
   const [glanceOpen, setGlanceOpen] = useState(true);
   const busiest = [...p.workload].filter((w) => w.open > 0).sort((x, y) => (y.week_hours ?? 0) - (x.week_hours ?? 0)).slice(0, 6);
 
-  // Completed nested subtasks come from the live project data, not parent-task counts.
-  const completedSubtasks = useCompletedSubtasks(p.timelineProjects);
 
   useEffect(() => {
     if (!p.showDigest) return;
@@ -458,7 +454,6 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
 
       <JumpNav items={[
         { id: 'grp-attention', label: 'Needs attention', badge: attention },
-        ...((p.incoming || p.followups) ? [{ id: 'grp-incoming', label: 'Incoming' }] : []),
         { id: 'grp-delivery', label: 'Delivery' },
         { id: 'grp-team', label: 'Team' },
         { id: 'grp-activity', label: 'Progress & activity' },
@@ -546,34 +541,14 @@ export default function TodayCommandCenter(p: CommandCenterProps) {
 
       </section>
 
-      {(p.incoming || p.followups) && (
-        <section id="grp-incoming" className="scroll-mt-24 space-y-3">
-          <GroupHeader title="Incoming work & decisions" sub="Requests, ideas and meeting follow-ups waiting on you." />
+      {p.incoming && (
+        <section id="grp-incoming" className="scroll-mt-24">
           {p.incoming}
-          {p.followups}
         </section>
       )}
 
       <section id="grp-delivery" className="scroll-mt-24 space-y-3">
       <GroupHeader title="Delivery" sub="How projects are tracking." />
-      {/* ===== Completed subtasks QA ===== */}
-      <Panel
-        id="completed-subtasks"
-        tone="emerald"
-        title="Completed subtasks"
-        sub="Finished in Taskmandu, newest first. Review one in its parent task."
-        badge={<Count n={completedSubtasks.length} tone="emerald" />}
-      >
-        <CompletedSubtasksGrid items={completedSubtasks} loading={p.projectsLoading} onOpen={p.onOpenTask} pageSize={6} searchable={false} />
-        {completedSubtasks.length > 6 && (
-          <div className="mt-3 text-right">
-            <button type="button" onClick={() => p.onNavigate?.('tasks')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
-              View all {completedSubtasks.length} on the All tasks page →
-            </button>
-          </div>
-        )}
-      </Panel>
-
       {/* ===== 8. Project risk + timeline ===== */}
       <Panel
         id="project-risk"

@@ -5,6 +5,8 @@ import QuickSearch from '@/Components/Pm/QuickSearch';
 import { ask } from '@/lib/assistantStore';
 import MeetingFollowUpCard from '@/Components/Pm/MeetingFollowUpCard';
 import { countQuick, liveFlagCounts, useTaskRows, type AllTask } from '@/Components/Pm/AllTasksPanel';
+import CompletedSubtasksGrid, { useCompletedSubtasks } from '@/Components/Pm/CompletedSubtasks';
+import IncomingStrip from '@/Components/Pm/IncomingStrip';
 import TeamWorkloadPage from '@/Components/Pm/TeamWorkloadPage';
 import TodayCommandCenter, { type CcCard, type CcAnswer, type RiskProject } from '@/Components/Pm/TodayCommandCenter';
 import BriefDrafter from '@/Components/Pm/BriefDrafter';
@@ -15,7 +17,6 @@ import ProjectsPanel from '@/Components/Pm/ProjectsPanel';
 import ReportsPanel from '@/Components/Pm/ReportsPanel';
 import ScopeCheck from '@/Components/Pm/ScopeCheck';
 import BossOperationsWorkspace from '@/Components/Pm/BossOperationsWorkspace';
-import OperationsTodayPanel from '@/Components/Pm/OperationsTodayPanel';
 import DailyChecklistPanel from '@/Components/Pm/DailyChecklistPanel';
 import MyActionListPanel from '@/Components/Pm/MyActionListPanel';
 import DictionaryPanel from '@/Components/Pm/DictionaryPanel';
@@ -214,6 +215,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
   // Task counts for the Operations checklist come from the same live Taskmandu rows as the All tasks
   // page, so the number matches what you see after clicking through. The synced mirror only fills in
   // until live projects have loaded (it goes stale whenever the background sync is failing).
+  const completedSubtasks = useCompletedSubtasks(projects);
   const liveTaskRows = useTaskRows(allTasks, projects, projectsLoading);
   const liveTaskCounts = projectsLoading || projects.length === 0 ? null : countQuick(liveTaskRows);
   const mirrorCounts = today
@@ -372,8 +374,7 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
                   onPickPerson={() => visitPm('team')}
                   onNavigate={(tab) => visitPm(tab as PmPage)}
                   onOpenProject={(id) => visitPm('projects', { project: id })}
-                  incoming={<OperationsTodayPanel summary={today.operations_summary} onNavigate={(tab) => visitPm(tab as PmPage)} onCapture={(kind) => visitPm('operations', { new: kind })} />}
-                  followups={<details className="rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold tracking-tight text-slate-900">Meeting follow-ups</summary><div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div></details>}
+                  incoming={<IncomingStrip summary={today.operations_summary} followupOpen={today.meeting_followup ? 1 : 0} onNavigate={(tab) => visitPm(tab as PmPage)} />}
                 />
               </div>
             ) : (
@@ -387,14 +388,20 @@ export default function PmApp(props: Partial<TodayData> & { page?: PmPage }) {
         {mounted('team') && <Pane show={page === 'team'}>{today ? <TeamWorkloadPage workload={today.workload} /> : <div className="rounded-xl border border-slate-200/80 bg-white p-6 text-sm text-slate-500">{todayError ?? 'Loading…'}</div>}</Pane>}
         {mounted('operations') && <Pane show={page === 'operations'}><BossOperationsWorkspace key={gen.operations ?? 0} /></Pane>}
         {mounted('projects') && <Pane show={page === 'projects'}><ProjectsPanel key={gen.projects ?? 0} seedProjects={rawProjects} onProjectsChange={setProjects} tasks={today ? allTasks : null} tasksLoading={todayLoading} tasksError={todayError} onRetryTasks={() => void loadToday()} onOpenTask={openTask} /></Pane>}
-        {mounted('minutes') && <Pane show={page === 'minutes'}><MeetingMinutesPanel key={gen.minutes ?? 0} /></Pane>}
+        {mounted('minutes') && <Pane show={page === 'minutes'}>
+          {today?.meeting_followup && <details className="mb-4 rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold tracking-tight text-slate-900">Meeting follow-ups</summary><div className="border-t border-slate-100 p-3"><MeetingFollowUpCard data={today.meeting_followup} /></div></details>}
+          <MeetingMinutesPanel key={gen.minutes ?? 0} />
+        </Pane>}
         {mounted('brief') && <Pane show={page === 'brief'}><BriefDrafter /></Pane>}
         {mounted('weekly-plan') && <Pane show={page === 'weekly-plan'}><WeeklyAssignmentPlanner key={gen['weekly-plan'] ?? 0} /></Pane>}
         {mounted('reports') && <Pane show={page === 'reports'}><ReportsPanel key={gen.reports ?? 0} /></Pane>}
         {mounted('scope') && <Pane show={page === 'scope'}><ScopeCheck /></Pane>}
         {mounted('git') && <Pane show={page === 'git'}><GitPanel /></Pane>}
         {mounted('qa-reports') && <Pane show={page === 'qa-reports'}><QAReportsPanel key={gen['qa-reports'] ?? 0} /></Pane>}
-        {mounted('qa') && <Pane show={page === 'qa'}><QACenter /></Pane>}
+        {mounted('qa') && <Pane show={page === 'qa'}>
+          <details className="mb-4 rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold tracking-tight text-slate-900">Completed subtasks <span className="font-normal text-slate-500">· finished in Taskmandu, newest first</span></summary><div className="border-t border-slate-100 p-3"><CompletedSubtasksGrid items={completedSubtasks} loading={projectsLoading} onOpen={openTask} pageSize={6} searchable={false} /></div></details>
+          <QACenter />
+        </Pane>}
         {mounted('checklist') && <Pane show={page === 'checklist'}><DailyChecklistPanel today={today} taskCounts={{ overdue: counts.overdue, blocked: counts.blocked, no_owner: counts.unassigned }} scopeLabel={business.selected?.name ?? null} loading={todayLoading} error={todayError} onRetry={() => void loadToday()} onNavigate={(target, params) => visitPm(target, params)} /></Pane>}
         {mounted('action-list') && <Pane show={page === 'action-list'}><MyActionListPanel /></Pane>}
         {mounted('dictionary') && <Pane show={page === 'dictionary'}><DictionaryPanel key={gen.dictionary ?? 0} /></Pane>}
