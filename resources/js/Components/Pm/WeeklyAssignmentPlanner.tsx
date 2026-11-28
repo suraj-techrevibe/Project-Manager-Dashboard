@@ -507,12 +507,12 @@ export default function WeeklyAssignmentPlanner() {
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
                 <span>{member.open} open</span><span>{member.overdue} overdue</span><span>{member.blocked} blocked</span>
-                <span>{member.week_hours ?? 0}h scheduled this week</span>
+                <span>{member.hours ?? 0}h open estimate</span><span>{member.week_hours ?? 0}h due this week</span>
                 {member.capacity !== undefined && <span>{member.capacity}h capacity</span>}
               </div>
             </div>)}
-            {teamCapacity > 0 && <p className="text-xs text-slate-500">Reported combined capacity: {teamCapacity}h. Check task size and QA obligations before approving.</p>}
-            <p className="text-xs text-slate-500">QA items awaiting review: {workloadReviewCount}. Review the QA Center before releasing new work.</p>
+            {teamCapacity > 0 && <p className="text-xs text-slate-500">PM Dashboard configured capacity: {teamCapacity}h. The team schedule itself is 36 hours per person before breaks.</p>}
+            <p className="text-xs text-slate-500">Tasks awaiting category review: {workloadReviewCount}. Review the QA Center separately before releasing new work.</p>
           </div> : <p className="text-sm text-slate-500">{loading ? 'Loading workload…' : 'Workload snapshot unavailable. Open Team Workload and refresh the source data.'}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className={btnSecondary} onClick={() => visitPm('projects', { ptab: 'tasks' })}>Open All Tasks</button>
