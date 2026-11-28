@@ -229,3 +229,65 @@ export interface PmOperationPlan {
   created_at:string|null; updated_at:string|null;
 }
 export type PmOperationPlanInput = Omit<PmOperationPlan, 'id'|'business'|'goal'|'status'|'effective_priority'|'submitted_at'|'reviewed_at'|'archived_at'|'revision_count'|'revisions'|'created_at'|'updated_at'>;
+
+
+export type WeeklyPlanStatus = 'draft' | 'submitted_for_approval' | 'changes_requested' | 'approved' | 'releasing' | 'partially_released' | 'released';
+export type WeeklyTicketPushState = 'ready' | 'queued' | 'processing' | 'released' | 'failed';
+export interface WeeklyPlanTicket {
+  uid: string;
+  title: string;
+  description: string;
+  project_id: string | null;
+  project_name: string | null;
+  project_confirmed: boolean;
+  assignee_employee_id: string;
+  priority: TaskPriority;
+  estimate_hours: number | null;
+  due_date: string;
+  release_now: boolean;
+  push_state: WeeklyTicketPushState;
+  task_id: string | null;
+  card_id: number | null;
+  task_url: string | null;
+  push_error: string | null;
+  released_at: string | null;
+}
+export interface WeeklyPlan {
+  id: number;
+  title: string;
+  week_start: string;
+  week_end: string;
+  team_timezone: string;
+  status: WeeklyPlanStatus;
+  notes: string | null;
+  tickets: WeeklyPlanTicket[];
+  counts: { total: number; released: number; queued: number; failed: number };
+  created_by: string | null;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  approval_notes: string | null;
+  released_at: string | null;
+  updated_at: string | null;
+}
+export interface WeeklyPlanTicketInput {
+  uid: string;
+  title: string;
+  description: string;
+  project_id: string | null;
+  project_name: string | null;
+  project_confirmed: boolean;
+  assignee_employee_id: string;
+  priority: TaskPriority;
+  estimate_hours: number | null;
+  due_date: string;
+  release_now: boolean;
+}
+export interface WeeklyPlanInput {
+  title: string;
+  week_start: string;
+  week_end: string;
+  notes: string;
+  tickets: WeeklyPlanTicketInput[];
+}
