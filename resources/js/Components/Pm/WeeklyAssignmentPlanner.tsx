@@ -332,6 +332,18 @@ export default function WeeklyAssignmentPlanner() {
     finally { setActing(false); }
   }
 
+  async function recoverInterrupted() {
+    if (!selected) return;
+    setActing(true); setError(null); setNotice(null);
+    try {
+      const { data } = await pmApi.recoverWeeklyPlanRelease(selected.id);
+      applyPlan(data.plan);
+      await loadPlans(selected.id);
+      setNotice('Interrupted release recovered. Sync Taskmandu, then retry only the failed assignments.');
+    } catch (e) { setError(errorText(e, 'Could not recover the interrupted release.')); }
+    finally { setActing(false); }
+  }
+
   async function requestChanges() {
     if (!selected || !approvalNotes.trim()) { setError('Enter the boss feedback or changes required first.'); return; }
     setActing(true); setError(null); setNotice(null);
@@ -487,6 +499,12 @@ export default function WeeklyAssignmentPlanner() {
               <button type="button" className={btnSecondary} disabled={acting} onClick={() => void requestChanges()}>Return for changes</button>
             </div>
           </>}
+          {selected.status === 'releasing' && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p>Taskmandu release is still marked as running. Do not start another release immediately.</p>
+            {selected.release_started_at && Date.now() - new Date(selected.release_started_at).getTime() >= 5 * 60 * 1000
+              ? <button type="button" className={btnSecondary + ' mt-2'} disabled={acting} onClick={() => void recoverInterrupted()}>{acting ? 'Recovering…' : 'Recover interrupted release'}</button>
+              : <p className="mt-1 text-xs">Recovery becomes available after five minutes if the server process was interrupted.</p>}
+          </div>}
           {['approved', 'partially_released'].includes(selected.status) && <div className="mt-3 flex flex-wrap gap-2">
             {hasQueue && <button type="button" className={btnPrimary} disabled={acting} onClick={() => void releaseQueued()}>{acting ? 'Releasing…' : 'Release queued assignments'}</button>}
             {hasFailed && <button type="button" className={btnSecondary} disabled={acting} onClick={() => void retryFailed()}>{acting ? 'Retrying…' : 'Retry failed tickets only'}</button>}
