@@ -269,6 +269,7 @@ export interface WeeklyPlan {
   approved_at: string | null;
   approval_notes: string | null;
   released_at: string | null;
+  release_started_at: string | null;
   updated_at: string | null;
 }
 export interface WeeklyPlanTicketInput {
