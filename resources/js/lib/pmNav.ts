@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
  * sub-task, selected meeting…) lives in that tab's query string, e.g.
  * /pm/projects?project=<id>&ptab=tasks&task=<id>&sub=<id>.
  */
-export type PmPage = 'today' | 'tasks' | 'operations' | 'projects' | 'minutes' | 'brief' | 'reports' | 'scope' | 'git' | 'qa' | 'qa-reports' | 'checklist' | 'action-list' | 'dictionary';
+export type PmPage = 'today' | 'tasks' | 'operations' | 'projects' | 'minutes' | 'brief' | 'weekly-plan' | 'reports' | 'scope' | 'git' | 'qa' | 'qa-reports' | 'checklist' | 'action-list' | 'dictionary';
 
 export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'today', label: 'Command center', href: '/pm' },
@@ -16,6 +16,7 @@ export const PM_PAGES: { key: PmPage; label: string; href: string }[] = [
   { key: 'projects', label: 'Projects', href: '/pm/projects' },
   { key: 'minutes', label: 'Meeting minutes', href: '/pm/minutes' },
   { key: 'brief', label: 'Brief to tickets', href: '/pm/brief' },
+  { key: 'weekly-plan', label: 'Weekly assignment plan', href: '/pm/weekly-plan' },
   { key: 'reports', label: 'Reports', href: '/pm/reports' },
   { key: 'scope', label: 'Scope check', href: '/pm/scope' },
   { key: 'git', label: 'Git', href: '/pm/git' },

@@ -35,6 +35,11 @@ class PmPageController extends Controller
         return Inertia::render('Pm/App', ['page' => 'brief']);
     }
 
+    public function weeklyPlan(): Response
+    {
+        return Inertia::render('Pm/App', ['page' => 'weekly-plan']);
+    }
+
     public function reports(): Response
     {
         return Inertia::render('Pm/App', ['page' => 'reports']);

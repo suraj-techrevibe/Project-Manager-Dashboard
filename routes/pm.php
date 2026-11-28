@@ -12,6 +12,7 @@ use App\Http\Controllers\PmAssistantController;
 use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmDraftController;
 use App\Http\Controllers\PmMeetingTicketController;
+use App\Http\Controllers\PmWeeklyPlanController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\PmQaController;
@@ -29,6 +30,7 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
     Route::get('minutes', [PmPageController::class, 'minutes'])->name('page.minutes');
     Route::get('brief', [PmPageController::class, 'brief'])->name('page.brief');
+    Route::get('weekly-plan', [PmPageController::class, 'weeklyPlan'])->name('page.weekly-plan');
     Route::get('reports', [PmPageController::class, 'reports'])->name('page.reports');
     Route::get('scope', [PmPageController::class, 'scope'])->name('page.scope');
     Route::get('git', [PmPageController::class, 'git'])->name('page.git');
@@ -41,6 +43,17 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
 
 // JSON API used by those pages.
 Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->group(function () {
+    Route::get('weekly-plans', [PmWeeklyPlanController::class, 'index'])->name('weekly-plans.index');
+    Route::post('weekly-plans', [PmWeeklyPlanController::class, 'store'])->name('weekly-plans.store');
+    Route::get('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'show'])->name('weekly-plans.show');
+    Route::patch('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'update'])->name('weekly-plans.update');
+    Route::post('weekly-plans/{plan}/submit', [PmWeeklyPlanController::class, 'submit'])->name('weekly-plans.submit');
+    Route::post('weekly-plans/{plan}/request-changes', [PmWeeklyPlanController::class, 'requestChanges'])->name('weekly-plans.request-changes');
+    Route::post('weekly-plans/{plan}/approve-release', [PmWeeklyPlanController::class, 'approveAndRelease'])->name('weekly-plans.approve-release');
+    Route::post('weekly-plans/{plan}/release-queued', [PmWeeklyPlanController::class, 'releaseQueued'])->name('weekly-plans.release-queued');
+    Route::post('weekly-plans/{plan}/retry-failed', [PmWeeklyPlanController::class, 'retryFailed'])->name('weekly-plans.retry-failed');
+    Route::post('weekly-plans/{plan}/recover-release', [PmWeeklyPlanController::class, 'recoverInterruptedRelease'])->name('weekly-plans.recover-release');
+    Route::delete('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'destroy'])->name('weekly-plans.destroy');
     Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('assistant/status', [PmAssistantController::class, 'status'])->name('assistant.status');
