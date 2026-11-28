@@ -139,9 +139,9 @@ export const pmApi = {
   updateWeeklyPlan: (id: number, data: WeeklyPlanInput) => api.patch<{ plan: WeeklyPlan }>(`/weekly-plans/${id}`, data),
   submitWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan }>(`/weekly-plans/${id}/submit`),
   requestWeeklyPlanChanges: (id: number, approval_notes: string) => api.post<{ plan: WeeklyPlan }>(`/weekly-plans/${id}/request-changes`, { approval_notes }),
-  approveReleaseWeeklyPlan: (id: number, approval_notes?: string) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/approve-release`, { approval_notes }),
-  releaseQueuedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/release-queued`),
-  retryFailedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/retry-failed`),
+  approveReleaseWeeklyPlan: (id: number, approval_notes?: string) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/approve-release`, { approval_notes }, { timeout: 240_000 }),
+  releaseQueuedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/release-queued`, undefined, { timeout: 240_000 }),
+  retryFailedWeeklyPlan: (id: number) => api.post<{ plan: WeeklyPlan; release: { released: number; queued: number; failed: number } }>(`/weekly-plans/${id}/retry-failed`, undefined, { timeout: 240_000 }),
   deleteWeeklyPlan: (id: number) => api.delete<{ deleted: boolean }>(`/weekly-plans/${id}`),
 
   projectHealth: () => api.get<{ health: any[] }>('/automation/health'),
