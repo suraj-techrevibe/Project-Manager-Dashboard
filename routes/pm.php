@@ -28,7 +28,8 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
     Route::get('operations', [PmPageController::class, 'operations'])->name('page.operations');
     Route::get('projects', [PmPageController::class, 'projects'])->name('page.projects');
     Route::get('minutes', [PmPageController::class, 'minutes'])->name('page.minutes');
-    Route::get('brief', [PmPageController::class, 'brief'])->name('page.brief');\n    Route::get('weekly-plan', [PmPageController::class, 'weeklyPlan'])->name('page.weekly-plan');
+    Route::get('brief', [PmPageController::class, 'brief'])->name('page.brief');
+    Route::get('weekly-plan', [PmPageController::class, 'weeklyPlan'])->name('page.weekly-plan');
     Route::get('reports', [PmPageController::class, 'reports'])->name('page.reports');
     Route::get('scope', [PmPageController::class, 'scope'])->name('page.scope');
     Route::get('git', [PmPageController::class, 'git'])->name('page.git');
@@ -41,7 +42,17 @@ Route::middleware('auth')->prefix('pm')->name('pm.')->group(function () {
 
 // JSON API used by those pages.
 Route::middleware(['auth', 'throttle:120,1'])->prefix('pm/api')->name('pm.')->group(function () {
-    Route::get('weekly-plans', [PmWeeklyPlanController::class, 'index'])->name('weekly-plans.index');\n    Route::post('weekly-plans', [PmWeeklyPlanController::class, 'store'])->name('weekly-plans.store');\n    Route::get('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'show'])->name('weekly-plans.show');\n    Route::patch('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'update'])->name('weekly-plans.update');\n    Route::post('weekly-plans/{plan}/submit', [PmWeeklyPlanController::class, 'submit'])->name('weekly-plans.submit');\n    Route::post('weekly-plans/{plan}/request-changes', [PmWeeklyPlanController::class, 'requestChanges'])->name('weekly-plans.request-changes');\n    Route::post('weekly-plans/{plan}/approve-release', [PmWeeklyPlanController::class, 'approveAndRelease'])->name('weekly-plans.approve-release');\n    Route::post('weekly-plans/{plan}/release-queued', [PmWeeklyPlanController::class, 'releaseQueued'])->name('weekly-plans.release-queued');\n    Route::post('weekly-plans/{plan}/retry-failed', [PmWeeklyPlanController::class, 'retryFailed'])->name('weekly-plans.retry-failed');\n    Route::delete('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'destroy'])->name('weekly-plans.destroy');\n    Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
+    Route::get('weekly-plans', [PmWeeklyPlanController::class, 'index'])->name('weekly-plans.index');
+    Route::post('weekly-plans', [PmWeeklyPlanController::class, 'store'])->name('weekly-plans.store');
+    Route::get('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'show'])->name('weekly-plans.show');
+    Route::patch('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'update'])->name('weekly-plans.update');
+    Route::post('weekly-plans/{plan}/submit', [PmWeeklyPlanController::class, 'submit'])->name('weekly-plans.submit');
+    Route::post('weekly-plans/{plan}/request-changes', [PmWeeklyPlanController::class, 'requestChanges'])->name('weekly-plans.request-changes');
+    Route::post('weekly-plans/{plan}/approve-release', [PmWeeklyPlanController::class, 'approveAndRelease'])->name('weekly-plans.approve-release');
+    Route::post('weekly-plans/{plan}/release-queued', [PmWeeklyPlanController::class, 'releaseQueued'])->name('weekly-plans.release-queued');
+    Route::post('weekly-plans/{plan}/retry-failed', [PmWeeklyPlanController::class, 'retryFailed'])->name('weekly-plans.retry-failed');
+    Route::delete('weekly-plans/{plan}', [PmWeeklyPlanController::class, 'destroy'])->name('weekly-plans.destroy');
+    Route::get('recent-pushes', [PmController::class, 'recentPushes'])->name('recent-pushes');
     Route::post('ask', [PmController::class, 'ask'])->name('ask');
     Route::get('assistant/status', [PmAssistantController::class, 'status'])->name('assistant.status');
     Route::post('assistant/chat', [PmAssistantController::class, 'chat'])->middleware('throttle:20,1')->name('assistant.chat');
