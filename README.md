@@ -106,8 +106,9 @@ The **Weekly assignment plan** page (`/pm/weekly-plan`) keeps weekend planning s
 - **Save draft** keeps the plan in the PM database. **Save & submit for approval** changes its status but does not create Taskmandu tickets.
 - **Approve & automatically release batch** records the approver and creates all assignments marked **Release with this batch** in Taskmandu immediately.
 - Unchecked **Release with this batch** assignments remain in the approved next-task queue. **Release queued assignments** publishes them later.
-- Every result is stored against the weekly plan with the Taskmandu task ID, local PM card ID, link, timestamp and any error. Failed releases can be retried without re-sending tickets already marked released.
+- Every result is stored against the weekly plan with the Taskmandu task ID, local PM card ID, link, timestamp and any error. Failed releases can be retried without re-sending tickets already marked released. If the server process is interrupted, the plan exposes recovery after five minutes; the next retry syncs Taskmandu before attempting creation again.
 - Before publishing, the app syncs Taskmandu. Weekly release refuses to update an existing matching task; it reports a duplicate instead. This is intentionally safer than silently changing existing work.
+- The planner reads the existing Team Workload snapshot and links to All Tasks, QA Center, Command Center and Operations for review. It does not duplicate those records.
 - Daily Meeting Minutes and Brief to tickets keep their existing behaviour and API.
 
 After pulling the change, run `php artisan migrate` to create `pm_weekly_plans`. No new Taskmandu credentials or external integration are required. Batch release runs synchronously when the approver clicks the approval button; it is not an unattended scheduled job.
