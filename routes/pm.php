@@ -12,6 +12,7 @@ use App\Http\Controllers\PmAssistantController;
 use App\Http\Controllers\PmAutomationController;
 use App\Http\Controllers\PmDraftController;
 use App\Http\Controllers\PmMeetingTicketController;
+use App\Http\Controllers\PmWeeklyPlanController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\PmQaController;
