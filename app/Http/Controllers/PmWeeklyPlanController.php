@@ -337,10 +337,14 @@ class PmWeeklyPlanController extends Controller
             'released_at' => $status === 'released' ? now() : null,
         ]);
 
+        $releasedThisCall = collect($selectedIndexes)
+            ->filter(fn (int $index) => ($tickets[$index]['push_state'] ?? '') === 'released')
+            ->count();
+
         return response()->json([
             'plan' => $this->present($plan->fresh()),
             'release' => [
-                'released' => collect($tickets)->where('push_state', 'released')->count(),
+                'released' => $releasedThisCall,
                 'queued' => collect($tickets)->where('push_state', 'queued')->count(),
                 'failed' => collect($tickets)->where('push_state', 'failed')->count(),
             ],
